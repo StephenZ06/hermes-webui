@@ -99,7 +99,12 @@
     old.forEach((node) => { const k = keyOf(node); if (k) keyed.set(k, node); });
     const used = new Set();
     let cursor = 0;
-    let ref = from.firstChild;
+    // The place the next node belongs. A node that is kept as it is (the tab strips' sliding pill, which
+    // sits first) is never that place: if it were, every matched node would look out of order and be
+    // moved, and a moved node is taken out of the page and put back: transitions restart, hover and focus
+    // drop, and the icons flash.
+    const skipKept = (node) => { while (node && kept(node)) node = node.nextSibling; return node; };
+    let ref = skipKept(from.firstChild);
     [...to.childNodes].forEach((node) => {
       const k = keyOf(node);
       let match = null;
@@ -115,7 +120,7 @@
       if (match) {
         used.add(match);
         morphNode(match, node);
-        if (match === ref) ref = ref.nextSibling;
+        if (match === ref) ref = skipKept(ref.nextSibling);
         else from.insertBefore(match, ref);
       } else from.insertBefore(node, ref);
     });

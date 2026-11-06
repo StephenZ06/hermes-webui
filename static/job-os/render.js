@@ -409,10 +409,12 @@
     return `<button type="button" class="job-os-metric${loading ? ' is-loading' : ''}" ${target}${loading ? ' aria-busy="true"' : ''}><span class="job-os-metric-art${ready}"><img class="job-os-metric-icon" data-metric="${name}" src="${metricSrc(name, 40)}" srcset="${metricSrc(name, 40)} 1x, ${metricSrc(name, 80)} 2x" width="40" height="40" alt="" aria-hidden="true" decoding="async" fetchpriority="high"></span><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${loading ? '' : esc(value)}</strong><span>${esc(label)}</span></span></button>`;
   }
   // First open of the Dashboard: its title and the four cards, shimmering,
-  // while the numbers are fetched, instead of a bare spinner.
+  // while the numbers are fetched, instead of a bare spinner. The status chip is held as an invisible
+  // placeholder: it makes the real header a pixel taller than a bare one, so without it everything
+  // below the title moved down a pixel when the page filled in.
   function dashboardLoading() {
     const card = (name, label) => metric(name, '', label, '', true);
-    return `<div class="job-os-shell" data-view="dashboard"><main class="job-os-content"><header class="job-os-header"><div><h1>Dashboard</h1><p>Your job search at a glance</p></div></header><section class="job-os-metrics" aria-label="Job dashboard">${card('total', 'Total jobs')}${card('active', 'Active work')}${card('attention', 'Needs attention')}${card('applied', 'Applied')}</section>${LOADING}</main></div>`;
+    return `<div class="job-os-shell" data-view="dashboard"><main class="job-os-content"><header class="job-os-header"><div><h1>Dashboard</h1><p>Your job search at a glance</p></div><span class="job-os-status" aria-hidden="true" style="visibility:hidden">Ready</span></header><section class="job-os-metrics" aria-label="Job dashboard">${card('total', 'Total jobs')}${card('active', 'Active work')}${card('attention', 'Needs attention')}${card('applied', 'Applied')}</section>${LOADING}</main></div>`;
   }
   function placeholder(view, body) {
     return `<section class="job-os-card job-os-placeholder"><span class="job-os-placeholder-icon">${icon(view, 26)}</span><h2>${esc(labels[view])}</h2><p>${esc(body)}</p><button class="job-os-btn" type="button" data-job-os-view="dashboard">Back to dashboard</button></section>`;
@@ -917,7 +919,12 @@
   }
   // Placeholders for what the full record brings (chips, actions, analysis, description),
   // shaped like them so nothing jumps when the real content fades in.
-  const drawerSkeleton = () => `<div class="match-skeleton drawer-skeleton" role="status" aria-label="Loading this job"><div class="drawer-skeleton-chips">${[64, 88, 72].map((w) => `<span class="skeleton-bar" style="width:${w}px"></span>`).join('')}</div><div class="drawer-skeleton-actions">${[110, 82, 96].map((w) => `<span class="skeleton-bar" style="width:${w}px"></span>`).join('')}</div><span class="skeleton-bar" style="width:96%"></span><span class="skeleton-bar" style="width:88%"></span><span class="skeleton-bar" style="width:62%"></span><div class="match-skeleton-bars">${['72%', '58%', '66%', '48%'].map((w) => `<span class="skeleton-bar" style="width:${w}"></span>`).join('')}</div><div class="match-skeleton-table">${[84, 70, 76, 58, 66, 44].map((w) => `<span class="skeleton-bar" style="width:${w}%"></span>`).join('')}</div></div>`;
+  const drawerSkeleton = (job) => {
+    const bars = (widths, cls) => widths.map((w) => `<span class="skeleton-bar${cls ? ` ${cls}` : ''}" style="width:${w}"></span>`).join('');
+    const analysis = `<div class="drawer-skeleton-card is-analysis"><div class="drawer-skeleton-score"><span class="skeleton-bar is-ring"></span><div>${bars(['46%', '30%'])}</div></div>${bars(['96%', '70%'])}<div class="match-skeleton-bars">${bars(['72%', '58%', '66%', '48%'])}</div><div class="match-skeleton-table">${bars(['84%', '70%', '76%', '58%', '66%', '44%'])}</div><div class="drawer-skeleton-list">${bars(['22%', '58%', '50%'])}</div></div>`;
+    const kit = `<div class="drawer-skeleton-card is-kit">${bars(['24%'])}<div class="drawer-skeleton-step"><span class="skeleton-bar is-dot"></span><div>${bars(['30%', '90%', '36%'])}</div></div><div class="drawer-skeleton-step"><span class="skeleton-bar is-dot"></span><div>${bars(['40%', '88%', '30%'])}</div></div></div>`;
+    return `<div class="match-skeleton drawer-skeleton" role="status" aria-label="Loading this job">${jobChips(job)}<div class="drawer-skeleton-actions">${bars(['110px', '82px', '96px'])}</div>${analysis}${APPLYING.includes(job && job.status) ? kit : ''}${bars(['34%'], 'is-line')}<div class="drawer-skeleton-card is-activity">${bars(['34%', '100%', '60%'])}</div></div>`;
+  };
   function jobDrawer(state) {
     const job = state.jobDetail;
     if (!job) return '';
@@ -929,7 +936,7 @@
         <header class="job-drawer-head"><div class="job-drawer-title"><div class="job-drawer-tags">${badge(job.status)}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></div><h2>${esc(job.title)}</h2>${meta ? `<p>${meta}</p>` : ''}</div>
           <button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <div class="job-drawer-body ${state.jobDetailPending ? 'is-loading' : 'is-ready'}">
-          ${state.jobDetailPending ? drawerSkeleton() : `${jobChips(job)}
+          ${state.jobDetailPending ? drawerSkeleton(job) : `${jobChips(job)}
           ${checksPanel(job)}
           <div class="job-os-actions job-drawer-actions">${detailActions(job)}<span class="job-drawer-icons">${['scraped', 'analyzed'].includes(job.status) ? `<button type="button" class="job-os-icon-btn" data-job-os-action="job-status" data-status="shortlisted" aria-label="Add to Favorite">${icon('star', 16)}</button>` : ''}<a class="job-os-icon-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer" aria-label="Open posting">${icon('external', 16)}</a><button type="button" class="job-os-icon-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}" aria-label="Edit job">${icon('edit', 16)}</button></span></div>
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}

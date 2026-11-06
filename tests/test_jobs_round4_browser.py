@@ -111,10 +111,10 @@ def test_job_details_buttons_read_a_pixel_lower_open_postings_icon_and_ive_appli
     assert buttons.count() >= 3
     undo = "#jobOsRoot .job-drawer-actions>.job-os-btn{padding-top:0!important}#jobOsRoot .apply-step .job-os-btn{padding-top:0!important}"
     for n in range(buttons.count()):
-        assert _moved(page, f".job-drawer-actions>.job-os-btn:nth-of-type({n + 1})", "text", undo) == 1, n
+        assert _moved(page, f".job-drawer-actions>.job-os-btn:nth-of-type({n + 1})", "text", undo) == .5, n  # round 6 raised the labels half a pixel
     page.eval_on_selector(".apply-kit", "e => e.scrollIntoView({block: 'center'})")
     page.wait_for_timeout(250)
-    assert _moved(page, ".apply-step [data-job-os-action='apply-kit']", "text", undo) == 1
+    assert _moved(page, ".apply-step [data-job-os-action='apply-kit']", "text", undo) == .5
     assert _moved(page, ".apply-step a.job-os-btn", "text", undo) == 1
     # Open posting's icon: round 4 held it where it was (-1px against the label's +1), round 5 lets it drop 1px.
     assert _moved(page, ".apply-step a.job-os-btn", "icon", "#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px!important}") == 1

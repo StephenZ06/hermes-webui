@@ -220,7 +220,7 @@ def test_search_box_sits_a_pixel_lower_and_the_custom_id_box_a_pixel_higher(real
     inside = lambda sel: page.eval_on_selector(sel, "e => e.getBoundingClientRect().top - document.querySelector('#composerModelDropdown').getBoundingClientRect().top")
     now = {k: inside(k) for k in ("#fxSearch", "#fxClear", "#fxCustom")}
     handle = _undo(page, "#composerModelDropdown .model-search-row{padding-top:9px!important;padding-bottom:9px!important}"
-                         "#composerModelDropdown .model-custom-row{padding-top:5.5px!important}.model-custom-sep{padding-top:5.5px!important}")
+                         "#composerModelDropdown .model-custom-row{padding-top:5.5px!important}.model-custom-sep{padding-top:5.5px!important;margin-top:4px!important}")
     old = {k: inside(k) for k in now}
     handle.evaluate("e => e.remove()")
     assert now["#fxSearch"] - old["#fxSearch"] == 1

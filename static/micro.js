@@ -36,6 +36,9 @@
     const state = wired.get(container);
     if (!state) return;
     const pill = state.pill;
+    // A strip that a re-render dropped from the page is left alone: prepending the pill into it
+    // would queue a childList record for the observer below, which would place it again, forever.
+    if (!container.isConnected) return;
     if (!pill.isConnected || pill.parentNode !== container) container.prepend(pill);
     const active = [...container.children].find((c) => c !== pill && c.matches && c.matches(ACTIVE) && c.offsetParent !== null);
     if (!active) { pill.style.opacity = '0'; return; }
@@ -48,7 +51,10 @@
     pill.style.transform = vertical ? `translate(${box.x}px, ${box.y}px)` : `translate(${box.x}px, ${box.y}px)`;
     if (pill.classList.contains('mi-pill-instant')) { void pill.offsetWidth; pill.classList.remove('mi-pill-instant'); }
     state.placed = true;
-    container.classList.add('mi-tabs-ready');
+    // classList.add rewrites the class attribute even when the token is already there, and the
+    // observer below watches that attribute: adding it again every time re-queued this very
+    // function on every frame, a forced layout read per frame for as long as the page was open.
+    if (!container.classList.contains('mi-tabs-ready')) container.classList.add('mi-tabs-ready');
   }
   function tabs(container) {
     if (!container || wired.has(container)) { if (container) placePill(container); return; }
@@ -62,7 +68,8 @@
     container.prepend(pill);
     let frame = 0;
     const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => placePill(container)); };
-    state.observer = new MutationObserver(later);
+    // The pill's own class changes (mi-pill-instant) are not a reason to place it again.
+    state.observer = new MutationObserver((records) => { if (records.some((r) => r.target !== pill)) later(); });
     state.observer.observe(container, { attributes: true, subtree: true, childList: true, attributeFilter: ['class', 'aria-selected', 'aria-current', 'aria-pressed'] });
     if (typeof ResizeObserver === 'function') new ResizeObserver(later).observe(container);
     placePill(container, true);

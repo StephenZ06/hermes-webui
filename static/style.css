@@ -16428,12 +16428,15 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .model-custom-btn{width:30px;height:30px;}
 /* "Custom model ID" sits 2px lower, halfway between the divider and its
    input; provider headings get as much room under their text as above it. */
-.model-custom-sep{padding-top:5px;padding-bottom:0;}
+.model-custom-sep{margin-top:3px;padding-top:5.5px;padding-bottom:0;}
 /* The search box and its clear button sit 1px lower in their row, level
    between the menu's top edge and the divider; the custom-ID box sits 1px
-   higher, the heading above it giving up half of that so its text stays centred. */
+   higher, the heading above it giving up half of that so its text stays centred. The divider
+   above "Custom model ID" sits 1px higher, and the heading half of that so it stays centred between
+   the divider and the box (which keeps its place); the box has as much room under it, down to the
+   next divider, as the heading's text has above it. */
 #composerModelDropdown .model-search-row{padding-top:10px;padding-bottom:8px;}
-#composerModelDropdown .model-custom-row{padding-top:5px;}
+#composerModelDropdown .model-custom-row{padding-top:5.5px;padding-bottom:10.5px;}
 .model-group:not(.model-custom-sep){padding-bottom:8px;}
 /* A provider divider meets the row above it, so a highlighted row runs right
    up to the line instead of stopping 2px short. */
@@ -17062,11 +17065,9 @@ textarea.office-biz-input{resize:vertical;}
 /* Jobs: spacing and nudges, round 5 */
 /* The job drawer opens on placeholders shaped like what the full record brings, then fades
    the real content in, as the match check does for the next job. */
-.drawer-skeleton{flex:0 0 auto;gap:12px;padding-top:2px;}
-.drawer-skeleton-chips,.drawer-skeleton-actions{display:flex;flex-wrap:wrap;gap:8px;}
-.drawer-skeleton-chips .skeleton-bar{height:20px;border-radius:5px;}
+.drawer-skeleton{flex:0 0 auto;}
+.drawer-skeleton-actions{display:flex;flex-wrap:wrap;gap:8px;}
 .drawer-skeleton-actions .skeleton-bar{height:34px;border-radius:7px;}
-.drawer-skeleton .match-skeleton-table{flex:0 0 auto;align-content:start;}
 .job-drawer-body.is-ready>*{animation:drawer-content-in .32s cubic-bezier(.22,1,.36,1) both;}
 .job-drawer-body.is-ready>:nth-child(2){animation-delay:.04s;}
 .job-drawer-body.is-ready>:nth-child(3){animation-delay:.08s;}
@@ -17089,13 +17090,18 @@ textarea.office-biz-input{resize:vertical;}
    holds its title, description and every card under them. */
 #jobOsRoot .settings-nav-text{gap:9px;}
 @media (min-width:761px){
-  .job-os-shell[data-view="settings"] .job-os-content{display:grid;grid-template-columns:var(--settings-rail-w,264px) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:0;row-gap:var(--jobs-gap,16px);margin:-24px;}
+  #jobOsRoot .job-os-shell[data-view="settings"] .job-os-content{display:grid;grid-template-columns:var(--settings-rail-w,280px) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:0;row-gap:var(--jobs-gap,16px);margin:-24px;}
   .job-os-shell[data-view="settings"] .job-os-settings,
   .job-os-shell[data-view="settings"] .settings-layout{display:contents;}
   .job-os-shell[data-view="settings"] .job-os-content>.job-os-header{grid-column:2;grid-row:1;margin:24px 24px 0;}
-  .job-os-shell[data-view="settings"] .settings-rail{grid-column:1;grid-row:1/-1;align-self:stretch;box-sizing:border-box;padding:24px 12px;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--bg);box-shadow:none;animation:settings-rail-in .26s cubic-bezier(.22,1,.36,1) backwards;}
+  .job-os-shell[data-view="settings"] .settings-rail{grid-column:1;grid-row:1/-1;align-self:stretch;box-sizing:border-box;padding:24px;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--bg);box-shadow:none;animation:settings-rail-in .26s cubic-bezier(.22,1,.36,1) backwards;}
   .job-os-shell[data-view="settings"] .settings-page{grid-column:2;grid-row:2;box-sizing:border-box;margin:0 24px;padding:22px;max-width:none;border:1px solid var(--border2);border-radius:14px;background:var(--bg);align-self:start;}
   .job-os-shell[data-view="settings"] .job-os-savebar{grid-column:2;grid-row:3;margin:0 24px 24px;}
+  /* (A sticky offset counts from the page's own 24px padding, so top:0 holds the list 24px from the window's top.)
+     Both panels keep 24px to every edge: the list to its panel's top, sides and bottom, the page to the
+     divider, the window's top and right, and (at the end of a long section) the window's bottom. */
+  .job-os-shell[data-view="settings"] .settings-rail>.settings-nav{top:0;padding:0;max-height:calc(100dvh - 48px);overflow-y:auto;}
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:0;}
   @keyframes settings-rail-in{from{opacity:0;transform:translateX(-8px);}}
   @media (prefers-reduced-motion:reduce){.job-os-shell[data-view="settings"] .settings-rail{animation:none;}}
 }
@@ -17103,3 +17109,54 @@ textarea.office-biz-input{resize:vertical;}
    its text glides with the page instead of re-wrapping each frame; what spills past the
    moving edge is clipped, not scrolled. */
 .layout.panel-sliding #mainJobs{overflow-x:clip;}
+/* The page is painted once into its own layer for the slide, so moving it costs a layer offset
+   instead of repainting every card on every frame. A transform hint would also make it the
+   containing block of the drawer and menus, which are fixed to the window, so a page with one
+   open keeps the plain path. */
+.layout.panel-sliding #jobOsRoot:not(:has(.job-drawer,.job-modal,.resume-preview,.pipe-tailor-menu,.pipe-card-ghost)){will-change:transform;}
+
+/* Jobs: spacing and nudges, round 6 */
+/* The summary tiles keep their height while the loading block below them is taller than the
+   page: they used to be squeezed as flex children, then spring back when the numbers arrived. */
+#jobOsRoot .job-os-content>:is(.job-os-header,.job-os-metrics,.scout-overview){flex-shrink:0;}
+/* The status chip is the same height whether it is a button (Firecrawl) or plain text (Ready), so the
+   title row does not change height as the page fills in. */
+#jobOsRoot .job-os-header .job-os-status{line-height:normal;}
+/* The job drawer's placeholders have the shape and height of the record that replaces them: the
+   actions row, the match card, the apply kit when the job is at that stage, the description line
+   and the notes, so the fade-in does not change how tall the page is. The chips are the real ones
+   (the list already knows them). */
+.drawer-skeleton{gap:16px;}
+.drawer-skeleton-card{display:flex;flex-direction:column;gap:14px;box-sizing:border-box;padding:14px;border:1px solid var(--border2);border-radius:12px;}
+.drawer-skeleton-card.is-analysis{min-height:448px;}
+.drawer-skeleton-card.is-analysis .match-skeleton-bars{margin-top:0;}
+.drawer-skeleton-card.is-analysis .match-skeleton-table{margin-top:0;flex:1 1 auto;}
+.drawer-skeleton-score,.drawer-skeleton-step{display:flex;align-items:center;gap:14px;}
+.drawer-skeleton-score>div,.drawer-skeleton-step>div{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-width:0;}
+.drawer-skeleton-list{display:flex;flex-direction:column;gap:12px;}
+.drawer-skeleton .skeleton-bar.is-ring{flex:0 0 56px;width:56px!important;height:56px;border-radius:50%;}
+.drawer-skeleton .skeleton-bar.is-dot{flex:0 0 24px;width:24px!important;height:24px;border-radius:50%;}
+.drawer-skeleton .skeleton-bar.is-line{height:12px;}
+.drawer-skeleton-card.is-kit,.drawer-skeleton-card.is-activity{border:0;border-top:1px solid var(--border2);border-radius:0;padding:16px 0 0;}
+.drawer-skeleton-card.is-kit{min-height:420px;gap:22px;}
+.drawer-skeleton-card.is-activity{min-height:132px;}
+/* Job details: the button labels sit 0.5px higher, Draft follow-up's 1px higher; the Open posting
+   and Edit icons 0.5px lower. Open posting's link in the apply steps keeps its place. */
+#jobOsRoot .job-drawer-actions>.job-os-btn{padding-top:1px;}
+#jobOsRoot .apply-step button.job-os-btn:not([data-job-os-action="board-apply"]){padding-top:1px;}
+#jobOsRoot .apply-step [data-job-os-action="board-apply"]{padding-bottom:1px;}
+#jobOsRoot .follow-up .job-os-btn.small{padding-top:3px;padding-bottom:3px;}
+#jobOsRoot .job-drawer-icons :is([aria-label="Open posting"],[data-job-os-action="job-form-edit"])>svg{position:relative;top:.5px;}
+/* Under the match card there is as much room before the next line of text as above the card. */
+#jobOsRoot .job-drawer-body>.job-os-analysis+.job-os-desc-wrap{margin-top:-8px;}
+/* Resume Studio: what the eye reads as a card's content keeps one distance (about 20px) to the card's
+   top, bottom, left and right. Skill gaps: its controls stand 4px taller than the title row, so the
+   card has 4px more above; the plan loses its 14px bottom margin and the card 4px below, and the
+   plan's numbers sit inside the padding instead of hanging out of it. The tailored list's rows carry
+   their own 10px, so that card gives it up at the sides and (less) under the list. The page ends with
+   the same gap that separates the cards. */
+.gaps-plan{margin-bottom:0;padding-left:24px;}
+#jobOsRoot .job-os-card:has(>.job-os-list>.studio-item){padding:20px 10px 8px;}
+#jobOsRoot .skill-gaps{padding:24px 20px 16px;}
+#jobOsRoot .job-os-card:has(>.job-os-list>.studio-item)>.job-os-card-head{margin-left:10px;margin-right:10px;}
+.job-os-shell[data-view="resume-studio"] .job-os-content{padding-bottom:var(--jobs-gap,16px);}
