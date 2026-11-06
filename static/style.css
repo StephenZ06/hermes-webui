@@ -15492,7 +15492,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){position:relative;top:1px;}
 :root[data-skin="zeus-2"] .office-dashboard-metric > *{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-dashboard-floor-chevron{position:relative;top:-1px;}
-:root[data-skin="zeus-2"] .cron-name{position:relative;top:-1px;}
+:root[data-skin="zeus-2"] .cron-name{position:relative;top:0;}
+:root[data-skin="zeus-2"] .cron-header > :is(.cron-agent-badge,.cron-script-badge){position:relative;top:1px;}
 :root[data-skin="zeus-2"] #taskDetailBody .detail-row-label{position:relative;top:1px;}
 /* Office Projects / Business: caps, and no middle divider under the
    sliding highlight. */
@@ -16948,7 +16949,6 @@ textarea.office-biz-input{resize:vertical;}
 /* Work Hub, Notes and Office: requested nudges for Zeus 2.0. Half pixels show on
    2x screens; at 1x text snaps to a whole pixel. */
 :root[data-skin="zeus-2"] #workHubSidebar .work-hub-board-row > button:first-child span{top:0;}
-:root[data-skin="zeus-2"] #notebookSidebar .nb-tree-note > button > span{position:relative;top:1px;}
 :root[data-skin="zeus-2"] #officeProjectFolders .office-session-title{top:0;}
 :root[data-skin="zeus-2"] .work-hub-view-switch > button svg{translate:0 .5px;}
 :root[data-skin="zeus-2"] #workHubSidebar .work-hub-scope[data-scope="inbox"] svg{top:0;}
@@ -16962,8 +16962,8 @@ textarea.office-biz-input{resize:vertical;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="general"] > span:not(.nb-scope-count){top:-.5px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope:is([data-nb-scope="all"],[data-nb-scope="general"]) > .nb-scope-count{top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :not(.dm-x){position:relative;top:.5px;}
-/* With no label to sit level with, the Office page icons centre in their buttons. */
-:root[data-skin="zeus-2"] .office-page-nav-image{top:0;}
+/* With no label to sit level with, the Office page icons centre in their buttons, then drop half a pixel as asked. */
+:root[data-skin="zeus-2"] .office-page-nav-image{top:.5px;}
 :root[data-skin="zeus-2"] #officeSearch{padding-top:6.5px;padding-bottom:7.5px;}
 :root[data-skin="zeus-2"] #officeSessionList .office-session-title{top:.5px;}
 :root[data-skin="zeus-2"] #officeSessionList .office-session-meta{top:-.5px;}
@@ -16985,3 +16985,25 @@ textarea.office-biz-input{resize:vertical;}
 /* The number on the right of a project folder, in Chat, Work Hub, Notes and Office. */
 :root[data-skin="zeus-2"] .project-folder-row > .project-folder-count{position:relative;top:.5px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-count{top:1px;}
+
+/* Chat, Notes, Office, Scheduled jobs: third round of nudges for Zeus 2.0. Half pixels
+   show on 2x screens; at 1x text snaps to a whole pixel. */
+:root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(1) > svg{translate:0 1.5px;}
+:root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope:is([data-nb-scope="pinned"],[data-nb-scope="favorites"]) > span:not(.nb-scope-count){position:relative;top:-.5px;}
+:root[data-skin="zeus-2"] .nb-trash-scope > svg{translate:0 1px;}
+/* A configured model has no id line under it, so its bubble gets the same room above and below. */
+#composerModelDropdown .model-opt:not(:has(.model-opt-id)){padding-bottom:9px;}
+/* Integrations: the Business label reads at the size of the name beside it, and its list keeps
+   one gap above, between and below the choices. */
+.office-biz-business{font-size:13px;}
+.themed-select-popup.is-spaced{display:flex;flex-direction:column;gap:4px;}
+.themed-select-popup.is-spaced > .themed-select-option{flex:none;}
+/* Changing the business or the tab brings the new view in, and the business name's width
+   eases (business.js) so the + and the filter slide with it. */
+@keyframes office-biz-view-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.office-biz-view.is-entering{animation:office-biz-view-in .26s cubic-bezier(.16,1,.3,1) both;}
+.office-biz-business .themed-select-wrap.is-easing{transition:width .26s cubic-bezier(.16,1,.3,1);overflow:hidden;}
+@media (prefers-reduced-motion:reduce){.office-biz-view.is-entering{animation:none;}.office-biz-business .themed-select-wrap.is-easing{transition:none;}}
+/* Plan goal: the scope card's last line sits as far from the bottom edge as the tag does from
+   the top (ink to edge, Courier New), where its line box left it nearly 2px further. */
+:root[data-skin="zeus-2"] .goal-planner-scope{padding-bottom:6.5px;}

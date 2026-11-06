@@ -120,7 +120,7 @@ def test_other_selects_keep_their_plain_group_labels(page):
 def test_office_nav_icons_sit_one_pixel_low(page):
     _office(page)
     page.wait_for_selector(".office-page-nav-image", state="visible", timeout=8000)
-    assert page.evaluate("""() => [...document.querySelectorAll('.office-page-nav-image')].map(i => getComputedStyle(i).top)""") == ["0px", "0px"]
+    assert page.evaluate("""() => [...document.querySelectorAll('.office-page-nav-image')].map(i => getComputedStyle(i).top)""") == ["0.5px", "0.5px"]
 
 
 def test_history_text_sits_half_a_pixel_low_and_folder_titles_a_pixel_low(page):

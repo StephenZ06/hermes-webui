@@ -62,7 +62,7 @@ def test_notes_nudges(real_2x):
         assert _moved(page, selector, "icon", f"{selector} > svg{{translate:none!important}}") == .5, scope
     assert _moved(page, "#nbSearch", "text", "#nbSearch{top:0!important}", within=".nb-search") == -.5
     _row(page, "#notebookSidebar .nb-nav", '<div class="work-hub-board-row nb-tree-note" id="fxNote"><button type="button"><span>HEHE</span></button></div>')
-    assert _moved(page, "#fxNote span", "text", "#fxNote span{top:0!important}", within="#fxNote") == 1
+    assert _moved(page, "#fxNote span", "text", "#fxNote span{top:0!important}", within="#fxNote") == 0  # the 1px drop was taken back
     page.evaluate("() => document.getElementById('fxNote').remove()")
     page.click("[data-nb-action='create-menu']")
     page.wait_for_selector(".nb-create-menu button")

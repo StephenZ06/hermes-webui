@@ -348,8 +348,8 @@ def test_plan_suggestion_text_sits_a_pixel_higher(real_2x):
                   within=".suggestion-grid > .suggestion:nth-child(3)") == -1
 
 
-@pytest.mark.parametrize("child, moved", [(1, 1), (2, 1), (3, 0)], ids=["files", "schedule", "plan"])
-def test_first_two_suggestion_icons_sit_a_pixel_lower(real_2x, child, moved):
+@pytest.mark.parametrize("child, moved", [(1, 1.5), (2, 1), (3, 0)], ids=["files", "schedule", "plan"])
+def test_first_two_suggestion_icons_sit_below_their_old_place(real_2x, child, moved):
     selector = f".suggestion-grid > .suggestion:nth-child({child})"
     now = _ink(real_2x, selector, "icon")
     handle = real_2x.add_style_tag(content=f"{selector} > svg{{translate:none!important}}")

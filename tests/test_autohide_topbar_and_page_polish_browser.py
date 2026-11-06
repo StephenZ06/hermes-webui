@@ -195,10 +195,10 @@ def test_view_live_is_bold_and_status_pill_text_is_centred(page):
     assert state == {"weight": "700", "btn": ["2px", "2px"], "pill": ["3px", "3px"], "case": "uppercase"}
 
 
-def test_first_two_suggestion_icons_sit_a_pixel_low(page):
+def test_first_two_suggestion_icons_sit_below_their_old_place(page):
     shifts = page.evaluate("""() => { document.documentElement.dataset.skin = 'zeus-2';
       return [...document.querySelectorAll('.suggestion-grid > .suggestion > svg')].map(i => getComputedStyle(i).translate); }""")
-    assert shifts == ["0px 1px", "0px 1px", "none"]
+    assert shifts == ["0px 1.5px", "0px 1px", "none"]
 
 
 def test_chat_session_titles_have_no_zeus_offset(page):

@@ -330,6 +330,26 @@ function adoptTabs(root, kept) {
   return kept;
 }
 
+const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+// A new business name is a different width. Easing the width of its box moves the + and the
+// filter along with it, instead of snapping them to their new places.
+function easeBusinessWidth(root, from) {
+  const wrap = root.querySelector('.office-biz-business .themed-select-wrap');
+  if (!wrap) return false;
+  const to = wrap.getBoundingClientRect().width;
+  root._bizWidth = to;
+  if (!from || reducedMotion() || Math.abs(to - from) < 2) return false;
+  wrap.style.width = `${from}px`;
+  void wrap.offsetWidth;
+  wrap.classList.add('is-easing');
+  wrap.style.width = `${to}px`;
+  const done = () => { wrap.classList.remove('is-easing'); wrap.style.width = ''; wrap.removeEventListener('transitionend', done); };
+  wrap.addEventListener('transitionend', done);
+  setTimeout(done, 450);
+  return true;
+}
+
 function render() {
   const root = host();
   if (!root) return;
@@ -352,7 +372,19 @@ function render() {
   root._officeIntegrationsHtml = html;
   // The tabs survive the repaint, so their pill slides to the new tab.
   const keptTabs = root.querySelector('.office-biz-tabs');
+  const oldWrap = root.querySelector('.office-biz-business .themed-select-wrap');
+  const oldWidth = oldWrap ? oldWrap.getBoundingClientRect().width : 0;
+  const viewKey = `${_data.business.id}|${_tab}`;
+  const viewChanged = root._bizViewKey !== undefined && root._bizViewKey !== viewKey;
+  root._bizViewKey = viewKey;
   root.innerHTML = html;
+  if (typeof window.enhanceAllThemedSelects === 'function') window.enhanceAllThemedSelects(root);
+  const eased = viewChanged && easeBusinessWidth(root, oldWidth);
+  if (!eased) easeBusinessWidth(root, 0);
+  if (viewChanged) {
+    const view = root.querySelector('.office-biz-view');
+    if (view && !reducedMotion()) view.classList.add('is-entering');
+  }
   const tabs = adoptTabs(root, keptTabs);
   if (window.Micro && tabs) window.Micro.tabs(tabs);
   const nextBody = root.querySelector('.office-biz-drawer-body');
@@ -458,7 +490,13 @@ const ACTIONS = {
 };
 
 const INPUTS = {
-  business: el => { rememberBusiness(el.value); _data.business.id = el.value; _drawer = null; _try = {}; refresh(); },
+  business: el => {
+    // The name in the box is already the new one, so the box has its new width. Ease it from
+    // the old one now, rather than after the answer arrives, so the + and filter glide at once.
+    const root = host();
+    if (root) easeBusinessWidth(root, root._bizWidth);
+    rememberBusiness(el.value); _data.business.id = el.value; _drawer = null; _try = {}; refresh();
+  },
   'matrix-agent': el => { _matrixAgent = el.value; _try = {}; render(); },
   mode: el => act(() => post('capabilities/mode', { agent_id: matrixAgent(), capability_id: el.dataset.capability, mode: el.value })),
   limit: el => act(() => post('settings', { settings: { [el.dataset.key]: Number(el.value) } })),
