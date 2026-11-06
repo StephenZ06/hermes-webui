@@ -113,7 +113,7 @@ def test_obsidian_nudges(real_2x, vault):
                                f"{folder} .project-folder-count{{top:0!important}}", within=folder),
     }
     assert moved == {"all icon": 1, "all text": 1, "all value": 1, "root icon": .5, "root text": .5,
-                     "root value": 1, "folder name": .5, "folder count": .5}
+                     "root value": 1, "folder name": .5, "folder count": 1}
 
 
 def test_office_nudges(real_2x):

@@ -2172,7 +2172,9 @@ async function forkFromMessage(msgIdx){
       }),
     });
     if(data&&data.session_id){
-      await loadSession(data.session_id);
+      // The fork is the transcript on screen, cut short: keep it up until the new one is
+      // written, instead of blanking to a loading skeleton and morphing it back.
+      await loadSession(data.session_id,{keepTranscript:true});
       if(typeof _ensureAllMessagesLoaded==='function') await _ensureAllMessagesLoaded();
       if(typeof renderSessionList==='function') await renderSessionList();
       showToast(t('branch_forked'));

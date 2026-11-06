@@ -1899,7 +1899,7 @@ async function loadSession(sid){
     // them (SkeletonEntrance, ui.js). The overlay sits on #messages, so the
     // render may replace #msgInner freely; any write into it, including an
     // error message, ends the skeleton.
-    if (_msgInner && currentSid !== sid) {
+    if (_msgInner && currentSid !== sid && !opts.keepTranscript) {
       _msgInner.innerHTML = '<span class="sr-only" role="status">'+esc(t('loading_conversation'))+'</span>';
       const _messagesEl = $('messages');
       if (_messagesEl && window.SkeletonEntrance) {

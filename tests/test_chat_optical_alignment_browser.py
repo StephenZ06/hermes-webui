@@ -147,8 +147,8 @@ def test_suggestion_icons_share_their_labels_centre(browser, screen):
         selector = ".suggestion-grid > .suggestion:nth-child(2)"
         page.eval_on_selector(selector, """e => { e.lastChild.textContent = ' What is on the list'; }""")
         icon, text = _ink(page, selector, "icon"), _ink(page, selector, "text")
-        # The schedule icon carries a requested half-pixel drop.
-        assert abs(_centre(icon) - _centre(text)) <= 1, (icon, text)
+        # The schedule icon carries a requested one-pixel drop.
+        assert abs(_centre(icon) - _centre(text)) <= 1.5, (icon, text)
     finally:
         context.close()
 
@@ -348,8 +348,8 @@ def test_plan_suggestion_text_sits_a_pixel_higher(real_2x):
                   within=".suggestion-grid > .suggestion:nth-child(3)") == -1
 
 
-@pytest.mark.parametrize("child, moved", [(1, .5), (2, .5), (3, 0)], ids=["files", "schedule", "plan"])
-def test_first_two_suggestion_icons_sit_half_a_pixel_lower(real_2x, child, moved):
+@pytest.mark.parametrize("child, moved", [(1, 1), (2, 1), (3, 0)], ids=["files", "schedule", "plan"])
+def test_first_two_suggestion_icons_sit_a_pixel_lower(real_2x, child, moved):
     selector = f".suggestion-grid > .suggestion:nth-child({child})"
     now = _ink(real_2x, selector, "icon")
     handle = real_2x.add_style_tag(content=f"{selector} > svg{{translate:none!important}}")

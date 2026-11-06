@@ -127,6 +127,6 @@ def test_fork_from_message_snapshots_session_id_across_async_load():
 def test_fork_loads_full_fork_transcript_after_branch():
     body = _function_body(COMMANDS_JS, "forkFromMessage")
 
-    load_idx = body.index("await loadSession(data.session_id)")
+    load_idx = body.index("await loadSession(data.session_id")
     after_load = body[load_idx:]
     assert "await _ensureAllMessagesLoaded()" in after_load
