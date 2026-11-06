@@ -26,7 +26,7 @@ def test_files_suggestion_icon_sits_another_half_pixel_lower(real_2x):
     assert _moved(real_2x, other, "icon", f"{other} > svg{{translate:0 1px!important}}") == 0
 
 
-def test_configured_model_bubble_has_three_pixels_less_room_below_than_above(browser):
+def test_configured_model_bubble_has_as_much_room_below_as_above(browser):
     context, page = _open(browser, MACBOOK)
     try:
         _configured_picker(page)
@@ -37,7 +37,7 @@ def test_configured_model_bubble_has_three_pixels_less_room_below_than_above(bro
           return {above: bubble.top - box.top, below: box.bottom - bubble.bottom, hasId: !!row.querySelector('.model-opt-id')};
         }""")
         assert gaps["hasId"] is False
-        assert (gaps["above"], gaps["below"]) == (9, 6), gaps
+        assert (gaps["above"], gaps["below"]) == (9, 9), gaps
     finally:
         context.close()
 

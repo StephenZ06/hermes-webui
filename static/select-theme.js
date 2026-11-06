@@ -101,8 +101,9 @@
     if (trigger.closest('.dash, .dash-picker')) popup.classList.add('is-dash');
     // A note's place list groups workspaces and folders under divided headings.
     if (trigger.closest('.nb-place-select')) popup.classList.add('is-sectioned');
-    // The Integrations business list spaces its choices evenly, as far apart as it sits from its edge.
-    if (trigger.closest('.office-biz-business')) popup.classList.add('is-spaced');
+    // The Integrations business list and Resume Studio's gap filters space their choices evenly,
+    // as far apart as the list sits from its edge.
+    if (trigger.closest('.office-biz-business, .gaps-controls')) popup.classList.add('is-spaced');
     popup.setAttribute('role', 'listbox');
     var optionEls = [];
     var highlightedIndex = -1;

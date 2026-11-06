@@ -46,9 +46,10 @@ def test_selected_badge_is_keyed_to_current_model_provider():
     assert "row.className='model-opt'+(_isSelectedModelRow(m)?' active':'');" in UI_JS
 
 
-def test_selected_group_key_prefers_provider_matched_row_before_value_fallback():
-    assert "const _hit=_modelData.find(m=>m&&!m.endpointErrorOnly&&_isSelectedModelRow(m)) || _modelData.find(m=>m&&!m.endpointErrorOnly&&String(m.value||'')===_selVal);" in UI_JS
-    assert "_groupOpenState[groupKey]=(groupKey===_selectedGroupKey)" in UI_JS
+def test_every_provider_group_starts_collapsed_even_the_one_with_the_selected_model():
+    # The selected model shows in the Configured list and as a badge; the groups no longer open for it.
+    assert "_selectedGroupKey" not in UI_JS
+    assert "_groupOpenState[groupKey]=false" in UI_JS
 
 
 def test_selected_badge_helper_does_not_accept_dead_select_parameter():

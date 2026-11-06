@@ -180,6 +180,54 @@ def test_picker_headings_have_equal_room_above_and_below_their_text(real_2x):
         assert abs((ink["top"] - box) - (edge - ink["bottom"])) <= 1, (heading, ink, box, edge)
 
 
+def test_provider_groups_start_collapsed_even_the_one_holding_the_current_model(browser):
+    context, page = _open(browser, MACBOOK)
+    try:
+        _configured_picker(page)
+        out = page.evaluate("""() => [...document.querySelectorAll('#composerModelDropdown .model-group.collapsible')].map(g => ({
+          open: g.classList.contains('open'),
+          body: getComputedStyle(g.nextElementSibling).display,
+        }))""")
+        assert out, "no provider groups rendered"
+        assert all(not row["open"] and row["body"] == "none" for row in out), out
+    finally:
+        context.close()
+
+
+def test_a_search_opens_the_groups_and_clearing_it_collapses_them_again(browser):
+    context, page = _open(browser, MACBOOK)
+    try:
+        _configured_picker(page)
+        page.fill("#composerModelDropdown .model-search-input", "gpt")
+        page.wait_for_timeout(300)
+        assert page.evaluate("() => [...document.querySelectorAll('#composerModelDropdown .model-group.collapsible')].some(g => g.classList.contains('open'))")
+        page.fill("#composerModelDropdown .model-search-input", "")
+        page.wait_for_timeout(300)
+        assert page.evaluate("() => [...document.querySelectorAll('#composerModelDropdown .model-group.collapsible')].every(g => !g.classList.contains('open'))")
+    finally:
+        context.close()
+
+
+def test_search_box_sits_a_pixel_lower_and_the_custom_id_box_a_pixel_higher(real_2x):
+    page = real_2x
+    _configured_picker(page)
+    page.mouse.move(5, 5)
+    page.wait_for_timeout(800)
+    page.evaluate("""() => { const d = document.querySelector('#composerModelDropdown');
+      d.querySelector('.model-search-input').id = 'fxSearch'; d.querySelector('.model-search-clear').id = 'fxClear';
+      d.querySelector('.model-custom-input').id = 'fxCustom'; }""")
+    # The menu is anchored at its bottom, so everything is measured from its own top edge.
+    inside = lambda sel: page.eval_on_selector(sel, "e => e.getBoundingClientRect().top - document.querySelector('#composerModelDropdown').getBoundingClientRect().top")
+    now = {k: inside(k) for k in ("#fxSearch", "#fxClear", "#fxCustom")}
+    handle = _undo(page, "#composerModelDropdown .model-search-row{padding-top:8px!important;padding-bottom:10px!important}"
+                         "#composerModelDropdown .model-custom-row{padding-top:6px!important}.model-custom-sep{padding-top:6px!important}")
+    old = {k: inside(k) for k in now}
+    handle.evaluate("e => e.remove()")
+    assert now["#fxSearch"] - old["#fxSearch"] == 1
+    assert now["#fxClear"] - old["#fxClear"] == 1
+    assert now["#fxCustom"] - old["#fxCustom"] == -1
+
+
 # ── nudges ──────────────────────────────────────────────────────────────────
 
 def test_workspace_menu_name_and_path_sit_half_a_pixel_higher(real_2x):

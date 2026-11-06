@@ -4994,15 +4994,9 @@ function renderModelDropdown(){
   const _groupOpenState={};
   let _prevHasSearch=false;  // tracks search->empty transition to reset open-state
   let _groupWrappers={};
-  // The group that owns the currently-selected model. Groups start COLLAPSED by
-  // default (#4279); the selected provider's group is the one exception so the
-  // user always sees their active model without expanding anything. (#4279 + UX)
-  const _selectedGroupKey=(()=>{
-    const _selVal=String((sel&&sel.value)||'');
-    if(!_selVal) return null;
-    const _hit=_modelData.find(m=>m&&!m.endpointErrorOnly&&_isSelectedModelRow(m)) || _modelData.find(m=>m&&!m.endpointErrorOnly&&String(m.value||'')===_selVal);
-    return _hit?_hit.groupKey:null;
-  })();
+  // Every provider group starts COLLAPSED (#4279), the one holding the active
+  // model included: the Configured list above them already shows what is in
+  // use, and a search or "Show more" opens whatever the user is after.
   const _makeModelRow=(m,shouldRenderHeading)=>{
     const row=document.createElement('div');
     row.className='model-opt'+(_isSelectedModelRow(m)?' active':'');
@@ -5157,7 +5151,7 @@ function renderModelDropdown(){
         if(hasSearch) _groupOpenState[groupKey]=true;
         else if(_forceOpenGroups.has(groupKey)) _groupOpenState[groupKey]=true;
         else if(_hasEndpointError) _groupOpenState[groupKey]=true;
-        else if(!(groupKey in _groupOpenState)) _groupOpenState[groupKey]=(groupKey===_selectedGroupKey);
+        else if(!(groupKey in _groupOpenState)) _groupOpenState[groupKey]=false;
         if(!_groupOpenState[groupKey]) wrapper.style.display='none';
         else heading.classList.add('open');
         heading.classList.add('collapsible');

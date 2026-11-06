@@ -1331,6 +1331,11 @@
     return QUEUE_STAGES.flatMap(([stage, statuses]) => fresh.filter((j) => statuses.includes(j.status)).map((j) => Object.assign({stage}, j)));
   }
   const matchSkeleton = () => `<div class="match-skeleton" role="status" aria-label="Loading this job"><span class="skeleton-bar" style="width:96%"></span><span class="skeleton-bar" style="width:88%"></span><span class="skeleton-bar" style="width:62%"></span><div class="match-skeleton-bars">${['72%', '58%', '66%', '48%'].map((w) => `<span class="skeleton-bar" style="width:${w}"></span>`).join('')}</div><div class="match-skeleton-table">${[0, 1, 2, 3, 4, 5].map((i) => `<span class="skeleton-bar" style="width:${[84, 70, 76, 58, 66, 44][i]}%"></span>`).join('')}</div></div>`;
+  // The height the match detail has on screen now, so the placeholders for the next job keep it.
+  function matchDetailHeight() {
+    const live = typeof document !== 'undefined' && document.querySelector('#jobOsRoot .match-detail');
+    return live ? Math.round(live.getBoundingClientRect().height) : 0;
+  }
   const spinnerDot = () => '<span class="btn-spinner" aria-hidden="true"></span>';
   function matchCheck(state) {
     if (!state.resume) return `<section class="job-os-card match-card">${cardHead('Match check', 'eye')}<p class="job-os-card-note card-empty-note">Add your master resume to check it against each job. <button type="button" class="job-os-link" data-job-os-view="resume-studio">Open Resume Studio</button></p></section>`;
@@ -1351,6 +1356,7 @@
     // A scored job's words are on their way: placeholders the shape of the
     // summary, the four bars and the table hold the card until they land.
     const fetching = done && !job && state.matchFailed !== item.id;
+    const keptHeight = fetching ? matchDetailHeight() : 0;
     const busyNow = a && ['pending', 'running'].includes(a.status);
     const status = item.status;
     const canTailor = ['scraped', 'analyzed', 'shortlisted', 'resume_ready', 'application_ready'].includes(status);
@@ -1378,7 +1384,7 @@
         <div class="match-job" aria-live="polite"><span class="match-stage" data-stage="${esc(item.stage)}">${esc(STAGE_LABEL[item.stage])}</span><strong>${esc(item.title)}</strong><span>${meta}</span></div>
         <span class="match-count">${at + 1} <small>of ${queue.length}</small></span>${nav(queue[at + 1], 'Next job', 'next')}</div>
       <div class="match-progress" aria-hidden="true"><i style="width:${Math.round(100 * (at + 1) / queue.length)}%"></i></div>
-      <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
+      <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail"${fetching && keptHeight ? ` style="min-height:${keptHeight}px"` : ''}>
         ${fetching ? matchSkeleton() : done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
         ${done && job ? dimensionBars(job.analysis) : ''}
         ${done && job ? analysisTable((job.analysis.strengths || []).slice(0, 4), (job.analysis.gaps || []).slice(0, 4), 'Matches', 'Missing') : ''}
