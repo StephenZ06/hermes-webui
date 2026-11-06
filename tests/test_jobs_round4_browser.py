@@ -120,8 +120,8 @@ def test_job_details_buttons_read_a_pixel_lower_open_postings_icon_and_ive_appli
     assert _moved(page, ".apply-step a.job-os-btn", "text", undo) == 1.5  # 1px in round 4, half a pixel more in round 7
     # Open posting's icon: round 4 held it where it was (-1px against the label's +1), round 5 lets it drop 1px.
     assert _moved(page, ".apply-step a.job-os-btn", "icon", "#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px!important}") == .5  # the undo keeps round 7's extra half pixel of padding; the icon's own top:-.5px takes it back, so against round 5 it has not moved
-    # I've applied reads 1px higher again, back where it was before the round-4 drop.
-    assert _moved(page, ".apply-step [data-job-os-action='board-apply']", "text", undo) == 0
+    # I've applied reads 1px higher again, back where it was before the round-4 drop, and half a pixel lower in round 8.
+    assert _moved(page, ".apply-step [data-job-os-action='board-apply']", "text", undo) == .5
 
 
 # ── Pipeline ────────────────────────────────────────────────────────────────

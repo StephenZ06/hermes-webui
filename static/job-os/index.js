@@ -615,6 +615,10 @@
     }
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
+      // Typing only repaints the save bar, so the page's markup is the same as it was before the edits and
+      // would be skipped as unchanged; forget it, so the fields go back to the saved values.
+      const page = root();
+      if (page) page._jobOsHtml = null;
       refresh();
     } else if (name === 'save-settings') {
       if (!state.settingsDirty || !state.settingsDraft) return;

@@ -592,8 +592,8 @@
         row('Send to', 'Your own address. Hermes sends from the Gmail sender.', inputCtl('notifications.to_address', v('notifications.to_address'), 'you@gmail.com', 'email'), {sub: true, off: !emailOn}),
       ])}
       ${group('Good matches', [
-        row('Good match from', 'Luna’s fit of your master resume: 75%+ is ready to apply, 65–74% has gaps tailoring can close.', numberCtl('notifications.min_fit_score', v('notifications.min_fit_score'), 0, 100, '%')),
         switchRow('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best first; the Scout page shows them either way', {off: !emailOn}),
+        row('Good match from', 'Luna’s fit of your master resume: 75%+ is ready to apply, 65–74% has gaps tailoring can close.', numberCtl('notifications.min_fit_score', v('notifications.min_fit_score'), 0, 100, '%')),
         row('Update when this many are waiting', '', numberCtl('notifications.release_count', v('notifications.release_count'), 1, 50, 'matches'), {sub: true, off: !matchesOn}),
         row('Or at the end of the day, at', '', numberCtl('notifications.release_cutoff_hour', v('notifications.release_cutoff_hour'), 0, 23, ':00'), {sub: true, off: !matchesOn}),
       ])}
@@ -625,7 +625,7 @@
       apply: [!!(v('apply.work_authorization') && v('apply.languages')), v('apply.work_authorization') && v('apply.languages') ? 'Saved' : 'Right to work or languages missing'],
       display: [!!state.resume, state.resume ? 'In Resume Studio' : 'Not uploaded'],
     };
-    const nav = SETTINGS_NAV.map(([grp, items]) => `<p class="settings-nav-group"><span>${grp}</span></p>${items.map(([key, label]) => {
+    const nav = `<div class="settings-rail-title"><span>General</span></div>` + SETTINGS_NAV.map(([grp, items]) => `<p class="settings-nav-group"><span>${grp}</span></p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
       return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span><span class="settings-nav-chevron" aria-hidden="true">${icon('next', 16)}</span></button>`;
     }).join('')}`).join('');

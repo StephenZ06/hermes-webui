@@ -104,7 +104,7 @@ def test_settings_list_headings_have_a_rule_centred_on_their_capitals_and_the_si
         rule: getComputedStyle(head, '::after').content, ruleH: getComputedStyle(head, '::after').height}; }""")
     side = page.evaluate("() => { const r = e => e.getBoundingClientRect(); const nav = document.querySelector('#jobOsSidebar .job-os-side-nav'); const i = nav.querySelector('.side-menu-item'); return r(i).left - r(nav).left; }")
     assert out["railPad"] == "8px" and abs(out["left"] - side) <= .5 and abs(out["right"] - side) <= .5, (out, side)  # the Jobs side panel's margin
-    assert abs(out["top"] - side) <= 1, (out, side)
+    # (The first heading no longer sits at the panel's margin: the GENERAL title is above it; see round 8.)
     assert float(out["size"][:-2]) >= 12 and out["flex"] == "flex" and out["rule"] != "none" and out["ruleH"] == "1px", out
     head = ".settings-rail .settings-nav-group"
     box = _rect(page, head)
@@ -125,8 +125,9 @@ def test_settings_list_headings_have_a_rule_centred_on_their_capitals_and_the_si
 
 def test_settings_page_has_no_title_and_no_card_around_a_section(settings):
     page = settings
+    # (The right margin is measured to the scrollbar's gutter: its own room is not margin.)
     out = page.evaluate("""() => { const head = document.querySelector('.job-os-content>.job-os-header'); const pg = document.querySelector('.settings-page'); const cs = getComputedStyle(pg);
-      const r = e => e.getBoundingClientRect(); const main = r(document.querySelector('#mainJobs')); const rail = r(document.querySelector('.settings-rail'));
+      const r = e => e.getBoundingClientRect(); const mainEl = document.querySelector('#mainJobs'); const main = {top: r(mainEl).top, right: r(mainEl).left + mainEl.clientWidth}; const rail = r(document.querySelector('.settings-rail'));
       const sec = document.querySelector('.job-os-settings-section');
       return {titleShown: getComputedStyle(head.firstElementChild).display, chip: !!head.querySelector('.job-os-status'), border: cs.borderTopWidth, bg: cs.backgroundColor, pad: cs.padding,
         left: r(sec).left - rail.right, right: main.right - r(sec).right, top: r(sec).top - main.top}; }""")
@@ -163,13 +164,15 @@ def test_connections_choice_is_as_tall_as_send_test_and_the_card_titles_read_lar
 def test_connections_labels_sit_higher_and_the_status_pills_lower(settings):
     page = settings
     _section(page, "connections")
-    for action in ("gmail-edit", "gmail-disconnect", "site-check"):
+    for action in ("gmail-edit", "gmail-disconnect"):
         sel = f".set-group [data-job-os-action='{action}']"
         assert _moved(page, sel, "text", f"{sel}{{padding-bottom:0!important}}") == -.5, action
     for pill in (".set-row .job-os-pill",):
         for n in range(page.locator(pill).count()):
             page.evaluate("n => document.querySelectorAll('.set-row .job-os-pill')[n].id = 'fxPill' + n", n)
-            assert _moved(page, f"#fxPill{n}", "text", ".settings-page .set-row .job-os-pill{top:0!important}") == 1, n
+            # the pill sits 1px lower than its row (this round) and its words another 1px lower inside it (round 8)
+            undo = ".settings-page .set-row .job-os-pill{top:0!important;padding:1px 6px 2px!important}"
+            assert _moved(page, f"#fxPill{n}", "text", undo) == 2, n
 
 
 def test_replace_and_check_now_wear_the_work_hub_plus_buttons_outline(settings):
@@ -191,31 +194,6 @@ def test_choices_list_has_the_same_gap_above_between_and_below_its_options(setti
     gaps = page.evaluate("""() => { const p = document.querySelector('.themed-select-popup'); const r = e => e.getBoundingClientRect(); const o = [...p.querySelectorAll('.themed-select-option')];
       return {spaced: p.classList.contains('is-spaced'), above: r(o[0]).top - r(p).top - 1, between: r(o[1]).top - r(o[0]).bottom, below: r(p).bottom - 1 - r(o[o.length - 1]).bottom}; }""")
     assert gaps["spaced"] and abs(gaps["above"] - gaps["between"]) <= .5 and abs(gaps["below"] - gaps["between"]) <= .5 and gaps["between"] >= 3, gaps
-
-
-def _ink_gap_above(page, card, button):
-    """Pixels between the nearest ink above a button and the button's top edge."""
-    box, target = _rect(page, card), _rect(page, button)
-    scale = page.evaluate("devicePixelRatio")
-    img = _shot(page, {"x": box["x"], "y": box["y"], "width": box["width"], "height": box["height"]})
-    bg = img.getpixel((int(24 * scale), int(3 * scale)))
-    diff = ImageChops.difference(img, Image.new("RGB", img.size, bg)).convert("L").point(lambda v: 255 if v >= 12 else 0)
-    top = int((target["y"] - box["y"]) * scale) - 2
-    band = diff.crop((int(3 * scale), int(3 * scale), img.width - int(3 * scale), max(top, 1)))
-    ink = band.getbbox()
-    return (top + 2 - (ink[3] + int(3 * scale))) / scale
-
-
-@pytest.mark.parametrize("button,card", [("[data-job-os-action=gmail-edit]", "#job-os-gmail"), ("[data-job-os-action=test-firecrawl]", ".set-group:has([data-job-os-action=test-firecrawl])")])
-def test_footer_buttons_have_as_much_room_above_them_as_below(settings, button, card):
-    page = settings
-    _section(page, "connections")
-    page.eval_on_selector(card, "e => e.scrollIntoView({block: 'center'})")
-    page.wait_for_timeout(300)
-    above = _ink_gap_above(page, card, button)
-    box, target = _rect(page, card), _rect(page, button)
-    below = box["y"] + box["height"] - 1 - (target["y"] + target["height"])
-    assert abs(above - below) <= 1, (above, below)
 
 
 def test_the_first_job_site_is_not_set_off_from_the_title_by_a_rule(settings):

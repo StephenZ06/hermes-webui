@@ -17183,7 +17183,6 @@ textarea.office-biz-input{resize:vertical;}
 .settings-page .set-group .set-row:first-child{padding-top:0;}
 .settings-page .set-group .set-row:last-child{padding-bottom:0;}
 .settings-page .set-group .set-group-foot{margin-top:15px;}
-.settings-page .set-group:has([data-job-os-action="test-firecrawl"]) .set-group-foot{margin-top:17.5px;}
 /* The first site is not set off from the title by a rule. */
 .settings-page .set-rows>.site-health-row:first-child{border-top:0;}
 /* Switch rows do not light up under the pointer, and a dependent one is not indented or tinted. */
@@ -17196,9 +17195,66 @@ textarea.office-biz-input{resize:vertical;}
 .settings-page .set-row .job-os-inline-select .themed-select-trigger{box-sizing:border-box;min-height:28px;height:28px;padding-top:0;padding-bottom:0;}
 .settings-page .set-group :is([data-job-os-action="gmail-edit"],[data-job-os-action="apify-edit"],[data-job-os-action="site-check"]){background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);}
 .settings-page .set-group :is([data-job-os-action="gmail-edit"],[data-job-os-action="apify-edit"],[data-job-os-action="site-check"]):hover{background:var(--accent-bg);border-color:var(--accent-bg);color:var(--accent-text);}
-.settings-page .set-group .job-os-btn.small:is([data-job-os-action="gmail-edit"],[data-job-os-action="gmail-disconnect"],[data-job-os-action="apify-edit"],[data-job-os-action="apify-disconnect"],[data-job-os-action="apify-test"],[data-job-os-action="site-check"]){padding-bottom:1px;}
-.settings-page .set-row .job-os-pill{position:relative;top:1px;}
+.settings-page .set-group .job-os-btn.small:is([data-job-os-action="gmail-edit"],[data-job-os-action="gmail-disconnect"],[data-job-os-action="apify-edit"],[data-job-os-action="apify-disconnect"],[data-job-os-action="apify-test"]){padding-bottom:1px;}
 /* The number boxes fit their digits, centred, and their unit ends where the other controls end. */
 .set-row .set-number .set-input{width:56px;padding-left:8px;padding-right:8px;text-align:center;-moz-appearance:textfield;}
 .set-row .set-number .set-input::-webkit-inner-spin-button,.set-row .set-number .set-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .set-number em{min-width:0;}
+
+/* Jobs: round 8 */
+/* Job details: I've applied reads 0.5px lower. */
+#jobOsRoot .apply-step [data-job-os-action="board-apply"]{padding-top:1px;}
+/* Pipeline cards: the site label reads 1px lower; a check chip (Right to work?, Language, 7 days old) has its
+   icon 1px and its words 0.5px lower, the chip itself staying where it was. */
+#jobOsRoot .pipe-card .pipe-source{padding-bottom:0;}
+#jobOsRoot .pipe-card .job-check{padding-top:1px;}
+#jobOsRoot .pipe-card .job-check>svg{top:-.5px;}
+/* Jobs Settings: the section list opens with a GENERAL title, as the Jobs side panel does with its own,
+   and its headings read larger; each section's icon is as big as the tile it sat in, with no tile
+   (and none when it is the open section). */
+#jobOsRoot .settings-rail-title{display:none;}
+@media (min-width:761px){
+  .job-os-shell[data-view="settings"] .settings-rail>.settings-nav{top:-24px;margin:-8px -8px 0;padding:0 8px;max-height:100dvh;}
+  #jobOsRoot .settings-rail-title{display:flex;align-items:center;box-sizing:border-box;height:41px;margin:0 -8px;padding:0 16px;border-bottom:1px solid var(--border);color:var(--muted);font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
+  .job-os-shell[data-view="settings"] .settings-nav-group{font-size:13px;}
+  /* Under the title the first heading has the room the other two have above them. */
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:29px;}
+}
+#jobOsRoot .settings-nav-icon{flex:0 0 30px;width:30px;height:30px;border-radius:0;background:none;}
+#jobOsRoot .settings-nav-item.active .settings-nav-icon{background:none;color:var(--accent-text,var(--accent));}
+#jobOsRoot .settings-nav-icon>svg{width:30px;height:30px;stroke-width:1.5;}
+/* The save bar's label sits 2px higher in its button. */
+#jobOsRoot .job-os-savebar .job-os-btn.primary{padding-top:6px;padding-bottom:4px;}
+/* Settings cards: the last line of text ends at its baseline, so the card has as much room below its content
+   as above its title; a button row ends where the card's padding does. */
+.settings-page .set-group .set-rows>.set-row:last-child .set-row-text>:last-child,
+.settings-page .set-group .set-group-foot>p,
+.settings-page .set-group .set-group-foot .apify-cost{text-box:trim-end cap alphabetic;}
+.settings-page .set-group .set-group-foot{padding:0;}
+/* (Nothing is clipped to the rows any more: the last line's descenders hang past its baseline.) */
+.settings-page .set-group .set-rows{overflow:visible;}
+/* Status pills: the pill sits 1px lower than its row; inside it the words are another 1px lower and the dot another 1.5px. */
+#jobOsRoot .settings-page .set-row .job-os-pill{position:relative;top:1px;padding:2px 6px 1px;}
+#jobOsRoot .settings-page .set-row .job-os-pill::before{position:relative;top:.5px;}
+/* Send test and the choice beside it: the words sit 0.5px higher. */
+.settings-page .set-row .job-os-inline-select .themed-select-trigger{padding-bottom:1px;}
+.settings-page .set-group .job-os-btn.small[data-job-os-action="gmail-test"]{padding-bottom:1px;}
+/* Number boxes line up: each unit has the same column and sits in the middle of it, so it has as much room
+   to the box as to the card's edge. */
+.set-number{gap:0;}
+.set-number em{flex:0 0 66px;width:66px;text-align:center;}
+/* One line for the hint under Skip a run after a quiet one. */
+.settings-page .set-switch:has([data-setting="scout.quiet_skip"]) .set-row-text small{max-width:none;}
+/* The page keeps its width whether or not it needs a scrollbar, so a card does not change width as the
+   section grows or shrinks. */
+#mainJobs{scrollbar-gutter:stable;}
+/* Buttons under a card's rows: as far below the field above them as they are from the card's edge. */
+.settings-page .set-group:has([data-job-os-action="gmail-edit"]) .set-group-foot{margin-top:17.1px;}
+.settings-page .set-group:has([data-job-os-action="test-firecrawl"]) .set-group-foot{margin-top:12.4px;}
+.settings-page .set-group:has([data-job-os-action="apify-test"]) .set-group-foot{margin-top:7.1px;}
+/* A row that is switched off by the one above it dims its words and its field's text, but a field keeps its
+   outline, so the card's edge is where it is when the row is on (a half-faded box left the label looking
+   10px further from the card's bottom than it is). */
+.settings-page .set-row.is-off .set-row-control:not(:has(input[type="checkbox"])){opacity:1;}
+.settings-page .set-row.is-off:not(:focus-within) .set-row-control :is(.set-input,.themed-select-trigger){color:color-mix(in srgb,var(--text) 50%,transparent);}
+.settings-page .set-row.is-off:not(:focus-within) .set-number em{opacity:.5;}

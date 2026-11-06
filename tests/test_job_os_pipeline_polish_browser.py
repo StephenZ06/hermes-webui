@@ -118,7 +118,8 @@ def test_a_pointed_at_card_keeps_its_size_and_its_parts_sit_right(page):
     }""")
     after = page.locator(card).bounding_box()
     assert before["width"] == after["width"] and "0px 0px 0px 1px" not in out["shadow"], (before, after, out)
-    assert out["btn"] == ["0px", "0px"] and out["icon"] == "-1px" and out["source"] == "2px" and out["remote"] == "REMOTE.ID", out
+    # (round 8: the site label sits 1px lower, no padding under it; a check chip's icon top is -0.5px against the chip's extra half pixel of padding)
+    assert out["btn"] == ["0px", "0px"] and out["icon"] == "-0.5px" and out["source"] == "0px" and out["remote"] == "REMOTE.ID", out
 
 
 def test_tailor_resume_asks_for_this_job_or_the_whole_column(page):
