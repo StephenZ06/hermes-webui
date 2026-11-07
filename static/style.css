@@ -17494,3 +17494,12 @@ html.boot-gate main.main > .main-view,html.boot-gate .sidebar .panel-view.active
 .pw-check.is-ok{color:var(--success,#3fb950);}
 .pw-check.is-warn{color:var(--warning,#f5c542);}
 .pw-check.is-error{color:var(--error,#e94560);}
+
+/* Round 14. The local card has one row, so it keeps no gap under its title. */
+#chatUsageWidget.is-unlimited .chat-usage-widget-title-row{margin-bottom:0;}
+/* The Gateway pill's text sits half a pixel lower in a box of the same height. */
+.profile-gateway-badge{padding-top:2.5px;padding-bottom:1.5px;}
+/* New profile: a working button stays at full strength, and Next is already wide
+   enough for its spinner and "Checking…", so the footer doesn't shift on click. */
+.ps-wizard .project-starter-submit.mi-busy:disabled{opacity:1;cursor:progress;}
+.ps-wizard .ps-next{min-width:calc(9ch + 46px);}

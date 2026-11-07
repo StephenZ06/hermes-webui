@@ -2313,7 +2313,9 @@ function _renderAccountUsageImpl(data){
   const pctEl=$('chatUsageWidgetPercent');
   if(pctEl){
     // Same window, new value: the number pops in. A window switch has its own swap.
-    const pctText=remaining+'% '+t('chat_usage_remaining');
+    // The title says usage, so the number does too: "100% remaining" under
+    // SESSION USAGE reads as used up. The battery stays a fuel gauge.
+    const pctText=(100-remaining)+'% '+t('chat_usage_used');
     const changed=pctEl.dataset.usageWindow===selectedKey&&pctEl.textContent!==pctText;
     pctEl.textContent=pctText;
     pctEl.dataset.usageWindow=selectedKey;

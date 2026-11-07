@@ -9311,8 +9311,8 @@ function _renderProfileDetail(p, activeName){
     : `<span class="detail-badge">Inactive</span>`;
   const defaultBadge = isDefault ? ` <span class="detail-badge">${esc(t('profile_default_label'))}</span>` : '';
   const gwBadge = p.gateway_running
-    ? `<span class="detail-badge ok">${esc(t('profile_gateway_running'))}</span>`
-    : `<span class="detail-badge">${esc(t('profile_gateway_stopped'))}</span>`;
+    ? `<span class="detail-badge ok profile-gateway-badge">${esc(t('profile_gateway_running'))}</span>`
+    : `<span class="detail-badge profile-gateway-badge">${esc(t('profile_gateway_stopped'))}</span>`;
   const rows = [];
   rows.push(`<div class="detail-row"><div class="detail-row-label">Status</div><div class="detail-row-value">${statusBadge}${defaultBadge}</div></div>`);
   rows.push(`<div class="detail-row"><div class="detail-row-label">Gateway</div><div class="detail-row-value">${gwBadge}</div></div>`);
@@ -9517,7 +9517,20 @@ async function openProviderWizard(name, opts = {}){
         return `<li class="ps-step${cls}"><span class="ps-step-dot">${dot}</span><span class="ps-step-label">${label}</span></li>`;
       }).join('');
     };
+    // A clicked button spins until its work ends. Next is released by nav(),
+    // which every exit from a busy step goes through; typing during a check
+    // calls nav() too, and must leave the running button alone.
+    const working = (button, label) => {
+      if (window.Micro) Micro.busy(button, label);
+      else { button.disabled = true; button.textContent = label; }
+    };
+    const release = (button) => {
+      if (window.Micro && button.classList.contains('mi-busy')) Micro.restore(button);
+      else button.disabled = false;
+    };
     const nav = ({canNext = false, nextLabel = 'Next', showPrev = true, hideNext = false} = {}) => {
+      if (st.busy) return;
+      release(next);
       prev.hidden = !showPrev; next.hidden = hideNext; next.textContent = nextLabel; next.disabled = !canNext || st.busy;
     };
     const section = (prompt, hint, centred) => {
@@ -9569,7 +9582,7 @@ async function openProviderWizard(name, opts = {}){
       validate(); setTimeout(() => input.focus(), 40);
     }
     async function createProfile(){
-      st.busy = true; next.disabled = true; next.textContent = 'Creating…';
+      st.busy = true; working(next, 'Creating…');
       const payload = {name: st.profileName};
       if (st.startFrom === 'copy') { const sel = q('.pw-clone'); payload.clone_from = sel ? sel.value : ''; payload.clone_config = true; st.cloneFrom = payload.clone_from; }
       try {
@@ -9659,18 +9672,18 @@ async function openProviderWizard(name, opts = {}){
         nav({canNext: c.connected});
       };
       btn.onclick = async () => {
-        btn.disabled = true; flow.innerHTML = '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Starting sign-in…</span></div>';
+        working(btn, 'Starting sign-in…'); flow.innerHTML = '';
         let start;
         try { start = await api('/api/profiles/oauth/start', {method: 'POST', body: JSON.stringify({name, provider: c.id})}); }
-        catch (e) { flow.textContent = e.message || 'Could not start sign-in.'; btn.disabled = false; return; }
-        if (start.status === 'success') { c.connected = true; flow.innerHTML = ''; btn.disabled = false; paint(); return; }
+        catch (e) { flow.textContent = e.message || 'Could not start sign-in.'; release(btn); return; }
+        if (start.status === 'success') { c.connected = true; flow.innerHTML = ''; release(btn); paint(); return; }
         const id = start.flow_id; flowId = id;
         flow.innerHTML = c.id === 'openai-codex'
           ? `<ol class="ps-setup-steps"><li>Open <a href="${esc(start.verification_uri)}" target="_blank" rel="noopener">${esc(start.verification_uri)}</a></li>
              <li>Enter <code class="ps-setup-code">${esc(start.user_code)}</code><button type="button" class="ps-link pw-copy">Copy</button></li>
              <li>Approve it. This step continues by itself.</li></ol>`
           : '<p>Sign in to Claude Code on this machine (run <code>claude</code> and log in). Hermes links it automatically.</p>';
-        flow.insertAdjacentHTML('beforeend', '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Waiting for approval…</span></div>');
+        working(btn, 'Waiting for approval…');
         const copy = flow.querySelector('.pw-copy');
         if (copy) copy.onclick = () => { try { navigator.clipboard.writeText(start.user_code); showToast('Code copied'); } catch (_) {} };
         const every = Math.max(2, Number(start.poll_interval_seconds) || 5) * 1000;
@@ -9679,7 +9692,7 @@ async function openProviderWizard(name, opts = {}){
           let r; try { r = await api('/api/profiles/oauth/poll?flow_id=' + encodeURIComponent(id)); } catch (e) { r = {status: 'error', error: e.message}; }
           if (done || flowId !== id) return;
           if (r.status === 'pending') { setTimeout(poll, every); return; }
-          flowId = null; btn.disabled = false;
+          flowId = null; release(btn);
           if (r.status === 'success') { c.connected = true; flow.innerHTML = ''; paint(); showToast('Signed in'); go(3, 1); return; }
           flow.textContent = r.status === 'expired' ? 'The code expired. Try again.' : (r.error || 'Sign-in did not complete.');
         };
@@ -9792,7 +9805,7 @@ async function openProviderWizard(name, opts = {}){
     }
     async function save(){
       const result = st.finishResult;
-      st.busy = true; nav({canNext: false, nextLabel: 'Saving…'});
+      st.busy = true; working(next, 'Saving…');
       result.innerHTML = '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Saving and testing…</span></div>';
       try {
         if (st.use === 'main') await _ppPost('main', {name, provider: st.provider, model: st.model});
@@ -9821,7 +9834,7 @@ async function openProviderWizard(name, opts = {}){
       if (st.step === 1) { go(2, 1); return; }
       if (st.step === 2) {
         if (st.save) {
-          st.busy = true; next.disabled = true; next.textContent = 'Checking…';
+          st.busy = true; working(next, 'Checking…');
           let saved;
           try { saved = await st.save(); } catch (e) { st.busy = false; showToast(e.message || 'Could not save', 0, 'error'); nav({canNext: true}); return; }
           st.busy = false;

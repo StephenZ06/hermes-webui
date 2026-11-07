@@ -172,7 +172,7 @@ def test_usage_percent_pops_only_when_its_value_changes():
             browser.close()
     # First paint and an unchanged repaint stay still; a new value pops, then the class clears.
     assert out["first"] is False and out["same"] is False
-    assert out["changed"] == [True, "53% remaining"]
+    assert out["changed"] == [True, "47% used"]
     assert out["settled"] is False
 
 

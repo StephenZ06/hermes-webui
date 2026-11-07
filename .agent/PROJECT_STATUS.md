@@ -1,6 +1,14 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Usage wording, wizard logos and loading states
+
+- **Usage card:** the number now says "N% used" and the battery stays a fuel gauge. "100% remaining" under a SESSION USAGE title read as used up; the provider numbers themselves were right (Codex 0% used, Claude 1% used, checked against OpenAI and 9Router).
+- **Logos:** the frame-and-ink metric gave logos that still looked unequal, so they are now sized by hand per mark (longest side 18.5 to 21.5 CSS px, solid shapes smaller) and shifted up to half a pixel towards their weight. `tests/test_pages_round14_browser.py` reads the rendered tile.
+- **Wizard buttons:** `working()` and `release()` in `openProviderWizard` wrap `Micro.busy`. Next is released by `nav()`, which every exit passes through, and `nav()` returns early while `st.busy` so typing during a check leaves the spinner alone.
+- **Locales:** `chat_usage_unlimited` and `audit_open_conversation` landed in English only in f0bd3f871 and broke the locale coverage tests; all 14 locales have them now.
+- **Known failing:** `tests/test_i18n_no_churn_browser.py` also fails on f0bd3f871 (title attributes rewritten on re-apply). Not investigated.
+
 ## 2026-11-07: Cold loads, usage card, toasts, delete motion, provider wizard, page audit
 
 - **Cold load:** the shell paints seconds before the deferred scripts on a slow link, and boot used to play Chat's entrance, then swap to the saved page while that was still running. `html.boot-gate` (index.html, lifted in boot.js `.finally`, 4 s timer as the way out) keeps the views hidden until the right page is back. Dashboard effects now mount one at a time in idle gaps. Not reproduced on a real Mac: measured in headless Chromium with a throttled link.
