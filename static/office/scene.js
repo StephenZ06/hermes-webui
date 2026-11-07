@@ -704,14 +704,15 @@ export function createOfficeScene(canvas, options) {
     record.deliveryGlow = (record.deliveryGlow || 0)
       + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
     const idleIntensity = layer.userData.idleEmissiveIntensity || 0;
-    // A platform with work under way glows a little brighter, and one under
-    // the pointer brighter again; both ease in and out. bandGlowIntensity
-    // keeps the sum under the bloom threshold.
+    // A platform with work under way lifts its band just past the bloom
+    // threshold, a slight glow; the pointer and a landing packet brighten it a
+    // little. All of it eases in and out (see bandGlowIntensity).
     const ease = Math.min(1, dtMs * 0.008);
     record.activeGlow = (record.activeGlow || 0) + ((record.active ? 1 : 0) - (record.activeGlow || 0)) * ease;
     record.hoverGlow = (record.hoverGlow || 0) + ((hoveredCluster === record.cluster ? 1 : 0) - (record.hoverGlow || 0)) * ease;
     material.emissiveIntensity = bandGlowIntensity(idleIntensity, {
       pulse: bandPulse(elapsed, record.cluster), active: record.activeGlow, hover: record.hoverGlow, delivery: record.deliveryGlow,
+      luminance: layer.userData.bandLuminance || 0,
     });
   }
 

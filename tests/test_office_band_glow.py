@@ -1,10 +1,13 @@
-"""A working platform's band brightens without blooming into a halo.
+"""A working platform's light bar glows slightly; nothing blooms into a halo.
 
-Live work, the pointer and each packet landing all brighten a platform's
-neon band. The delivery flare used to be a flat +1.45 on top of a 1.35x
-active boost, which pushed every working platform past the bloom threshold
-at each arrival. This drives the real makePod and bandGlowIntensity under
-node, the way tests/test_office_pod_color.py does.
+At rest a band stays well under the bloom threshold, whatever the pointer or a
+landing packet does. While work is under way its light rises to just under
+it, the same for every colour, and the scene's lights carry it just past: a
+noticeable but slight glow. The
+delivery flare used to be a flat +1.45 on top of a 1.35x active boost, which
+bloomed every working platform into a halo at each arrival. This drives the
+real makePod and bandGlowIntensity under node, the way
+tests/test_office_pod_color.py does.
 """
 import json
 import pathlib
@@ -33,10 +36,13 @@ for (const tint of JSON.parse(process.argv[3])) {
   const c = band.material.emissive;
   const luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   const idle = band.material.emissiveIntensity;
-  const at = (state) => bandGlowIntensity(idle, state) * luminance;
+  const lum = band.userData.bandLuminance;
+  const at = (state) => bandGlowIntensity(idle, { luminance: lum, ...state }) * luminance;
   out[tint] = {
     idle: at({}),
+    idleBusy: at({ hover: 1, delivery: 1 }),
     active: at({ active: 1 }),
+    activeLow: at({ active: 1, pulse: 0.7 }),
     arrival: at({ active: 1, delivery: 1 }),
     everything: at({ pulse: 1, active: 1, hover: 1, delivery: 1 }),
   };
@@ -62,19 +68,23 @@ def glow(tmp_path_factory):
     return json.loads(proc.stdout)
 
 
-def test_no_platform_blooms_however_much_is_happening_on_it(glow):
+def test_an_idle_platform_never_blooms(glow):
     for tint, band in glow.items():
-        assert band["everything"] < BLOOM_THRESHOLD * .96, (tint, band)
+        assert band["idleBusy"] < BLOOM_THRESHOLD * .9, (tint, band)
 
 
-def test_work_and_arrivals_still_show_on_the_band(glow):
+def test_a_working_platform_glows_slightly_through_its_whole_pulse(glow):
     for tint, band in glow.items():
-        if band["idle"] < .3:
+        if band["idle"] < .6:
             continue  # a deep colour whose band is barely lit at idle
-        assert band["active"] > band["idle"] * 1.05, (tint, band)
-        assert band["arrival"] > band["active"] * 1.05, (tint, band)
+        # The band's own light stops just under the threshold; the scene's lights on its
+        # faces carry it just past (rendered, 1.1 already read as a halo).
+        assert BLOOM_THRESHOLD * .85 < band["activeLow"] < band["active"] <= BLOOM_THRESHOLD, (tint, band)
+        assert band["everything"] <= BLOOM_THRESHOLD * 1.1, (tint, band)
+        assert band["arrival"] > band["active"], (tint, band)
 
 
-def test_every_colour_brightens_by_the_same_share(glow):
-    shares = {tint: band["arrival"] / band["idle"] for tint, band in glow.items() if band["idle"]}
-    assert max(shares.values()) - min(shares.values()) < .01, shares
+def test_every_working_colour_glows_by_the_same_amount(glow):
+    levels = {tint: band["active"] for tint, band in glow.items() if band["idle"] >= .6}
+    assert len(levels) >= 12, levels
+    assert max(levels.values()) - min(levels.values()) < .01, levels

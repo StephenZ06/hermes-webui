@@ -493,6 +493,7 @@ export function makePod(width, depth, palette, tint, opts) {
   });
   delivery.castShadow = false;
   delivery.userData.idleEmissiveIntensity = idleIntensity;
+  delivery.userData.bandLuminance = bandColor && options.glow !== false ? luminance : 0;
   delivery.userData.noGlow = options.glow === false;
   const baseY = bandY - bandHeight / 2 - baseHeight / 2;
   addLayer('upper-base', baseHeight, baseColor, baseY, {
@@ -863,18 +864,26 @@ export function makePlant(palette) {
  * instead of just tinting a bit brighter.
  */
 /**
- * A platform band's emissive intensity on a given frame. Work under way, the
- * pointer and a packet landing each brighten the band by a share of its own
- * idle glow, so every colour brightens alike, and together they stop at 1.3x
- * idle: the band stays under the bloom threshold (idle sits near 0.72 of it,
- * see makePod) and never spills a halo onto the floor. The delivery flare
- * used to be added as a flat +1.45, which on top of the active boost bloomed
- * a working platform into a halo at every arrival.
+ * A platform band's emissive intensity on a given frame. At rest the band sits
+ * near 0.72 of the bloom threshold (see makePod), and the pointer or a packet
+ * landing only brighten it by a small share, so an idle platform never blooms.
+ * While work is under way the band's own light rises to just under the
+ * threshold (ACTIVE_BAND_LUMINANCE, given the band colour's `luminance`) and the
+ * scene's lights on its faces carry it just past, so every working platform's
+ * light bar carries the same slight glow whatever its colour (1.1 and up read as
+ * a halo when rendered). Its pulse is damped so the glow breathes instead of
+ * switching off. The old flat
+ * +1.45 delivery flare bloomed a working platform into a halo at every arrival.
  */
-export const BAND_GLOW_CAP = 1.3;
-export function bandGlowIntensity(idle, { pulse = 1, active = 0, hover = 0, delivery = 0 } = {}) {
-  const lift = Math.min(BAND_GLOW_CAP, 1 + 0.1 * active + 0.1 * hover + 0.15 * delivery);
-  return (idle || 0) * pulse * lift;
+export const ACTIVE_BAND_LUMINANCE = 0.98;
+export const BAND_GLOW_CAP = 1.1;
+export function bandGlowIntensity(idle, { pulse = 1, active = 0, hover = 0, delivery = 0, luminance = 0 } = {}) {
+  const rest = idle || 0;
+  const working = luminance > 0 ? Math.min(rest * 2, Math.max(rest, ACTIVE_BAND_LUMINANCE / luminance)) : rest * 1.5;
+  const base = rest + (working - rest) * active;
+  const steady = 1 - (1 - pulse) * (1 - 0.6 * active);
+  const lift = Math.min(BAND_GLOW_CAP, 1 + 0.05 * hover + 0.08 * delivery);
+  return base * steady * lift;
 }
 
 export function makePodGlow(width, depth, tint) {
