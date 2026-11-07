@@ -1,6 +1,11 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Files picked-space glide, path row squeeze
+
+- The Files spaces list now uses `noteActiveHighlight`/`playActiveHighlightGlide` (`SPACE_HIGHLIGHT` in file-manager.js), so the picked highlight slides between spaces like every other side panel. The hover pill (Micro) already slid; the missing motion was the pick.
+- In a folder with many entries the column's flex rows shrank and `.files-path` (overflow hidden) lost height first, so the filter covered the path. The top bar, path row and filter now have `flex-shrink:0`; only the list gives up height.
+
 ## 2026-11-07: Files spaces list in place, Raspberry Pi space
 
 - **Pi space missing:** `_contexts` skipped every saved `kind: remote` (SSHFS) space by design. They are now offered as `mount:<digest>` contexts browsed like a local folder (writes included), available only while `workspace_availability` reports the mount live, re-checked on every request so nothing lands in a bare mountpoint. The id hashes the saved path without resolving it (a stat through a dead mount can hang).

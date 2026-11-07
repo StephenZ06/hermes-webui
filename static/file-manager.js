@@ -136,6 +136,15 @@
     filter.addEventListener('input', () => { state.filter = filter.value; render(); });
     return layout;
   }
+  // The picked space's highlight slides from the space picked before, as on every other side panel
+  // (ui.js playActiveHighlightGlide).
+  const SPACE_HIGHLIGHT = {
+    selector: '.files-workspace.is-active',
+    restSelector: '.files-workspace:not(.is-active)',
+    key: (row) => row.dataset.workspaceId || '',
+    find: (list, id) => list.querySelector(`.files-workspace[data-workspace-id="${CSS.escape(id)}"]`),
+    section: () => 'spaces',
+  };
   function spacesInSidePanel() { return !!document.getElementById('filesSidebarHost') && !phoneWidth.matches; }
   function render() {
     if (!state.root) return;
@@ -177,6 +186,10 @@
     }
     if (spacesHost) {
       const byId = new Map(state.workspaces.map((item) => [item.id, item]));
+      const list = spacesHost.querySelector('.files-workspace-list');
+      const current = list && list.querySelector('.files-workspace.is-active');
+      const moving = !!current && current.dataset.workspaceId !== state.workspaceId;
+      const from = moving && typeof window.noteActiveHighlight === 'function' ? window.noteActiveHighlight(list, SPACE_HIGHLIGHT) : null;
       spacesHost.querySelectorAll('.files-workspace[data-workspace-id]').forEach((row) => {
         const item = byId.get(row.dataset.workspaceId);
         if (!item) return;
@@ -185,6 +198,7 @@
         dot.classList.toggle('is-online', !!item.available);
         dot.classList.toggle('is-offline', !item.available);
       });
+      if (from && typeof window.playActiveHighlightGlide === 'function') window.playActiveHighlightGlide(list, from, { ...SPACE_HIGHLIGHT, bounds: list });
     }
     if (sideHost && spacesHost !== sideHost) write(sideHost, '');
     layout.dataset.readOnly = readOnly ? 'true' : 'false';

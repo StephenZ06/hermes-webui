@@ -17577,3 +17577,8 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .files-inspector-empty strong{margin-top:1.5px;margin-bottom:-1.5px;}
 /* "Connected spaces" sits halfway between the panel's header rule and the first space. */
 .files-sidebar-host .files-section-heading{position:relative;top:.5px;}
+/* Only the file list gives up height in a tall folder. The top bar, the path row
+   and the filter keep theirs: the path row hides its overflow (for its height
+   easing), so it used to shrink first and the filter sat over "Workspace". */
+.files-browser > :is(.files-toolbar,.files-path,.files-list-toolbar){flex-shrink:0;}
+.files-browser > .files-list{flex:1 1 auto;min-height:0;}

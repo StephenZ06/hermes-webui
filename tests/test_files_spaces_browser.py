@@ -84,3 +84,41 @@ def test_workspace_has_equal_room_above_and_below_and_the_filter_spans_the_colum
     out = page.evaluate("""() => { const row = document.querySelector('.files-list-toolbar'), field = document.querySelector('.files-search input').getBoundingClientRect(), r = row.getBoundingClientRect(), cs = getComputedStyle(row);
       return {count: document.querySelectorAll('.files-item-count').length, left: field.left - r.left - parseFloat(cs.paddingLeft), right: r.right - parseFloat(cs.paddingRight) - field.right}; }""")
     assert out == {"count": 0, "left": 0, "right": 0}, out
+
+
+def test_the_picked_highlight_slides_to_the_new_space(real_2x):
+    """As on every other side panel: the highlight travels from the old space to the new one."""
+    page = real_2x
+    _space(page, SPACES)
+    _open(page, "files", ROW.format("c"))
+    page.evaluate("""() => { window.__glides = []; new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(n => {
+      if (n.classList && (n.classList.contains('sidebar-highlight-glide') || n.querySelector?.('.sidebar-highlight-glide')))
+        window.__glides.push({arriving: document.querySelector("#filesSidebarHost [data-workspace-id='c']").classList.contains('is-highlight-arriving'),
+          moving: (n.querySelector?.('.sidebar-highlight-glide') || n).getAnimations().length > 0});
+    }))).observe(document.body, {childList: true}); }""")
+    page.click(ROW.format("c"))
+    page.wait_for_selector(ROW.format("c") + ".is-active")
+    page.wait_for_timeout(100)
+    assert page.evaluate("window.__glides") == [{"arriving": True, "moving": True}]
+    page.wait_for_timeout(700)
+    # When it lands, the row shows its own highlight again and the copy is gone.
+    assert page.locator(".sidebar-highlight-glide").count() == 0
+    assert "is-highlight-arriving" not in page.get_attribute(ROW.format("c"), "class")
+
+
+def test_a_long_folder_does_not_squeeze_the_path_under_the_filter(real_2x):
+    """A folder with many entries made the column's rows shrink, and the path row
+    (which hides its overflow) lost height first: the filter sat over "Workspace"."""
+    page = real_2x
+    many = [{"name": f"file{i:03}.md", "path": f"docs/file{i:03}.md", "type": "file", "size": 10} for i in range(300)]
+    page.route("**/api/file-manager/workspaces*", lambda route: route.fulfill(json={"workspaces": SPACES}))
+    page.route("**/api/file-manager/list*", lambda route: route.fulfill(json={
+        "path": "docs", "entries": many} if "path=docs" in route.request.url else {"path": ".", "entries": [{"name": "docs", "path": "docs", "type": "dir"}]}))
+    _open(page, "files", ".files-row[data-file-type='dir']")
+    page.click(".files-row[data-file-type='dir']")
+    page.wait_for_selector(".files-row[data-file-path='docs/file299.md']", state="attached")
+    page.wait_for_timeout(600)
+    out = page.evaluate("""() => { const path = document.querySelector('.files-path'), trail = path.querySelector('.files-breadcrumb');
+      const filter = document.querySelector('.files-list-toolbar').getBoundingClientRect();
+      return {clipped: path.scrollHeight > path.clientHeight + .5, under: trail.getBoundingClientRect().bottom <= filter.top}; }""")
+    assert out == {"clipped": False, "under": True}, out
