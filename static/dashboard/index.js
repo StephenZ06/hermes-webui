@@ -1069,6 +1069,28 @@
   // in on its own afterwards.
   const ENTER_CARDS = '.rpg-stage,.rpg-panel,.dash-card,.dash-stat';
   const ENTER_HOLD_MS = 450;
+  // The card frames are CSS pictures (style.css), which the browser fetches only
+  // once a card using them is on the page; the hero's gold frame, the largest,
+  // then arrived after its card had risen. They are loaded up front, and the
+  // entrance waits for them (longer than for content pictures: a card without
+  // its frame is not a card yet).
+  const FRAME_ART = ['frame-gold.png', 'card-frame.png', 'card-gem-top.png', 'card-gem-bottom.png', 'chain.png'];
+  const FRAME_HOLD_MS = 1500;
+  const frameArt = {promise: null, ready: false, images: []};
+  function loadFrameArt() {
+    if (frameArt.promise) return frameArt.promise;
+    const sheet = document.querySelector('link[rel="stylesheet"][href*="style.css"]');
+    const base = sheet ? sheet.href : location.href;
+    frameArt.promise = Promise.allSettled(FRAME_ART.map((name) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = new URL(`dashboard/${name}`, base).href;
+      frameArt.images.push(img);  // held, so the decoded picture stays in memory
+      return typeof img.decode === 'function' ? img.decode() : new Promise((resolve) => { img.onload = img.onerror = resolve; });
+    })).then(() => { frameArt.ready = true; });
+    return frameArt.promise;
+  }
+  const after = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   function stageEntrance(host, resumed = 0) {
     const body = host.querySelector('.dash-body.is-entering');
     if (!body) return;
@@ -1087,11 +1109,17 @@
       const r = img.getBoundingClientRect();
       return r.bottom > 0 && r.top < view;
     });
-    if (!pending.length) return;
+    const waits = [];
+    if (pending.length) {
+      const decoded = Promise.allSettled(pending.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve())));
+      waits.push(Promise.race([decoded, after(ENTER_HOLD_MS)]));
+    }
+    const art = loadFrameArt();
+    if (!frameArt.ready) waits.push(Promise.race([art, after(FRAME_HOLD_MS)]));
+    if (!waits.length) return;
     body.classList.add('is-holding');
-    const decoded = Promise.allSettled(pending.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve())));
     const held = performance.now();
-    Promise.race([decoded, new Promise((resolve) => setTimeout(resolve, ENTER_HOLD_MS))]).then(() => {
+    Promise.all(waits).then(() => {
       body.classList.remove('is-holding');
       state.enterStart += performance.now() - held;  // the entrance starts when the hold lets go
     });
@@ -1104,6 +1132,7 @@
   async function prefetch() {
     if (prefetched || state.mounted) return;
     prefetched = true;
+    loadFrameArt();
     const tabs = [state.tab].concat(state.tab === 'character' ? [] : ['character']);
     await Promise.allSettled(tabs.filter((tab) => !state.data[tab]).map((tab) => load(tab, {quiet: true})));
     const data = state.data[state.tab];

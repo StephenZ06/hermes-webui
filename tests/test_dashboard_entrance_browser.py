@@ -95,3 +95,34 @@ def test_leaving_the_page_stops_its_refreshes_and_effects(browser):
     # Back again, the cards rise in afresh.
     page.evaluate("async () => { await switchPanel('dashboard'); }")
     page.wait_for_selector("#dashboardRoot .dash-body.is-entering [data-enter]", state="attached", timeout=15000)
+
+
+def test_the_character_frame_arrives_with_its_card(browser):
+    # The hero's gold frame is a CSS picture, fetched only once its card was on
+    # the page; on a slow link the card rose in empty and the frame popped in
+    # after. Its art (with the other card frames) is now loaded before the
+    # cards rise.
+    import time
+    ctx = browser.new_context(viewport={"width": 1470, "height": 956})
+    def slow(route):
+        time.sleep(0.7)
+        route.continue_()
+    ctx.route("**/dashboard/frame-gold.png", slow)
+    page = ctx.new_page()
+    from tests.test_dashboard_browser import BASE
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("() => { try { localStorage.setItem('hermes-dashboard-tab', 'character'); } catch (_) {} }")
+    early = page.evaluate("""() => new Promise(resolve => {
+      const early = []; const t0 = performance.now();
+      const framed = () => performance.getEntriesByType('resource').some(e => e.name.includes('/dashboard/frame-gold.png') && e.responseEnd > 0);
+      const tick = () => {
+        const stage = document.querySelector('#dashboardRoot .rpg-stage');
+        if (stage && +getComputedStyle(stage).opacity > 0.05 && !framed()) early.push(Math.round(performance.now() - t0));
+        if (performance.now() - t0 < 4000 && !(stage && framed())) requestAnimationFrame(tick); else resolve(early);
+      };
+      requestAnimationFrame(tick);
+      switchPanel('dashboard');
+    })""")
+    assert early == [], early
