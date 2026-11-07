@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from api.host_loopback import host_url
+
 try:  # httpx ships with the agent, not the WebUI: optional here, so the usage
     import httpx  # endpoint (and every page that polls it) works without it.
 except ImportError:  # pragma: no cover - depends on the environment
@@ -20,6 +22,10 @@ except ImportError:  # pragma: no cover - depends on the environment
 
 _NINE_ROUTER_CLI_SECRET = Path.home() / ".9router" / "auth" / "cli-secret"
 _NINE_ROUTER_MACHINE_ID = Path.home() / ".9router" / "machine-id"
+# 9router runs on the host. A container gets those two files through a read-only
+# mount here, the same way the Codex token and the Space SSH keys arrive.
+_NINE_ROUTER_MOUNTED_CLI_SECRET = Path("/run/secrets/9router-cli-secret")
+_NINE_ROUTER_MOUNTED_MACHINE_ID = Path("/run/secrets/9router-machine-id")
 _NINE_ROUTER_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -215,6 +221,17 @@ def _nine_router_claude_usage_snapshot(payload: object) -> AccountUsageSnapshot 
     )
 
 
+def _first_text(*paths: Path) -> str:
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if text:
+            return text
+    return ""
+
+
 def fetch_9router_claude_account_usage(base_url: str) -> AccountUsageSnapshot | None:
     """Fetch Claude Code limits from a local 9router instance.
 
@@ -226,11 +243,9 @@ def fetch_9router_claude_account_usage(base_url: str) -> AccountUsageSnapshot | 
     dashboard_url = _nine_router_dashboard_url(base_url)
     if dashboard_url is None:
         return None
-    try:
-        cli_secret = _NINE_ROUTER_CLI_SECRET.read_text(encoding="utf-8").strip()
-        machine_id = _NINE_ROUTER_MACHINE_ID.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
+    dashboard_url = host_url(dashboard_url)
+    cli_secret = _first_text(_NINE_ROUTER_CLI_SECRET, _NINE_ROUTER_MOUNTED_CLI_SECRET)
+    machine_id = _first_text(_NINE_ROUTER_MACHINE_ID, _NINE_ROUTER_MOUNTED_MACHINE_ID)
     if not cli_secret or not machine_id:
         return None
     cli_token = hashlib.sha256(

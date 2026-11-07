@@ -1804,6 +1804,11 @@
       toast('Note restored');
     } catch (error) { toast(error.message || 'Could not restore the note'); }
   }
+  function fadeNotes(ids) {
+    if (typeof window.animateRemoval !== 'function') return Promise.resolve();
+    const rows = ids.flatMap((id) => [...document.querySelectorAll(`.nb-item[data-nb-open="${CSS.escape(id)}"], #notebookSidebar [data-nb-note-row="${CSS.escape(id)}"]`)]);
+    return Promise.all(rows.map((row) => window.animateRemoval(row)));
+  }
   async function purgeCurrent() {
     const note = S.note; if (!note) return;
     const ok = typeof window.showConfirmDialog === 'function'
@@ -1812,6 +1817,7 @@
     if (!ok) return;
     try {
       await window.NotebookApi.purge(note.id);
+      await fadeNotes([note.id]);
       S.notes = S.notes.filter((n) => n.id !== note.id);
       destroyEditor(); S.note = null; S.pane = 'list';
       render();
@@ -1826,6 +1832,7 @@
     if (!ok) return;
     try {
       await window.NotebookApi.emptyTrash(S.side);
+      await fadeNotes(S.notes.filter((x) => x.deleted_at).map((x) => x.id));
       S.notes = S.notes.filter((x) => !x.deleted_at);
       if (S.note && S.note.deleted_at) { destroyEditor(); S.note = null; }
       render();

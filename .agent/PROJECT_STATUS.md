@@ -1,5 +1,15 @@
 # Project status — hermes-webui
 
+
+## 2026-11-07: Cold loads, usage card, toasts, delete motion, provider wizard, page audit
+
+- **Cold load:** the shell paints seconds before the deferred scripts on a slow link, and boot used to play Chat's entrance, then swap to the saved page while that was still running. `html.boot-gate` (index.html, lifted in boot.js `.finally`, 4 s timer as the way out) keeps the views hidden until the right page is back. Dashboard effects now mount one at a time in idle gaps. Not reproduced on a real Mac: measured in headless Chromium with a throttled link.
+- **Session usage:** Claude through 9Router needs `~/.9router/auth/cli-secret` and `machine-id` read-only at `/run/secrets/9router-*` (the Docker Desktop override mounts them; `docker-compose.yml` has them commented) and `host_url` to reach the host. Local models get the card with UNLIMITED: `is_self_hosted_route` also recognises wizard-made `custom:` routes by loopback host plus port 1234 or 11434.
+- **Keys:** `/api/profiles/providers/verify` tries a key or endpoint before saving. `ok` and `rejected` only mean what the provider said; everything else is `unknown` and the wizard offers Save anyway. `_KEY_CHECKS` holds the per-provider call; NVIDIA has no reliable check and stays `unknown`.
+- **Sign-in:** the wizard now names the provider. It used to read it from the profile, which a new profile does not have, so sign-in always failed there.
+- **Logos:** `static/provider-icons/` are 88px masters derived from the git-ignored `icons/profiles/`, sized so frame and ink area match.
+- **Audit:** every page at desktop and phone width, 374 controls clicked, real create and delete flows on an isolated server with the agent's interpreter. `.venv` lacks agent modules, so `/api/crons`, `/api/skills` and Kanban answer 500 or 503 there: that is the environment, not a bug.
+
 ## 2026-10-13: Notes on the Obsidian vault, Logistics removed, Jobs fixes
 
 - **Notes ↔ Obsidian:** `api/notebook_vault.py`; live vault connected:

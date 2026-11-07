@@ -737,6 +737,7 @@
     if (!await showConfirmDialog({ title: 'Delete work item', message: 'Are you sure you want to delete this work item? This cannot be undone.', confirmLabel: 'Delete', danger: true })) return;
     try {
       const result = await request('/api/work_hub/items/delete', { method: 'POST', body: JSON.stringify({ item_id: itemId, expected_revision: store.revision }) });
+      await animateRemoval(document.querySelector(`#workHubCanvas [data-item-id="${CSS.escape(itemId)}"]`));
       store.items = store.items.filter(i => i.id !== itemId); store.revision = result.revision; store.selectedItemId = null; notifyWorkHubChanged(); render();
       if (typeof showToast === 'function') showToast('Work item deleted');
     } catch (error) { store.stale = true; render(); }

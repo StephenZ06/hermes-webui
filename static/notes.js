@@ -544,6 +544,7 @@ async function _deleteStickyBoard(board) {
   if (!ok) return;
   try {
     await api('/api/sticky_boards/delete', { method: 'POST', body: JSON.stringify({ id: board.id }) });
+    await Promise.all([...document.querySelectorAll(`.sticky-board-row[data-board-id="${CSS.escape(board.id)}"]`)].map(row => animateRemoval(row)));
     _notesBoards = _notesBoards.filter(b => b.id !== board.id);
     _renderAllNotesViews();
     _renderNotesBoardsLists();

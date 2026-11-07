@@ -199,6 +199,10 @@ def _resume_file(handler, preview: bool) -> bool:
         name = None if kind == ".pdf" else export.safe_filename(Path(found[1]).stem) + kind
     else:
         return _error(handler, "The resume was pasted as text; there is no original file.", 404)
+    if preview:  # Resume Studio frames this page itself.
+        from api.helpers import _build_csp_report_only_policy
+
+        handler._csp_report_only_policy = _build_csp_report_only_policy().replace("frame-ancestors 'none'", "frame-ancestors 'self'")
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(body)))

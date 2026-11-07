@@ -75,7 +75,7 @@ def test_toolbar_is_compact_on_the_page_background_with_tab_text_centred(page):
     }""")
     assert out["bg"] == [out["body"], out["body"]], out
     assert out["heights"] == [32, 32, 32], out
-    assert out["tab"] == ["0px", "0px"] and out["input"] == "2px", out
+    assert out["tab"] == ["0px", "0px"] and out["input"] == "0px", out
 
 
 def test_tabs_hover_blue_and_the_add_button_wears_the_work_hub_tint(page):

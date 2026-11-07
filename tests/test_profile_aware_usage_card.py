@@ -4,7 +4,7 @@ Requested behavior:
 
   * Codex profile      -> show the Codex rate-limit windows
   * NeuralWatt profile -> show the NeuralWatt quota
-  * local profile      -> show nothing at all
+  * local profile      -> the card with an Unlimited label and no meter
 
 A local / self-hosted server (LM Studio, Ollama) has no subscription quota, so
 the handler must return early instead of letting the generic agent fetch or the
@@ -88,7 +88,7 @@ def _record_pool_calls(monkeypatch, record):
 
 @pytest.mark.parametrize("provider", ["lmstudio", "ollama"])
 def test_local_profiles_report_no_usage_and_never_probe_a_pool(monkeypatch, tmp_path, provider):
-    """A local profile must not show usage, and must not even try to."""
+    """A local profile has no quota to show, and must not even try to read one."""
     profile_home = _write_profile(tmp_path, provider, "http://127.0.0.1:1234/v1")
     seen = _install(monkeypatch, tmp_path, profile_home)
 
@@ -190,15 +190,6 @@ def test_each_9router_claude_profile_reports_the_shared_claude_subscription_usag
     assert seen[-1]["provider"] == "9router-claude"
     assert seen[-1]["plan"] == "Claude via 9router"
     assert seen[-1]["windows"][0]["label"] == "5 hours"
-
-
-def test_usage_widget_hides_itself_on_a_local_response():
-    """The client honours the `local` marker so a local profile never paints."""
-    js = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
-
-    assert "data.local" in js
-    guard = js.index("data.local")
-    assert "widget.hidden=true" in js[guard : guard + 120]
 
 
 class _Blocked:

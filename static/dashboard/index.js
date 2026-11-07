@@ -744,6 +744,10 @@
 
   // ── Libraries.dev effects ────────────────────────────────────────────────
   function clearEffects() { while (effects.length) { try { effects.pop().unmount(); } catch (_) {} } }
+  const whenIdle = () => new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(resolve, {timeout: 500});
+    else setTimeout(resolve, 50);
+  });
   async function enhance(host) {
     if (typeof window.loadLibrariesDev !== 'function') return;
     if (!host.querySelector('[data-ld],[data-ld-beam]')) return;
@@ -753,30 +757,34 @@
     const theme = isDark() ? 'dark' : 'light';
     const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const claim = (el) => { if (!el.isConnected || el.dataset.ldOn) return false; el.dataset.ldOn = '1'; return true; };
-    host.querySelectorAll('[data-ld="orb"]').forEach((el) => {
-      if (!claim(el)) return;
+    const jobs = [];
+    const add = (selector, start) => host.querySelectorAll(selector).forEach((el) => jobs.push([el, start]));
+    add('[data-ld="orb"]', (el) => {
       const slot = document.createElement('span'); slot.className = 'dash-orb-slot';
       el.replaceChildren(slot);
-      try { effects.push(lib.mount(slot, 'ThinkingOrb', {state: el.dataset.state || 'working', size: 20, theme, paused: reduced})); } catch (_) {}
+      return lib.mount(slot, 'ThinkingOrb', {state: el.dataset.state || 'working', size: 20, theme, paused: reduced});
     });
-    host.querySelectorAll('[data-ld="bot"]').forEach((el) => {
-      if (!claim(el)) return;
-      try { effects.push(lib.mount(el, 'BotAvatar', {type: el.dataset.type || 'clover', state: el.dataset.state || 'default', size: 48, paused: reduced})); } catch (_) {}
-    });
+    add('[data-ld="bot"]', (el) => lib.mount(el, 'BotAvatar', {type: el.dataset.type || 'clover', state: el.dataset.state || 'default', size: 48, paused: reduced}));
     let metalOk = false;
     try { metalOk = typeof lib.isMetalFxSupported === 'function' ? lib.isMetalFxSupported() : false; } catch (_) {}
     if (metalOk && theme === 'dark') {
-      host.querySelectorAll('[data-ld="metal-text"]').forEach((el) => {
-        if (!claim(el)) return;
+      add('[data-ld="metal-text"]', (el) => {
         const style = getComputedStyle(el);
-        try { effects.push(lib.mount(el, 'MetalText', {children: el.dataset.text || el.textContent, font: `${style.fontWeight} ${style.fontSize}/1.15 ${style.fontFamily}`, color: '#E8E2FF'})); } catch (_) {}
+        return lib.mount(el, 'MetalText', {children: el.dataset.text || el.textContent, font: `${style.fontWeight} ${style.fontSize}/1.15 ${style.fontFamily}`, color: '#E8E2FF'});
       });
     }
-    host.querySelectorAll('[data-ld-beam]').forEach((el) => {
-      if (!claim(el)) return;
+    add('[data-ld-beam]', (el) => {
       const size = el.dataset.ldBeam || 'md';
-      try { effects.push(lib.wrap(el, 'BorderBeam', {size, theme, colorVariant: size === 'md' ? 'colorful' : 'mono', strength: size === 'md' ? 0.85 : 0.7, active: !reduced})); } catch (_) {}
+      return lib.wrap(el, 'BorderBeam', {size, theme, colorVariant: size === 'md' ? 'colorful' : 'mono', strength: size === 'md' ? 0.85 : 0.7, active: !reduced});
     });
+    // Every effect is its own React root and some compile a shader. Mounted
+    // together they are one long task in the middle of the page's entrance;
+    // one at a time, in the browser's gaps, the entrance keeps its frames.
+    for (const [el, start] of jobs) {
+      await whenIdle();
+      if (!claim(el)) continue;
+      try { effects.push(start(el)); } catch (_) {}
+    }
   }
 
   // ── loading and painting ─────────────────────────────────────────────────

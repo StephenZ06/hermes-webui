@@ -39,6 +39,10 @@ services:
       # Codex desktop auth is read only. This lets every Codex profile show the
       # same subscription account usage without copying credentials into profile state.
       - ${HOME}/.codex/auth.json:/run/secrets/auth.json:ro
+      # Session usage for Claude through 9Router, when 9Router runs on the host. The
+      # two files its read-only usage token is derived from; nothing else is shared.
+      # - ${HOME}/.9router/auth/cli-secret:/run/secrets/9router-cli-secret:ro
+      # - ${HOME}/.9router/machine-id:/run/secrets/9router-machine-id:ro
       # Your workspace directory shown on first launch (adapt if yours is different, the container will use the mounted /workspace)
       - ${HERMES_WORKSPACE:-${HOME}/workspace}:/workspace
       # Windows PC (MiniPC-Main), reachable directly via WSL2's own C: passthrough —

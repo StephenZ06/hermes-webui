@@ -1253,6 +1253,8 @@ const LOCALES = {
     filter_conversations: 'Filter conversations...',
     chat_usage_weekly: 'Weekly usage',
     chat_usage_session: 'Session usage',
+    chat_usage_unlimited: 'Unlimited',
+    audit_open_conversation: 'Open this conversation',
     chat_usage_remaining: 'remaining',
     chat_usage_resets_in: 'Resets in {time}',
     chat_usage_resets_now: 'Resets now',

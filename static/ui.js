@@ -2260,8 +2260,19 @@ function _renderAccountUsageImpl(data){
   const widget=$('chatUsageWidget');
   if(!widget) return;
   // A local / self-hosted profile has no subscription quota; the server marks
-  // those responses `local`, and nothing may paint a window for them.
-  if(data&&data.local){widget.hidden=true;return;}
+  // those responses `local`. The card says so and paints no window.
+  const unlimited=!!(data&&data.local);
+  widget.classList.toggle('is-unlimited',unlimited);
+  if(unlimited){
+    const unlimitedLabel=$('chatUsageWidgetLabel');
+    if(unlimitedLabel) unlimitedLabel.textContent=t('chat_usage_session');
+    const unlimitedToggle=$('chatUsageWidgetWindowToggle');
+    if(unlimitedToggle) unlimitedToggle.hidden=true;
+    const unlimitedText=$('chatUsageWidgetUnlimited');
+    if(unlimitedText) unlimitedText.textContent=t('chat_usage_unlimited');
+    widget.hidden=false;
+    return;
+  }
   const isNeuralwatt=String(data&&data.provider||'').toLowerCase()==='neuralwatt';
   if(data&&data.rate_limited&&isNeuralwatt){
     widget.hidden=false;
@@ -22371,6 +22382,7 @@ function _renderTreeItems(container, entries, depth){
     el.style.paddingLeft=(8+depth*16)+'px';
     el.setAttribute('draggable','true');
     el.dataset.wsType=item.type;
+    el.dataset.wsPath=item.path;
     el.oncontextmenu=(e)=>{
       const grant=typeof _workspaceEscapeGrantForPath==='function' ? _workspaceEscapeGrantForPath(item.path) : null;
       const isDirRow=item.type==='dir'||(item.type==='symlink'&&item.is_dir);
@@ -22613,6 +22625,7 @@ async function deleteWorkspaceDir(relPath, name){
   if(!ok)return;
   try{
     await api('/api/file/delete',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,path:relPath,recursive:true})});
+    await animateRemoval(document.querySelector(`.file-item[data-ws-path="${CSS.escape(relPath)}"]`));
     showToast(t('deleted')+name);
     // Remove from expanded dirs cache
     if(S._expandedDirs){S._expandedDirs.delete(relPath);if(typeof _saveExpandedDirs==='function')_saveExpandedDirs();}
@@ -22809,6 +22822,7 @@ async function deleteWorkspaceFile(relPath, name){
   if(!_delFile) return;
   try{
     await api('/api/file/delete',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,path:relPath})});
+    await animateRemoval(document.querySelector(`.file-item[data-ws-path="${CSS.escape(relPath)}"]`));
     showToast(t('deleted')+name);
     // Close preview if we just deleted the viewed file
     if($('previewPathText').textContent===relPath)$('btnClearPreview').onclick();
@@ -23404,7 +23418,7 @@ window.SkeletonEntrance=SkeletonEntrance;
 const SlideOnChange=(()=>{
   const ID='slide-on-change';
   const reduced=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  function start(items){
+  function beginSlide(items){
     items=(items||[]).filter(Boolean);
     if(!items.length||reduced()||!items.some((el)=>el.getClientRects().length)) return null;
     // Where each one is on screen now, part way through a slide included.
@@ -23432,9 +23446,9 @@ const SlideOnChange=(()=>{
   }
   // Run write() between start and end.
   function around(items,write){
-    const state=start(items);
+    const state=beginSlide(items);
     try{ return write(); }finally{ end(state); }
   }
-  return {start,end,around};
+  return {start:beginSlide,end,around};
 })();
 window.SlideOnChange=SlideOnChange;

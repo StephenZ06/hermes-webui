@@ -204,6 +204,10 @@
   </nav>
   <!-- Rail icons are separate PNG masks: hide them until every one has loaded, so they appear together. -->
   <script>document.documentElement.classList.add('nav-marks-pending');</script>
+  <!-- On a cold load the shell paints seconds before the scripts land. Until boot has put the
+       right page back, the views stay out of sight, so nothing plays an entrance on the wrong
+       page and then again on the right one. The timer is the way out if boot never finishes. -->
+  <script>document.documentElement.classList.add('boot-gate');setTimeout(function(){document.documentElement.classList.remove('boot-gate');},4000);</script>
   <aside class="sidebar">
     <button class="panel-head-btn mobile-sidebar-close has-tooltip has-tooltip--bottom-right" type="button" onclick="closeMobileSidebar()" data-tooltip="Close menu" data-i18n-title="close_menu" aria-label="Close menu" data-i18n-aria-label="close_menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -259,6 +263,7 @@
             <button type="button" data-usage-window="session" aria-pressed="false" aria-label="5 hour window" onclick="selectAccountUsageWindow('session')"></button>
             <button type="button" data-usage-window="weekly" aria-pressed="true" aria-label="Weekly window" onclick="selectAccountUsageWindow('weekly')"></button>
           </div>
+          <span class="chat-usage-widget-unlimited" id="chatUsageWidgetUnlimited"></span>
         </div>
         <div class="chat-usage-widget-window-stage" id="chatUsageWidgetWindowStage">
           <div class="chat-usage-widget-window-content" id="chatUsageWidgetWindowContent">

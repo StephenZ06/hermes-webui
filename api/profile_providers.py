@@ -447,6 +447,137 @@ def copy_credentials(source: str, target: str, provider: str) -> dict:
 
 # ── connectivity check ─────────────────────────────────────────────────────
 
+# Where a key can be tried without spending anything. The list of models is
+# public on some providers, so those are asked something only a key can open:
+# OpenRouter's key endpoint, or an empty chat request, which the server refuses
+# for its missing fields once the key has passed. NVIDIA answers an empty
+# request the same with or without a key, so it is not listed and a key for it
+# is reported as unchecked rather than as working.
+_BEARER, _ANTHROPIC, _GOOGLE = "bearer", "anthropic", "google"
+_KEY_CHECKS = {
+    "openrouter": ("GET", "https://openrouter.ai/api/v1/key", _BEARER),
+    "anthropic": ("GET", "https://api.anthropic.com/v1/models", _ANTHROPIC),
+    "openai": ("GET", "https://api.openai.com/v1/models", _BEARER),
+    "zai": ("GET", "https://api.z.ai/api/paas/v4/models", _BEARER),
+    "kimi-coding": ("GET", "https://api.moonshot.ai/v1/models", _BEARER),
+    "deepseek": ("GET", "https://api.deepseek.com/v1/models", _BEARER),
+    "minimax": ("POST", "https://api.minimax.io/v1/chat/completions", _BEARER),
+    "minimax-cn": ("POST", "https://api.minimaxi.com/v1/chat/completions", _BEARER),
+    "google": ("GET", "https://generativelanguage.googleapis.com/v1beta/models", _GOOGLE),
+    "ollama-cloud": ("POST", "https://ollama.com/v1/chat/completions", _BEARER),
+    "opencode-zen": ("GET", "https://opencode.ai/zen/v1/models", _BEARER),
+    "opencode-go": ("GET", "https://opencode.ai/zen/go/v1/models", _BEARER),
+    "mistralai": ("GET", "https://api.mistral.ai/v1/models", _BEARER),
+    "x-ai": ("GET", "https://api.x.ai/v1/models", _BEARER),
+    "xiaomi": ("GET", "https://api.xiaomimimo.com/v1/models", _BEARER),
+    "neuralwatt": ("GET", "https://api.neuralwatt.com/v1/models", _BEARER),
+}
+# Google and xAI answer a bad key with 400 instead of 401.
+_BAD_KEY_AS_400 = {"google", "x-ai"}
+# An empty chat request that got past the key check fails on its fields.
+_EMPTY_REQUEST_REFUSED = {400, 422}
+_KEY_CHECK_TIMEOUT = 8
+
+
+def _key_headers(auth: str, key: str) -> dict:
+    headers = {"Accept": "application/json", "User-Agent": "Hermes-WebUI/1.0"}
+    if auth == _ANTHROPIC:
+        headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+    elif auth == _GOOGLE:
+        headers["x-goog-api-key"] = key
+    elif key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def _status_of(method: str, url: str, headers: dict) -> int:
+    """The HTTP status ``url`` answers with. Raises OSError when nothing answers."""
+    data = None
+    if method == "POST":
+        data = b"{}"
+        headers = {**headers, "Content-Type": "application/json"}
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=_KEY_CHECK_TIMEOUT) as resp:
+            return int(resp.status)
+    except urllib.error.HTTPError as exc:
+        return int(exc.code)
+
+
+def _usable_key(key: object) -> str:
+    text = str(key or "").strip()
+    if any(ord(ch) < 33 or ord(ch) == 127 for ch in text):
+        raise ProfileProviderError("That key has spaces or line breaks in it. Paste it again.")
+    return text
+
+
+def check_key(provider: str, key: str) -> dict:
+    """Try ``key`` against ``provider``. ``state`` is ok, rejected or unknown.
+
+    Only ``ok`` means the provider took the key, and ``rejected`` only means it
+    said no: anything else (no answer, a rate limit, an outage, a provider with
+    no way to check) is ``unknown`` and the caller must not call the key good.
+    The key never appears in the result.
+    """
+    label = next((p["label"] for p in api_key_providers() if p["id"] == provider), provider)
+    check = _KEY_CHECKS.get(provider)
+    if not check:
+        return {"state": "unknown", "message": f"{label} keys can't be checked from here."}
+    method, url, auth = check
+    key = _usable_key(key)
+    try:
+        status = _status_of(method, url, _key_headers(auth, key))
+    except (OSError, ValueError) as exc:
+        return {"state": "unknown", "message": f"Couldn't reach {label} to check the key ({exc.__class__.__name__})."}
+    rejected = status in (401, 403) or (status == 400 and provider in _BAD_KEY_AS_400)
+    if rejected:
+        return {"state": "rejected", "message": f"{label} rejected this key. Check it and try again."}
+    if status == 200 or (method == "POST" and status in _EMPTY_REQUEST_REFUSED):
+        return {"state": "ok", "message": f"{label} accepted the key."}
+    if status == 402:
+        return {"state": "unknown", "message": f"{label} says this account is out of credit."}
+    if status == 429:
+        return {"state": "unknown", "message": f"{label} is rate limiting, so the key couldn't be checked."}
+    return {"state": "unknown", "message": f"{label} answered HTTP {status}, so the key couldn't be checked."}
+
+
+def check_endpoint(base_url: str, key: str = "") -> dict:
+    """Try an OpenAI-compatible endpoint with ``key``, the same way as :func:`check_key`."""
+    key = _usable_key(key)
+    root = str(base_url or "").strip()
+    if not re.match(r"^https?://[^/\s]", root):
+        raise ProfileProviderError("Enter a URL that starts with http:// or https://.")
+    target = host_url(root).rstrip("/")
+    try:
+        status = _status_of("GET", f"{target}/models", _key_headers(_BEARER, key))
+        # Routers such as 9Router list models for anyone, so a 200 says nothing about the key.
+        if status == 200 and key:
+            status = _status_of("POST", f"{target}/chat/completions", _key_headers(_BEARER, key))
+            status = status if status in (401, 403) else 200
+    except (OSError, ValueError) as exc:
+        return {"state": "unknown", "message": f"Couldn't reach {root} ({exc.__class__.__name__}). Is it running?"}
+    if status in (401, 403):
+        return {"state": "rejected", "message": f"The endpoint answered HTTP {status}. Check the API key."}
+    if status == 200:
+        return {"state": "ok", "message": "The endpoint answered."}
+    return {"state": "unknown", "message": f"The endpoint answered HTTP {status}, so this couldn't be checked."}
+
+
+def verify_credentials(name: str, body: dict) -> dict:
+    """Check what the setup form holds before any of it is saved."""
+    key = str(body.get("api_key") or "")
+    if body.get("base_url") is not None:
+        if not key.strip() and body.get("id"):
+            home = profile_home(name)
+            entry = _endpoints(_read_config(home)).get(str(body["id"]))
+            if isinstance(entry, dict):
+                key = str(entry.get("api_key") or (_read_env(home).get(entry["key_env"]) if entry.get("key_env") else "") or "")
+        return check_endpoint(str(body.get("base_url") or ""), key)
+    if not key.strip():
+        raise ProfileProviderError("Paste an API key first.")
+    return check_key(str(body.get("provider") or "").strip(), key)
+
+
 def test_route(name: str, provider: str = "") -> dict:
     """Probe a route: endpoints get a live /models call; others a credential check."""
     home = profile_home(name)
@@ -477,6 +608,11 @@ def test_route(name: str, provider: str = "") -> dict:
         except Exception as exc:
             return {"ok": False, "message": f"Couldn't reach {_endpoint_url(entry)} ({exc.__class__.__name__}). Is it running?"}
     status = _route_status(home, cfg, env, provider, str(model.get("base_url") or ""))
+    env_var = _env_var_for(provider) if status["state"] == "ready" else None
+    key = (env.get(env_var) or (_is_root_home(home) and os.environ.get(env_var))) if env_var else None
+    if key:
+        checked = check_key(provider, key)
+        return {"ok": checked["state"] == "ok", "message": checked["message"]}
     return {"ok": status["state"] == "ready", "message": status["message"]}
 
 

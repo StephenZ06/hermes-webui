@@ -2,6 +2,7 @@
 Work Hub quests that open the item, and fits a phone without sideways scroll."""
 
 import json
+import re
 import time
 import urllib.request
 import uuid
@@ -535,7 +536,8 @@ def test_resume_studio_lists_skills_gained_and_tailoring_shows_what_it_added(bro
     page = _open(browser, viewport={"width": 1280, "height": 900})
     html = page.evaluate("""() => window.JobOSRender.skillsGainedView({resume: {text: 'x'}, skillsGained: [
         {name: 'Docker', kind: 'course'}, {name: 'AWS Cloud Practitioner', kind: 'certification'}]})""")
-    assert "Skills gained" in html and "Docker" in html and "Certification" in html and 'data-job-os-action="skills-manage"' in html
+    # Card titles wrap each i in a span so capitals sit evenly (capI in render.js).
+    assert "Skills gained" in re.sub(r"</?span[^>]*>", "", html) and "Docker" in html and "Certification" in html and 'data-job-os-action="skills-manage"' in html
     assert page.evaluate("() => window.JobOSRender.skillsGainedView({resume: null, skillsGained: []})") == ""
     assert "No skills yet" in page.evaluate("() => window.JobOSRender.skillsGainedView({resume: {text: 'x'}, skillsGained: []})")
 
@@ -957,7 +959,7 @@ def test_revenue_shows_the_change_against_the_previous_period(browser):
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
     page.wait_for_selector("[data-dash-card=revenue] .px-chart", timeout=15000)
     page.click("[data-rev-range=today]")
-    delta = page.evaluate("() => { const d = document.querySelector('[data-dash-card=revenue] .px-chart-delta'); return d && [d.textContent, d.className, d.title]; }")
+    delta = page.evaluate("() => { const d = document.querySelector('[data-dash-card=revenue] .px-chart-delta'); return d && [d.textContent, d.className, d.dataset.miTitle || d.title]; }")
     assert delta and "vs yesterday" in delta[0] and "is-up" in delta[1] and "at this point" in delta[2]
 
 

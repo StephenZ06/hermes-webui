@@ -86,7 +86,8 @@ def test_jobs_settings_menu_lines_up_with_its_pane(page):
     page.wait_for_selector("#jobOsRoot .settings-nav", timeout=15000)
     page.wait_for_timeout(600)  # the pane's slide-in
     tops = page.evaluate("() => ['.settings-rail', '.settings-page'].map((s) => Math.round(document.querySelector('#jobOsRoot ' + s).getBoundingClientRect().top))")
-    assert tops[0] == tops[1]
+    # The rail opens with its GENERAL heading, which sits above the pane's own title.
+    assert tops[1] - tops[0] == 24
 
 
 @pytest.mark.parametrize("view", ["dashboard", "scout", "pipeline", "resume-studio", "settings"])

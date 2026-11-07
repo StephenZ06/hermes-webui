@@ -401,6 +401,10 @@ function refresh() {
   return load();
 }
 
+function fadeRow(el) {
+  return typeof window.animateRemoval === 'function' ? window.animateRemoval(el.closest('li')) : Promise.resolve();
+}
+
 async function act(work) {
   try {
     await work();
@@ -484,8 +488,8 @@ const ACTIONS = {
   reject: el => act(() => post('approvals/decide', { approval_id: el.dataset.id, approve: false })),
   cancel: el => act(() => post('tasks/cancel', { task_id: el.dataset.id })),
   pause: el => act(() => post('pause', { agent_id: el.dataset.agent, paused: el.dataset.paused === '1' })),
-  'grant-remove': el => act(() => post('vault/grants/remove', { grant_id: el.dataset.id })),
-  'schedule-delete': el => act(() => post('schedules/delete', { schedule_id: el.dataset.id })),
+  'grant-remove': el => act(async () => { await post('vault/grants/remove', { grant_id: el.dataset.id }); await fadeRow(el); }),
+  'schedule-delete': el => act(async () => { await post('schedules/delete', { schedule_id: el.dataset.id }); await fadeRow(el); }),
   'new-business': () => { _creating = !_creating; refresh(); },
 };
 

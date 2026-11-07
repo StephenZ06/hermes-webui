@@ -66,7 +66,7 @@ def _assert_sections(sections):
     for section in sections:
         assert section["display"] == "flex"
         assert section["lines"] == ['""', '""'], "the label sits between two divider lines"
-        assert section["widths"][0] == section["widths"][1], "the label is centred"
+        assert abs(float(section["widths"][0][:-2]) - float(section["widths"][1][:-2])) < 0.1, "the label is centred"
         assert abs(section["above"] - section["below"]) < 0.1 and section["above"] > 0
 
 

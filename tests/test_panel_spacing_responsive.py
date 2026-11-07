@@ -97,7 +97,7 @@ def test_office_and_work_hub_use_the_shared_section_heading_pattern():
 def test_work_hub_project_menu_has_three_centered_actions():
     # New board, New project, and Delete (which enters the wiggling
     # delete mode; boards are deleted from that mode too, not a menu entry).
-    assert "New board</button><button type=\"button\" data-create-project>New project</button><button type=\"button\" class=\"is-danger\" data-delete-project>Delete</button>" in WORK_HUB
+    assert "New board</button><button type=\"button\" data-create-project>New project</button><span class=\"work-hub-create-menu-sep\" aria-hidden=\"true\"></span><button type=\"button\" class=\"is-danger\" data-delete-project>Delete</button>" in WORK_HUB
     assert "data-delete-board>Delete board</button>" not in WORK_HUB
     assert ".work-hub-create-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);" in CSS
     assert ".work-hub-create-menu button{text-align:center;" in CSS

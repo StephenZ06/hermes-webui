@@ -12111,7 +12111,7 @@ def _handle_account_usage(handler, parsed) -> bool:
         get_hermes_home_for_profile,
         normalized_profile_provider,
     )
-    from api.providers import _SELF_HOSTED_PROVIDER_IDS
+    from api.providers import _SELF_HOSTED_PROVIDER_IDS, is_self_hosted_route
 
     query = parse_qs(parsed.query)
     profile_name = str(query.get("profile", [""])[0] or "").strip() or get_active_profile_name()
@@ -12159,6 +12159,29 @@ def _handle_account_usage(handler, parsed) -> bool:
                     return _answer(desktop_snapshot)
         except Exception:
             logger.debug("Codex desktop usage fetch failed for %r", profile_name, exc_info=True)
+
+    # A local server has no quota, and Claude through 9router is read from the
+    # host's 9router: neither reads a profile setting, so neither waits on the
+    # cron lock below.
+    if is_self_hosted_route(provider_raw, base_url):
+        j(handler, {
+            "available": False,
+            "provider": normalized_profile_provider(provider_raw, base_url),
+            "local": True,
+        })
+        return True
+
+    # Claude Code plans routed through 9router expose their actual subscription
+    # limits through the managed local usage bridge. This is intentionally
+    # model-scoped: other 9router providers retain their own quota semantics
+    # and must not inherit Claude usage.
+    configured_model = str(model_cfg.get("default") or model_cfg.get("model") or "").strip().lower()
+    if provider_raw.lower() == "custom:9router" and configured_model.startswith("cc/claude-"):
+        snapshot = _webui_account_usage.fetch_9router_claude_account_usage(base_url or "")
+        if snapshot is not None and getattr(snapshot, "available", False):
+            return _answer(snapshot)
+        j(handler, {"available": False, "provider": "9router-claude"})
+        return True
 
     # The rest reads profile-scoped credentials under the cron lock. While a
     # scheduled job holds it, answer with this profile's last reading.
@@ -12247,22 +12270,6 @@ def _handle_account_usage(handler, parsed) -> bool:
                     _render_account_usage_response(handler, snapshot)
                     return True
                 j(handler, {"available": False, "provider": "neuralwatt"})
-                return True
-
-            # Claude Code plans routed through 9router expose their actual
-            # subscription limits through the managed local usage bridge. This
-            # is intentionally model-scoped: other 9router providers retain
-            # their own quota semantics and must not inherit Claude usage.
-            configured_model = str(model_cfg.get("default") or model_cfg.get("model") or "").strip().lower()
-            if (
-                provider_raw.lower() == "custom:9router"
-                and configured_model.startswith("cc/claude-")
-            ):
-                snapshot = _webui_account_usage.fetch_9router_claude_account_usage(base_url or "")
-                if snapshot is not None and getattr(snapshot, "available", False):
-                    _render_account_usage_response(handler, snapshot)
-                    return True
-                j(handler, {"available": False, "provider": "9router-claude"})
                 return True
 
             # Codex path (reached when "auto"/custom resolved to Codex):
@@ -19669,6 +19676,8 @@ def _route_post_api_profiles_providers_action(handler, parsed, body, diag):
             result = pp.set_fallbacks(name, body.get("items") if isinstance(body.get("items"), list) else [])
         elif action == "copy":
             result = pp.copy_credentials(str(body.get("source") or ""), name, body.get("provider"))
+        elif action == "verify":
+            result = pp.verify_credentials(name, body)
         elif action == "test":
             result = pp.test_route(name, str(body.get("provider") or ""))
         elif action == "models":
@@ -19692,10 +19701,15 @@ def _route_post_api_profiles_oauth_start(handler, parsed, body, diag):
     if not name:
         return bad(handler, "name required")
     try:
-        status = profile_oauth_status(name)
-        if not status["oauth_supported"]:
-            return bad(handler, "This profile's provider does not use a browser sign-in.")
-        return j(handler, start_onboarding_oauth_flow({"provider": status["provider"], "profile": name}),
+        # The setup wizard names the provider being connected: a new profile has
+        # none configured yet, and an existing one may be moving to another.
+        provider = str(body.get("provider") or "").strip()
+        if not provider:
+            status = profile_oauth_status(name)
+            if not status["oauth_supported"]:
+                return bad(handler, "This profile's provider does not use a browser sign-in.")
+            provider = status["provider"]
+        return j(handler, start_onboarding_oauth_flow({"provider": provider, "profile": name}),
                  extra_headers={"Cache-Control": "no-store"})
     except ValueError as exc:
         return bad(handler, str(exc))
@@ -21001,6 +21015,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/profiles/providers/main"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/fallbacks"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/copy"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/verify"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/test"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/models"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/oauth/cancel"), _route_post_api_profiles_oauth_cancel),

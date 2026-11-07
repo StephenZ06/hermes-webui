@@ -12161,7 +12161,7 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   /* 6px clear above and below each divider, so a highlighted button never
      touches it; the buttons give up 3px of height (icons unchanged) so all
      19 (Dashboard included) still fit the bar without scrolling. */
-  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{flex-basis:41px;height:41px;min-height:41px;}
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{flex-basis:39px;height:39px;min-height:39px;}
   /* The panel is hidden whenever the sidebar is not fully open. Going from
      closed to the icon bar it therefore never shows through the widening
      clip; collapsing from the full sidebar it still hides after the slide. */
@@ -16225,7 +16225,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    Page background and the cards' outline; a slim window bar names the search,
    a "$ scout run" line shows what runs, then the output lines. Everything
    sits in one monospace column. */
-#jobOsRoot .scout-search .scout-run{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:0;row-gap:0;min-height:0;padding:0;border:1px solid var(--border2);border-style:solid;border-radius:10px;background:var(--bg);overflow:hidden;font-family:var(--font-mono,ui-monospace,"Courier New",monospace);}
+#jobOsRoot .scout-search .scout-run{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:0;row-gap:0;min-height:0;padding:0;border:1px solid var(--border2);border-style:solid;border-radius:10px;background:var(--bg);overflow:hidden;font-family:var(--font-mono);}
 #jobOsRoot .scout-search .scout-run.is-active{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));background:var(--bg);}
 #jobOsRoot .scout-term-bar{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:5px 10px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;line-height:14px;}
 #jobOsRoot .scout-term-dots{display:inline-flex;gap:4px;}
@@ -16827,7 +16827,7 @@ textarea.office-biz-input{resize:vertical;}
 #jobOsRoot .seg>.mi-pill,#jobOsRoot .studio-tabs>.mi-pill{background:var(--accent-bg);box-shadow:none;}
 #jobOsRoot .seg-btn.active,#jobOsRoot .studio-tabs button.active{background:var(--accent-bg);box-shadow:none;color:var(--accent-text,var(--accent));}
 #jobOsRoot .seg.mi-tabs-ready>.seg-btn.active,#jobOsRoot .studio-tabs.mi-tabs-ready>button.active{background:transparent;}
-#jobOsRoot .pipe-view .job-os-fill>.job-os-card-head{min-height:0;margin-top:-5px;}
+#jobOsRoot .pipe-view .job-os-fill>.job-os-card-head{min-height:0;margin-top:-6px;}
 #jobOsRoot .pipe-card-actions .job-os-btn,#jobOsRoot .pipe-card-actions .job-os-btn.primary{font-size:13px;}
 
 /* Card titles in capitals on every Jobs page. */
@@ -17470,3 +17470,27 @@ textarea.office-biz-input{resize:vertical;}
   .cmdk-overlay,#wikiBrowserOverlay,#checkpointDiffModal,#auxAdvancedOverlay,.kanban-modal-overlay,.cmdk-modal,#wikiBrowserOverlay > div,#checkpointDiffModal > div,#auxAdvancedOverlay > div,.kanban-modal,.overlay-closing,.main-view-body .detail-form,
   .files-sidebar-host .files-workspaces,.files-inspector-content.is-swapping,.files-list.is-in-forward,.files-list.is-in-back,.files-list.is-in-in{animation:none;}
 }
+
+/* ── round 13 ─────────────────────────────────────────────────────────────── */
+
+/* A local model has no quota: the session usage card keeps its title and says so. */
+.chat-usage-widget-unlimited{display:none;}
+.chat-usage-widget.is-unlimited .chat-usage-widget-window-stage{display:none;}
+.chat-usage-widget.is-unlimited .chat-usage-widget-title-row{margin-bottom:0;}
+.chat-usage-widget.is-unlimited .chat-usage-widget-unlimited{display:inline-block;margin-left:auto;font-weight:650;line-height:16px;color:var(--text);text-transform:uppercase;}
+
+/* Cold load: see the boot-gate script in index.html. Taking the animation away
+   here is what lets the view's one entrance play when the gate lifts. */
+html.boot-gate main.main > .main-view,html.boot-gate .sidebar .panel-view.active{visibility:hidden;animation:none;}
+
+/* A toast reports on what a modal just did, so it sits above every overlay. */
+.toast{z-index:2147483646;}
+.mi-toast-ghost{z-index:2147483645;}
+
+/* New profile: provider logos sit on a white tile, and the key check's answer. */
+.pw-choice .ps-template-icon{background:#fff;color:#1c1c1c;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);}
+.pw-logo{display:block;width:22px;height:22px;}
+.pw-check{display:block;min-height:17px;margin-top:8px;font-size:12px;line-height:17px;color:var(--muted);}
+.pw-check.is-ok{color:var(--success,#3fb950);}
+.pw-check.is-warn{color:var(--warning,#f5c542);}
+.pw-check.is-error{color:var(--error,#e94560);}

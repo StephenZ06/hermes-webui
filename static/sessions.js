@@ -4535,6 +4535,7 @@ async function _deleteSelectedSessions(){
       const response=await api('/api/session/delete',{method:'POST',body:JSON.stringify({session_id:sid})});
       return {response,session:sessionsById.get(sid)||null};
     }));
+    await Promise.all(ids.map(sid=>animateRemoval(document.querySelector(`.session-item[data-sid="${CSS.escape(sid)}"]`),{collapse:false})));
     const retainedCount=_worktreeResponseCount(results);
     const cleanupFailedCount=results.filter(result=>result.response&&result.response.state_db_cleanup_failed).length;
     ids.forEach(_clearHandoffStorageForSession);
@@ -5072,6 +5073,8 @@ async function _archiveSession(session, archived=true, beforeListRender=null){
   const renderHold=beforeListRender?Promise.resolve().then(beforeListRender):null;
   try{
     const response=await api('/api/session/archive',{method:'POST',body:JSON.stringify({session_id:session.session_id,archived})});
+    // A swipe has already taken the row away; with archived chats showing it stays.
+    if(archived&&!beforeListRender&&!_showArchived) await animateRemoval(document.querySelector(`.session-item[data-sid="${CSS.escape(session.session_id)}"]`),{collapse:false});
     session.archived=archived;
     _setOptimisticSessionField(session.session_id,'archived',archived);
     const cached=(_allSessions||[]).find(s=>s&&s.session_id===session.session_id);
@@ -5186,6 +5189,7 @@ function _openSessionActionMenu(session, anchorEl){
         closeSessionActionMenu();
         try{
           await api('/api/session/archive',{method:'POST',body:JSON.stringify({session_id:session.session_id,archived:true})});
+          await animateRemoval(document.querySelector(`.session-item[data-sid="${CSS.escape(session.session_id)}"]`),{collapse:false});
           _optimisticallyArchiveSessionInList(session.session_id,true);
           session.archived=true;
           if(S.session&&S.session.session_id===session.session_id) S.session.archived=true;
@@ -10748,6 +10752,7 @@ async function _confirmDeleteProject(proj){
   if(!ok){return;}
   try {
     await api('/api/projects/delete',{method:'POST',body:JSON.stringify({project_id:proj.project_id})});
+    await animateRemoval(document.querySelector(`.project-chip[data-project-id="${CSS.escape(proj.project_id)}"]`));
     if(_activeProject===proj.project_id) _activeProject=null;
     await renderSessionList();
     showToast('Project deleted');

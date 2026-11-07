@@ -3027,6 +3027,7 @@ async function archiveKanbanTaskFromDetail(taskId){
       body: JSON.stringify({status: 'archived'}),
     });
     closeKanbanTaskDetail();
+    await _fadeKanbanCard(taskId);
     await loadKanban(true);
     showToast(t('kanban_task_archived') || 'Task archived');
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
@@ -4089,6 +4090,7 @@ async function deleteKanbanCrew(id){
   if (!ok) return;
   try {
     await api('/api/crews/delete', {method: 'POST', body: JSON.stringify({id})});
+    await animateRemoval(document.querySelector(`.kanban-crew-card[data-crew-id="${CSS.escape(id)}"]`), {collapse: false});
     showToast(t('kanban_crew_deleted') || 'Crew deleted', 'success');
     await loadKanbanCrews();
   } catch(e) {
@@ -4381,7 +4383,7 @@ function _kanbanLinksHtml(links){
   const item = (id, isParent) => {
     const parentId = isParent ? id : taskId;
     const childId = isParent ? taskId : id;
-    return `<code>${esc(id)} <button class="btn mini" onclick="removeKanbanDependency(${_kanbanJsArg(parentId)},${_kanbanJsArg(childId)})" data-i18n="kanban_remove_dependency" title="${esc(t('kanban_remove_dependency') || 'Remove')}">✕</button></code>`;
+    return `<code>${esc(id)} <button class="btn mini" onclick="removeKanbanDependency(${_kanbanJsArg(parentId)},${_kanbanJsArg(childId)},this)" data-i18n="kanban_remove_dependency" title="${esc(t('kanban_remove_dependency') || 'Remove')}">✕</button></code>`;
   };
   const hasLinks = parents.length || children.length;
   return `<div class="kanban-detail-links-section">
@@ -4923,6 +4925,10 @@ async function submitKanbanTaskModal(){
   }
 }
 
+function _fadeKanbanCard(taskId){
+  return animateRemoval(document.querySelector(`.kanban-card[data-kanban-task-id="${CSS.escape(taskId)}"]`),{collapse:false});
+}
+
 async function updateKanbanTask(taskId, patch, opts){
   if (!taskId || !patch) return;
   try {
@@ -4931,6 +4937,7 @@ async function updateKanbanTask(taskId, patch, opts){
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
+    if (patch.status === 'archived') await _fadeKanbanCard(taskId);
     await loadKanban(true);
     if (openDetail) await loadKanbanTask((updated && updated.task && updated.task.id) || taskId);
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
@@ -4973,13 +4980,14 @@ async function addKanbanDependency(taskId){
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
 }
 
-async function removeKanbanDependency(parentId, childId){
+async function removeKanbanDependency(parentId, childId, button){
   if (!parentId || !childId) return;
   try {
     await api('/api/kanban/links/delete' + _kanbanBoardQuery(), {
       method: 'POST',
       body: JSON.stringify({parent_id: parentId, child_id: childId}),
     });
+    await animateRemoval(button && button.closest('code'), {collapse: false});
     await loadKanbanTask(_kanbanCurrentTaskId);
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
 }
@@ -6895,6 +6903,7 @@ async function deleteCurrentSkill() {
   if (!ok) return;
   try {
     await api('/api/skills/delete', { method:'POST', body: JSON.stringify({ name }) });
+    await animateRemoval(document.querySelector(`.skill-item[data-skill-name="${CSS.escape(name)}"]`));
     _currentSkillDetail = null;
     _skillPreFormDetail = null;
     _skillsData = null;
@@ -7735,6 +7744,7 @@ async function deleteMemoryEntry(index) {
   if (!ok) return;
   try {
     await api('/api/memory/entry/delete', { method: 'POST', body: JSON.stringify({ section: 'memory', index }) });
+    await animateRemoval(document.querySelector(`.memory-entry-card[data-entry-index="${index}"]`));
     await loadMemory();
     showToast(t('memory_entries_deleted') || 'Entry deleted');
   } catch (e) {
@@ -9419,6 +9429,19 @@ function _pwIcon(kind, size = 18){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${_PW_ICONS[kind] || ''}</svg>`;
 }
 
+// Provider logos, sized to look equal in the tile (drawn from icons/profiles).
+// A provider with no logo keeps its line icon.
+const _PW_LOGOS = {
+  'openai-codex': 'openai', openai: 'openai', 'openai-api': 'openai', 'preset:custom': 'openai',
+  anthropic: 'anthropic', openrouter: 'openrouter', 'opencode-go': 'opencode', 'opencode-zen': 'opencode',
+  deepseek: 'deepseek', google: 'gemini', 'x-ai': 'xai', 'preset:9router': '9router', 'ollama-cloud': 'ollama',
+  'preset:lmstudio': 'lmstudio', 'preset:ollama': 'ollama',
+};
+function _pwTile(choice){
+  const logo = _PW_LOGOS[choice.id];
+  return logo ? `<img class="pw-logo" src="static/provider-icons/${logo}.png" alt="" width="22" height="22" decoding="async">` : _pwIcon(choice.kind);
+}
+
 function _pwChoices(data){
   const choices = [];
   data.signins.forEach(s => choices.push({kind: 'signin', id: s.id, label: s.label, desc: s.id === 'openai-codex' ? 'ChatGPT plan sign-in' : 'Claude Code sign-in', connected: s.signed_in}));
@@ -9579,7 +9602,7 @@ async function openProviderWizard(name, opts = {}){
           const card = document.createElement('button'); card.type = 'button';
           card.className = 'ps-template pw-choice' + (st.choice && st.choice.id === c.id ? ' is-selected' : '');
           card.style.setProperty('--i', i++);
-          card.innerHTML = `<span class="ps-template-icon">${_pwIcon(c.kind)}</span><span class="ps-template-text"><span class="ps-template-label">${esc(c.label)}</span><span class="ps-template-desc">${esc(c.desc || '')}</span></span>${c.connected ? '<span class="pw-connected" title="Already connected">✓</span>' : ''}`;
+          card.innerHTML = `<span class="ps-template-icon">${_pwTile(c)}</span><span class="ps-template-text"><span class="ps-template-label">${esc(c.label)}</span><span class="ps-template-desc">${esc(c.desc || '')}</span></span>${c.connected ? '<span class="pw-connected" title="Already connected">✓</span>' : ''}`;
           card.onclick = () => { st.choice = c; st.models = null; st.model = ''; wrap.querySelectorAll('.pw-choice').forEach(n => n.classList.toggle('is-selected', n === card)); nav({canNext: true, showPrev: false}); };
           card.ondblclick = () => { st.choice = c; go(2, 1); };
           grid.append(card);
@@ -9600,10 +9623,25 @@ async function openProviderWizard(name, opts = {}){
       nav({canNext: !!st.choice, showPrev: false});
     }
 
+    // A key or endpoint is tried before it is saved. A refusal stays on this
+    // step. When the check could not run, the answer is the person's: the same
+    // details pressed again save anyway. Nothing unchecked is called working.
+    const checkReport = (line) => (kind, message) => { line.className = 'pw-check' + (kind ? ' is-' + kind : ''); line.textContent = message || ''; };
+    async function checked(payload, stamp, report){
+      if (st.unchecked === stamp) return true;
+      let r;
+      try { r = await _ppPost('verify', payload); }
+      catch (e) { r = {state: 'unknown', message: e.message || 'The check did not run.'}; }
+      if (r.state === 'ok') { report('ok', r.message); return true; }
+      st.stopped = r.state; st.unchecked = r.state === 'rejected' ? null : stamp;
+      report(r.state === 'rejected' ? 'error' : 'warn', r.message);
+      return false;
+    }
+
     // Step 2: connect
     function stepConnect(){
       const c = st.choice;
-      st.save = null;
+      st.save = null; st.unchecked = null;
       sub.textContent = c.label;
       if (c.kind === 'signin') return connectSignin(c);
       if (c.kind === 'key') return connectKey(c);
@@ -9623,7 +9661,7 @@ async function openProviderWizard(name, opts = {}){
       btn.onclick = async () => {
         btn.disabled = true; flow.innerHTML = '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Starting sign-in…</span></div>';
         let start;
-        try { start = await api('/api/profiles/oauth/start', {method: 'POST', body: JSON.stringify({name})}); }
+        try { start = await api('/api/profiles/oauth/start', {method: 'POST', body: JSON.stringify({name, provider: c.id})}); }
         catch (e) { flow.textContent = e.message || 'Could not start sign-in.'; btn.disabled = false; return; }
         if (start.status === 'success') { c.connected = true; flow.innerHTML = ''; btn.disabled = false; paint(); return; }
         const id = start.flow_id; flowId = id;
@@ -9653,14 +9691,19 @@ async function openProviderWizard(name, opts = {}){
     function connectKey(c){
       const wrap = section(`Add your ${c.label} API key`, c.connected ? 'A key is already saved. Paste a new one to replace it, or continue.' : 'It is saved to this profile only and never shown again.', true);
       const form = document.createElement('form'); form.className = 'pw-connect';
-      form.innerHTML = `<label class="project-starter-field"><span>${esc(c.env_var)}</span><input class="pp-input pw-key" type="password" autocomplete="off" placeholder="${c.connected ? '•••••••• saved' : 'Paste API key'}"></label>`;
+      form.innerHTML = `<label class="project-starter-field"><span>${esc(c.env_var)}</span><input class="pp-input pw-key" type="password" autocomplete="off" placeholder="${c.connected ? '•••••••• saved' : 'Paste API key'}"></label>
+        <span class="pw-check" role="status"></span>`;
       wrap.append(form);
-      const input = form.querySelector('.pw-key');
+      const input = form.querySelector('.pw-key'), report = checkReport(form.querySelector('.pw-check'));
       const sync = () => nav({canNext: c.connected || !!input.value.trim()});
-      input.oninput = sync; form.onsubmit = (e) => { e.preventDefault(); if (!next.disabled) next.click(); };
+      input.oninput = () => { st.unchecked = null; report(''); sync(); };
+      form.onsubmit = (e) => { e.preventDefault(); if (!next.disabled) next.click(); };
       st.provider = c.id; st.save = async () => {
         const key = input.value.trim();
-        if (key) { await _ppPost('key', {name, provider: c.id, api_key: key}); c.connected = true; }
+        if (!key) return true;
+        if (!await checked({name, provider: c.id, api_key: key}, key, report)) return false;
+        await _ppPost('key', {name, provider: c.id, api_key: key}); c.connected = true;
+        return true;
       };
       sync(); setTimeout(() => input.focus(), 40);
     }
@@ -9676,17 +9719,20 @@ async function openProviderWizard(name, opts = {}){
           <label>Base URL<input class="pp-input pw-ep-url" value="${esc(e ? e.base_url : p.base_url)}" placeholder="https://host/v1"></label>
           <label class="pw-span">API key${p.needs_key ? '' : ' (optional)'}<input class="pp-input pw-ep-key" type="password" autocomplete="off" placeholder="${e && e.has_key ? '•••••••• saved' : 'Paste API key'}"></label>
         </div>
-        <span class="pp-ep-result pw-ep-result"></span>`;
+        <span class="pw-check" role="status"></span>`;
       wrap.append(form);
       const nameIn = form.querySelector('.pw-ep-name'), urlIn = form.querySelector('.pw-ep-url'), keyIn = form.querySelector('.pw-ep-key');
+      const report = checkReport(form.querySelector('.pw-check'));
       const sync = () => nav({canNext: !!nameIn.value.trim() && /^https?:\/\/./.test(urlIn.value.trim())});
-      [nameIn, urlIn, keyIn].forEach(i => i.oninput = sync);
+      [nameIn, urlIn, keyIn].forEach(i => i.oninput = () => { st.unchecked = null; report(''); sync(); });
       form.onsubmit = (ev) => { ev.preventDefault(); if (!next.disabled) next.click(); };
       st.save = async () => {
         const payload = {name, id: e ? e.id : undefined, display: nameIn.value.trim(), base_url: urlIn.value.trim()};
         if (keyIn.value.trim()) payload.api_key = keyIn.value.trim();
+        if (!await checked({name, id: payload.id, base_url: payload.base_url, api_key: payload.api_key}, payload.base_url + '\n' + (payload.api_key || ''), report)) return false;
         const saved = await _ppPost('endpoint', payload);
         st.provider = saved.provider; c.endpoint = {id: saved.id, provider: saved.provider, name: payload.display, base_url: payload.base_url, has_key: !!payload.api_key || (e && e.has_key)};
+        return true;
       };
       sync(); setTimeout(() => (nameIn.value ? urlIn : nameIn).focus(), 40);
     }
@@ -9775,9 +9821,12 @@ async function openProviderWizard(name, opts = {}){
       if (st.step === 1) { go(2, 1); return; }
       if (st.step === 2) {
         if (st.save) {
-          st.busy = true; next.disabled = true; next.textContent = 'Saving…';
-          try { await st.save(); } catch (e) { st.busy = false; showToast(e.message || 'Could not save'); nav({canNext: true}); return; }
-          st.busy = false; st.save = null;
+          st.busy = true; next.disabled = true; next.textContent = 'Checking…';
+          let saved;
+          try { saved = await st.save(); } catch (e) { st.busy = false; showToast(e.message || 'Could not save', 0, 'error'); nav({canNext: true}); return; }
+          st.busy = false;
+          if (saved === false) { nav(st.stopped === 'rejected' ? {canNext: false} : {canNext: true, nextLabel: 'Save anyway'}); return; }
+          st.save = null;
         }
         st.models = null; go(3, 1); return;
       }
@@ -10013,11 +10062,18 @@ async function _renderProfileProviders(name){
 
   $c('.pp-key-form').onsubmit = async (ev) => { ev.preventDefault();
     const value = $c('.pp-key-value').value.trim(); if (!value) return;
-    try { await _ppPost('key', {name, provider: $c('.pp-key-provider').value, api_key: value}); showToast('API key saved'); refresh(); } catch (e) { fail(e); } };
+    const provider = $c('.pp-key-provider').value;
+    try {
+      const check = await _ppPost('verify', {name, provider, api_key: value});
+      if (check.state === 'rejected') { showToast(check.message, 0, 'error'); return; }
+      await _ppPost('key', {name, provider, api_key: value});
+      showToast(check.state === 'ok' ? 'API key saved' : 'API key saved, not checked: ' + check.message);
+      refresh();
+    } catch (e) { fail(e); } };
   card.querySelectorAll('.pp-key-remove').forEach(b => b.onclick = async () => {
     const ok = await showConfirmDialog({message: 'Remove this API key from ' + name + '?', confirmLabel: 'Remove', danger: true});
     if (!ok) return;
-    try { await _ppPost('key', {name, provider: b.dataset.provider, api_key: null}); refresh(); } catch (e) { fail(e); } });
+    try { await _ppPost('key', {name, provider: b.dataset.provider, api_key: null}); await animateRemoval(b.closest('li')); refresh(); } catch (e) { fail(e); } });
   const copyForm = $c('.pp-copy-form');
   if (copyForm) copyForm.onsubmit = async (ev) => { ev.preventDefault();
     try { await _ppPost('copy', {name, source: $c('.pp-copy-source').value, provider: $c('.pp-copy-provider').value}); showToast('Copied'); refresh(); } catch (e) { fail(e); } };
@@ -10156,6 +10212,7 @@ async function deleteCurrentProfile(){
   if(!_ok) return;
   try {
     await api('/api/profile/delete', { method: 'POST', body: JSON.stringify({ name }) });
+    await animateRemoval(document.querySelector(`.profile-card[data-name="${CSS.escape(name)}"]`));
     _invalidateKanbanProfileCache();
     _clearProfileDetail();
     await loadProfilesPanel();
@@ -10899,6 +10956,7 @@ async function deleteProfile(name) {
   if(!_delProf) return;
   try {
     await api('/api/profile/delete', { method: 'POST', body: JSON.stringify({ name }) });
+    await animateRemoval(document.querySelector(`.profile-card[data-name="${CSS.escape(name)}"]`));
     _invalidateKanbanProfileCache();
     await loadProfilesPanel();
     showToast(t('profile_deleted', name));
@@ -12860,9 +12918,9 @@ async function loadSettingsPanel(){
       wsPanelCb.checked=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open';
       wsPanelCb.onchange=function(){
         const open=this.checked;
-        localStorage.setItem('hermes-webui-workspace-panel-pref',open?'open':'closed');
+        try{localStorage.setItem('hermes-webui-workspace-panel-pref',open?'open':'closed');}catch(_){}
         // Also sync the runtime key so the current session reflects the change
-        localStorage.setItem('hermes-webui-workspace-panel',open?'open':'closed');
+        try{localStorage.setItem('hermes-webui-workspace-panel',open?'open':'closed');}catch(_){}
         document.documentElement.dataset.workspacePanel=open?'open':'closed';
         if(open&&_workspacePanelMode==='closed') openWorkspacePanel('browse');
         else if(!open&&_workspacePanelMode!=='closed') toggleWorkspacePanel(false);
@@ -15866,7 +15924,7 @@ async function loadPasskeys(){
     }
     const creds=(data&&data.credentials)||[];
     if(!creds.length){list.textContent='No passkeys registered.';return;}
-    list.innerHTML=creds.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px"><span>${esc(c.label||'Passkey')}</span><button class="btn-tiny" onclick="deletePasskey('${esc(c.id)}')">Remove</button></div>`).join('');
+    list.innerHTML=creds.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px"><span>${esc(c.label||'Passkey')}</span><button class="btn-tiny" onclick="deletePasskey('${esc(c.id)}',this)">Remove</button></div>`).join('');
   }catch(e){list.textContent='Failed to load passkeys: '+e.message;}
 }
 
@@ -15891,10 +15949,10 @@ async function registerPasskey(){
   }catch(e){showToast('Passkey registration failed: '+e.message);}
 }
 
-async function deletePasskey(id){
+async function deletePasskey(id,button){
   const ok=await showConfirmDialog({title:'Remove passkey?',message:'This browser/device will no longer be able to sign in with that passkey.',confirmLabel:'Remove',danger:true,focusCancel:true});
   if(!ok) return;
-  try{await api('/api/auth/passkey/delete',{method:'POST',body:JSON.stringify({id})});showToast('Passkey removed');loadPasskeys();try{_syncPasswordlessButton(await api('/api/auth/status'));}catch(_e){}}
+  try{await api('/api/auth/passkey/delete',{method:'POST',body:JSON.stringify({id})});await animateRemoval(button&&button.parentElement);showToast('Passkey removed');loadPasskeys();try{_syncPasswordlessButton(await api('/api/auth/status'));}catch(_e){}}
   catch(e){showToast('Failed to remove passkey: '+e.message);}
 }
 

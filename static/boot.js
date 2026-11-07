@@ -265,7 +265,9 @@ function _setWorkspacePanelMode(mode,opts={}){
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
-  if(opts.persist!==false){try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}}
+  if(opts.persist!==false){
+    try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
+  }
   // The open state is one layout change, applied inside the slide so the slide
   // measures the panel where it really starts. Set before it, a pinned panel
   // (whose 50/50 share is not a transitioned width) was already at its final
@@ -5616,6 +5618,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   try{syncWorkspacePanelState();}catch(_){}
   try{$('msgInner').innerHTML='';$('emptyState').style.display='';}catch(_){}
   try{if(typeof renderSessionList==='function') void renderSessionList();}catch(_){}
+}).finally(()=>{
+  document.documentElement.classList.remove('boot-gate');
 });
 
 // Fix #822 (bfcache path): when the browser restores the page from the

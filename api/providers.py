@@ -21,6 +21,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -765,6 +766,25 @@ _PROVIDER_ENV_VAR_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _SELF_HOSTED_PROVIDER_IDS = frozenset({"ollama", "lmstudio"})
+# The setup wizard saves LM Studio and Ollama as custom endpoints, so the address
+# is what says a route is one of them. Other custom endpoints on this machine
+# may be routers in front of a paid account and are not treated as local.
+_SELF_HOSTED_PORTS = frozenset({1234, 11434})
+_SELF_HOSTED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
+
+
+def is_self_hosted_route(provider: object, base_url: object = None) -> bool:
+    """Whether a profile's route is a model server on this machine, with no quota."""
+    value = str(provider or "").strip().lower()
+    if value in _SELF_HOSTED_PROVIDER_IDS:
+        return True
+    if value != "custom" and not value.startswith("custom:"):
+        return False
+    try:
+        parsed = urlparse(str(base_url or ""))
+        return (parsed.hostname or "").lower() in _SELF_HOSTED_HOSTS and parsed.port in _SELF_HOSTED_PORTS
+    except ValueError:
+        return False
 
 
 def _provider_credential_env_vars() -> tuple[str, ...]:
