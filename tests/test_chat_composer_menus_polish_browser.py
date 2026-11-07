@@ -47,7 +47,11 @@ def test_model_menu_buttons_are_squares_as_tall_as_their_inputs(page):
     pads = page.evaluate("""() => ['.model-search-input', '.model-custom-input'].map(s => {
       const c = getComputedStyle(document.querySelector('#composerModelDropdown ' + s));
       return parseFloat(c.paddingBottom) - parseFloat(c.paddingTop); })""")
-    assert pads == [2, 2], pads
+    # On a 1x screen the search box lands at y.6, where the text rounds a row above
+    # the outline, so there it takes even padding to read centred (see
+    # test_menu_search_placeholders_are_centred); 2x keeps the 1px lift.
+    lift = 2 if page.evaluate("devicePixelRatio") >= 1.5 else 0
+    assert pads == [lift, 2], pads
 
 
 def test_workspace_search_clear_matches_its_input(page):

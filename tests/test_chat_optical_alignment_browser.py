@@ -163,7 +163,14 @@ def test_menu_search_placeholders_are_centred(browser, screen, chip, field):
         page.click(chip)
         page.wait_for_selector(field)
         page.eval_on_selector(field, "e => { e.placeholder = 'Search models'; }")
-        page.wait_for_timeout(200)
+        # Measure the menu at rest: a fixed 200ms read the workspace field while
+        # the menu was still settling, so it passed with fainter, higher ink and
+        # missed a placeholder that sits a pixel low once the menu is open.
+        page.wait_for_function("""sel => {
+          const menu = document.querySelector(sel).closest('.model-dropdown,.ws-dropdown');
+          return !menu.getAnimations({subtree: true}).some(a => a.playState === 'running');
+        }""", arg=field)
+        page.wait_for_timeout(300)
         top, bottom = _gaps(page, field)
         # Field text snaps in whole CSS pixels, so 8.5 rows of ink at 2x cannot sit closer.
         assert abs(top - bottom) <= 1.5, (top, bottom)

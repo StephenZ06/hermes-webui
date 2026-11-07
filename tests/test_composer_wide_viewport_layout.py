@@ -6,6 +6,7 @@ mechanism than every chip beside it, and the composer box is *widened* on
 ultrawide displays by a rule whose own comment says it caps the width.
 """
 
+import re
 from pathlib import Path
 
 
@@ -128,7 +129,9 @@ def test_ultrawide_viewports_do_not_stretch_the_composer_to_1600px():
     cluster and the send button and pulling the composer badly out of line with
     the text it belongs to.
     """
-    assert "max-width:1600px" not in STYLE_CSS, (
+    # A width *declaration* of 1600px, not a media query that happens to name
+    # 1600px as its breakpoint (the Jobs automations grid has one).
+    assert not re.search(r"(?<!\()\bmax-width:\s*1600px", STYLE_CSS), (
         "nothing in the composer should stretch to 1600px on ultrawide"
     )
     assert "@media (min-width:1600px){:root{--composer-max:1200px;}}" in STYLE_CSS
