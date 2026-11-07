@@ -753,6 +753,14 @@
     if (!host.querySelector('[data-ld],[data-ld-beam]')) return;
     let lib;
     try { lib = await window.loadLibrariesDev(); } catch (_) { return; }
+    // The effects start after the cards have landed. Some read their canvas
+    // back as they mount (the metal title's mask), which holds the main thread;
+    // during the entrance that froze the cards mid-rise.
+    const rising = host.querySelector('.dash-body.is-entering.has-cards');
+    if (rising) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await Promise.all(rising.getAnimations({subtree: true}).filter((a) => a.animationName === 'dash-card-in').map((a) => a.finished.catch(() => {})));
+    }
     if (!host.isConnected) return;
     const theme = isDark() ? 'dark' : 'light';
     const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -972,7 +980,13 @@
     const lists = {};
     host.querySelectorAll(SCROLLERS).forEach((el) => { if (el.scrollTop) lists[scrollKey(el)] = el.scrollTop; });
     if (state.resetLists) { state.resetLists.forEach((k) => { Object.keys(lists).forEach((key) => { if (key.startsWith(k)) delete lists[key]; }); }); state.resetLists = null; }
-    const entering = state.entering; state.entering = false;
+    // A repaint that lands while the entrance is still playing (fresh data right
+    // after a cached paint) picks the entrance up where it is, instead of
+    // swapping risen and half-risen cards for still ones.
+    const oldBody = host.querySelector('.dash-body.is-entering.has-cards');
+    const rising = !!oldBody && (oldBody.classList.contains('is-holding') || oldBody.getAnimations({subtree: true}).some((a) => a.animationName === 'dash-card-in' && a.playState === 'running'));
+    const resumed = !state.entering && rising ? Math.max(1, performance.now() - state.enterStart) : 0;
+    const entering = state.entering || resumed > 0; state.entering = false;
     // The hero video survives a repaint: the same element is put back in the
     // new page (in the same task, so it never pauses or reloads).
     const videos = new Map([...host.querySelectorAll('video.rpg-hero-video')].map((v) => [v.dataset.src, v]));
@@ -1036,6 +1050,7 @@
       host.appendChild(leaving);
       setTimeout(() => leaving.remove(), 420);
     }
+    if (entering) stageEntrance(host, resumed);
     waitForMedia(host);
     const cadence = host.querySelector('[data-form="habit"] select[name=cadence]');
     enhance(host);
@@ -1047,6 +1062,77 @@
     }
     markScrollable(host);
   }
+
+  // The page's entrance is one movement: every card rises in, in reading order,
+  // a beat after the one before. The pictures on screen are decoded first (for
+  // a moment at most), so a card arrives with its art instead of the art popping
+  // in on its own afterwards.
+  const ENTER_CARDS = '.rpg-stage,.rpg-panel,.dash-card,.dash-stat';
+  const ENTER_HOLD_MS = 450;
+  function stageEntrance(host, resumed = 0) {
+    const body = host.querySelector('.dash-body.is-entering');
+    if (!body) return;
+    if (resumed) body.style.setProperty('--enter-shift', `${-Math.round(resumed)}ms`);
+    else state.enterStart = performance.now();
+    const cards = [...body.querySelectorAll(ENTER_CARDS)].filter((card) => !card.parentElement.closest(ENTER_CARDS));
+    if (!cards.length) return;
+    const placed = cards.map((card) => [card, card.getBoundingClientRect()])
+      .sort((a, b) => (Math.abs(a[1].top - b[1].top) > 24 ? a[1].top - b[1].top : a[1].left - b[1].left));
+    placed.forEach(([card], i) => { card.dataset.enter = ''; card.style.setProperty('--enter-i', String(Math.min(i, 10))); });
+    body.classList.add('has-cards');
+    if (resumed) return;
+    const view = window.innerHeight || 0;
+    const pending = [...body.querySelectorAll('img')].filter((img) => {
+      if (img.complete) return false;
+      const r = img.getBoundingClientRect();
+      return r.bottom > 0 && r.top < view;
+    });
+    if (!pending.length) return;
+    body.classList.add('is-holding');
+    const decoded = Promise.allSettled(pending.map((img) => (typeof img.decode === 'function' ? img.decode() : Promise.resolve())));
+    const held = performance.now();
+    Promise.race([decoded, new Promise((resolve) => setTimeout(resolve, ENTER_HOLD_MS))]).then(() => {
+      body.classList.remove('is-holding');
+      state.enterStart += performance.now() - held;  // the entrance starts when the hold lets go
+    });
+  }
+
+  // Before the page is first opened, its data and pictures are fetched in the
+  // browser's quiet time, so opening it paints at once (and the server's first,
+  // slowest reading is already behind it).
+  let prefetched = false;
+  async function prefetch() {
+    if (prefetched || state.mounted) return;
+    prefetched = true;
+    const tabs = [state.tab].concat(state.tab === 'character' ? [] : ['character']);
+    await Promise.allSettled(tabs.filter((tab) => !state.data[tab]).map((tab) => load(tab, {quiet: true})));
+    const data = state.data[state.tab];
+    if (!data || state.mounted) return;
+    // With the data here, opening the page has nothing to wait for: the
+    // start-up "Loading..." would only flash before the cards rise.
+    const host = root();
+    if (host && host.children.length === 1 && host.querySelector(':scope > .dash-loader.is-page')) host.replaceChildren();
+    let html = '';
+    try { html = ({character: characterView, shop: shopView, career, business, settings: settingsView, personal})[state.tab](data); } catch (_) { return; }
+    const seen = new Set();
+    html.replace(/<img[^>]+src="([^"]+)"/g, (_, src) => { seen.add(src.replace(/&amp;/g, '&')); return ''; });
+    [...seen].slice(0, 60).forEach((src) => { const img = new Image(); img.decoding = 'async'; img.src = src; });
+    // The metal title first asks whether WebGL2 works by opening a context, a
+    // main-thread stall the first time. Asked now, in a quiet moment, the
+    // answer is ready when the page's effects start.
+    if (typeof window.loadLibrariesDev !== 'function' || !isDark()) return;
+    try {
+      const lib = await window.loadLibrariesDev();
+      await whenIdle();
+      if (!state.mounted && typeof lib.isMetalFxSupported === 'function') lib.isMetalFxSupported();
+    } catch (_) {}
+  }
+  function schedulePrefetch() {
+    const go = () => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(() => prefetch(), {timeout: 4000}) : setTimeout(prefetch, 0));
+    setTimeout(go, 2500);
+  }
+  if (document.readyState === 'complete') schedulePrefetch();
+  else window.addEventListener('load', schedulePrefetch, {once: true});
 
   // Stat tiles and row counts; keyed by tab, card and label so a repaint can
   // tell a number that changed from one that merely re-rendered.
@@ -1563,13 +1649,22 @@
   function tick() { if (state.mounted && !document.hidden) refresh(); }
   function mount() {
     state.mounted = true;
+    // Opening the page is an entrance, whether its data was already here or not.
+    if (state.data[state.tab]) state.entering = true;
     paint({force: true});
     load(state.tab, {quiet: !!state.data[state.tab]});
     clearInterval(state.timer);
     state.timer = setInterval(tick, REFRESH_MS);
     if (state.timer && typeof state.timer.unref === 'function') state.timer.unref();
   }
-  function unmount() { state.mounted = false; clearInterval(state.timer); state.timer = 0; clearEffects(); closeDatePicker(); stopVideos(); state.painted = {}; }
+  // Leaving the page stops its refresh and its effects, and lets its cards go:
+  // the next visit rises in afresh instead of showing the old page first.
+  function unmount() {
+    state.mounted = false; clearInterval(state.timer); state.timer = 0;
+    clearEffects(); closeDatePicker(); stopVideos(); state.painted = {};
+    const host = root();
+    if (host) host.replaceChildren();
+  }
 
   document.addEventListener('click', (event) => {
     if (!event.target.closest) return;

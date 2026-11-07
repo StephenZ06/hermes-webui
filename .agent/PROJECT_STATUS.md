@@ -1,6 +1,17 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Dashboard entrance and load cost; usage under the cron lock; Chat rows, Office band, Task Status
+
+- Dashboard was never unmounted on leaving (Files/Jobs/Notebook/Office were). Its 15s refresh kept fetching `/api/dashboard/character` behind other pages and its effects kept running hidden; a revisit spent ~2s (SwiftShader) re-masking the metal title before the repaint threw it away. `panels.js` now unmounts it, and `unmount()` empties `#dashboardRoot`, so a revisit rises in afresh.
+- Opening the page is one staged entrance (`stageEntrance`: `data-enter`, `--enter-i` reading order, `dash-card-in`), holding up to 450ms for in-view pictures to decode; a repaint mid-entrance resumes it (`--enter-shift`). Effects mount only after the entrance ends (the metal title's `getImageData` froze cards mid-rise).
+- `prefetch()` loads the open tab in idle time ~2.5s after page load, preloads its pictures, drops the index.html "Loading..." (nothing left to wait for) and runs the WebGL2 support probe (`isMetalFxSupported`, a context creation) in idle time instead of after the entrance.
+- `dashboard_game.party()` cold cost (1.2–2.1s, `list_profiles_api()` YAML parsing) is behind a 30s stale-while-revalidate row cache; `active` is still read fresh.
+- Usage card: while a scheduled job holds `_cron_env_lock`, the route answered `_account_usage_last` (up to 30 min old, showed 100% left vs ChatGPT 97%). For openai-codex it now probes the profile lock-free via `_agent_fetch_account_usage_for_home`.
+- Chat conversation rows are 34px (project-folder rows) on desktop; Office active-platform band targets 0.98 luminance (just under bloom threshold 1.0, scene light carries a faint glow); Task Status rows wrap (`minmax(0,1fr)`, `overflow-wrap:anywhere`).
+- Not verified: dashboard timing on a real GPU (headless SwiftShader inflates WebGL/readback cost); hero video codec in headless.
+
+
 ## 2026-11-07: Files picked-space glide, path row squeeze
 
 - The Files spaces list now uses `noteActiveHighlight`/`playActiveHighlightGlide` (`SPACE_HIGHLIGHT` in file-manager.js), so the picked highlight slides between spaces like every other side panel. The hover pill (Micro) already slid; the missing motion was the pick.

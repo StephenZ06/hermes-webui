@@ -326,3 +326,45 @@ def test_deleting_what_earned_an_achievement_takes_it_back(game):
     # Gold left = the task's XP plus one award per achievement still earned
     # (first_task, and night_owl too when the suite runs late at night).
     assert dashboard_game.treasury()["gold"]["earned"] == int(20 * dashboard_game.GOLD_PER_XP) + dashboard_game.ACHIEVEMENT_GOLD * len(unlocked())
+
+
+def test_the_party_reuses_its_profile_rows_and_refreshes_them_in_the_background(monkeypatch):
+    """Building profile rows parses every profile's config (about 2s cold); the
+    Character page paid it on most opens. Rows are kept, served stale while a
+    fresh copy builds, and the active profile is read fresh every time."""
+    import threading
+
+    from api import dashboard_game, profiles
+
+    builds = []
+    release = threading.Event()
+
+    def rows():
+        builds.append(1)
+        if len(builds) > 1:
+            release.wait(5)
+        return [{"name": "default", "model": f"m{len(builds)}", "provider": "openai-codex", "is_default": True},
+                {"name": "coding", "model": "c", "provider": "openai-codex", "is_default": False}]
+
+    monkeypatch.setattr(profiles, "list_profiles_api", rows)
+    monkeypatch.setattr(dashboard_game, "_party_rows", {"at": 0.0, "rows": None, "refreshing": False})
+    active = {"name": "default"}
+    monkeypatch.setattr(profiles, "get_active_profile_name", lambda: active["name"])
+
+    first = dashboard_game.party()
+    assert [(m["name"], m["model"], m["active"]) for m in first] == [("default", "m1", True), ("coding", "c", False)]
+    active["name"] = "coding"
+    assert [m["active"] for m in dashboard_game.party()] == [False, True]  # fresh, from the kept rows
+    assert len(builds) == 1
+
+    # Once old, the kept rows answer at once while one rebuild runs behind them.
+    dashboard_game._party_rows["at"] -= dashboard_game._PARTY_FRESH_S + 1
+    assert dashboard_game.party()[0]["model"] == "m1"
+    assert dashboard_game.party()[0]["model"] == "m1"
+    release.set()
+    for _ in range(50):
+        if dashboard_game._party_rows["rows"][0]["model"] == "m2":
+            break
+        threading.Event().wait(.05)
+    assert dashboard_game.party()[0]["model"] == "m2"
+    assert len(builds) == 2

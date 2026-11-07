@@ -41,6 +41,15 @@ def _open(browser, **ctx):
     return page
 
 
+# Opening the page is an entrance: the cards rise in, one after another. A test
+# that measures where cards sit waits for them to land.
+SETTLED = "() => !document.getAnimations().some(a => ['dash-rise', 'dash-card-in'].includes(a.animationName) && a.playState === 'running') && !document.querySelector('.dash-body.is-holding')"
+
+
+def _settled(page):
+    page.wait_for_function(SETTLED, polling=50, timeout=8000)
+
+
 def test_dashboard_tabs_switch_and_are_remembered(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("() => { try { localStorage.removeItem('hermes-dashboard-tab'); } catch (_) {} }")
@@ -125,6 +134,7 @@ def test_dashboard_fits_a_phone(browser):
 def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
     page = _dashboard(browser, "personal")
     page.wait_for_selector(".dash-grid.is-personal-focus", timeout=15000)
+    _settled(page)
     # The learning entry opens from the card's header button, as Habits' does.
     assert page.locator(".dash-card.is-learning-log form.is-learning").count() == 0
     page.click(".dash-card.is-learning-log [data-form-open='learning']")
@@ -391,6 +401,7 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
     page.wait_for_selector(".dash-grid", timeout=15000)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    _settled(page)
     pairs = page.evaluate("() => [...document.querySelectorAll('.dash-grid')].map(g => [...g.children].map(c => Math.round(c.getBoundingClientRect().height)))")
     assert pairs and all(len(set(p)) == 1 for p in pairs)
     page.evaluate("() => window.HermesDashboard.select('character')")
@@ -399,7 +410,7 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     # Achievements shows every badge at full height and runs down to
     # Chronicle's bottom edge; Chronicle fills what is left and scrolls inside.
     # (Measured once the page's rise-in has finished.)
-    page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
+    page.wait_for_function("() => !document.getAnimations().some(a => ['dash-rise', 'dash-card-in'].includes(a.animationName) && a.playState === 'running')", polling=50, timeout=5000)
     ends = page.evaluate("""() => {
         const ach = document.querySelector('.rpg-panel:has(.rpg-achs)').getBoundingClientRect();
         const chron = document.querySelector('.rpg-panel.is-chronicle');
@@ -741,7 +752,7 @@ def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scrol
     assert cols[1][-1] == "Chronicle" and cols[1].index("Realms") == len(cols[1]) - 2
     assert page.evaluate("() => document.querySelectorAll('.rpg-ach .dash-new').length") == 0
     body = ".rpg-panel.is-chronicle .rpg-log-list"
-    page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
+    page.wait_for_function("() => !document.getAnimations().some(a => ['dash-rise', 'dash-card-in'].includes(a.animationName) && a.playState === 'running')", polling=50, timeout=5000)
     page.evaluate(f"() => {{ document.querySelector('{body}').scrollTop = 240; }}")
     top = page.evaluate(f"() => document.querySelector('{body}').getBoundingClientRect().top")
     chips = page.evaluate("() => document.querySelector('.rpg-log-filters').getBoundingClientRect().bottom")
@@ -909,6 +920,7 @@ def test_a_repaint_keeps_the_hero_video_and_only_a_page_change_animates(browser)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
     if not page.evaluate("() => !!document.querySelector('.rpg-stage video.rpg-hero-video')"):
         pytest.skip("this form has no video")
+    _settled(page)  # a repaint mid-entrance carries the entrance on (test_dashboard_entrance_browser)
     kept = page.evaluate("""() => { const v = document.querySelector('.rpg-hero-video'), sheet = document.querySelector('.rpg-sheet');
         window.HermesDashboard.select('character');  // same page: a forced repaint
         return {video: v === document.querySelector('.rpg-hero-video'), rebuilt: sheet !== document.querySelector('.rpg-sheet'),
@@ -923,7 +935,7 @@ def test_character_layout_fits_from_laptop_to_wide_screens(browser):
         page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
         page.wait_for_selector(".rpg-badges", timeout=15000)
         page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
-        page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
+        page.wait_for_function("() => !document.getAnimations().some(a => ['dash-rise', 'dash-card-in'].includes(a.animationName) && a.playState === 'running')", polling=50, timeout=5000)
         fit = page.evaluate("""() => { const s = document.querySelector('.rpg-stage').getBoundingClientRect();
             const cut = [...document.querySelectorAll('.rpg-badge-copy :is(b,small), .rpg-evo-head :is(span,small), .rpg-evo-status, .rpg-evo-name, .rpg-stat :is(strong,small,b), .rpg-plate-class')]
               .filter(e => { const r = e.getBoundingClientRect(), p = e.closest('.rpg-badges > div,.rpg-evo,.rpg-stat,.rpg-plate').getBoundingClientRect(); return r.right > p.right - 2 || e.scrollWidth > e.clientWidth + 1; })
@@ -1006,6 +1018,7 @@ def test_round_12_names_bars_milestones_and_revenue(browser):
     page = _open(browser, viewport={"width": 1560, "height": 1000})
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
     page.wait_for_selector(".rpg-stat", timeout=15000)
+    _settled(page)
     names = page.evaluate("() => [...document.querySelectorAll('.rpg-stat strong')].map(s => s.textContent)")
     assert names == ["PER", "CAR", "BUS", "VIT", "CON"]
     colours = page.evaluate("() => new Set([...document.querySelectorAll('.rpg-stat-bar')].map(b => getComputedStyle(b).getPropertyValue('--c2').trim())).size")

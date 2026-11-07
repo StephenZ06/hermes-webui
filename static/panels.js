@@ -658,6 +658,9 @@ async function switchPanel(name, opts = {}) {
   if (prevPanel === 'files' && nextPanel !== 'files' && window.HermesFileManager && typeof window.HermesFileManager.unmount === 'function') {
     window.HermesFileManager.unmount();
   }
+  if (prevPanel === 'dashboard' && nextPanel !== 'dashboard' && window.HermesDashboard && typeof window.HermesDashboard.unmount === 'function') {
+    window.HermesDashboard.unmount();
+  }
   _currentPanel = nextPanel;
   _syncPanelRoute(nextPanel);
   if (typeof _syncWorkspacesPanelAutoRefresh === 'function') _syncWorkspacesPanelAutoRefresh();

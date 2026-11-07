@@ -17591,3 +17591,17 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .office-tasks-row{grid-template-columns:minmax(0,1fr);}
 .office-tasks-row-select,.office-tasks-row-detail,.office-tasks-row-detail-inner{min-width:0;}
 .office-tasks-row :is(.office-tasks-row-goal,.office-tasks-row-meta,.office-detail-title,.office-detail-goal,.office-detail-row,.office-detail-tool){overflow-wrap:anywhere;}
+/* Dashboard entrance: each card rises in, in reading order, a beat after the one
+   before (--enter-i, set by stageEntrance). A repaint mid-entrance carries on
+   from where it was (--enter-shift). While the pictures on screen decode, the
+   entrance waits (.is-holding, at most 450ms) so a card arrives with its art. */
+.dash-body.is-entering.has-cards,.dash-body.is-entering.has-cards > *,.dash-body.is-entering.has-cards .rpg-col{animation:none;}
+.dash-body.is-entering [data-enter]{animation:dash-card-in .52s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--enter-i,0) * 55ms + var(--enter-shift,0ms));}
+.dash-body.is-holding [data-enter]{animation-play-state:paused;}
+@keyframes dash-card-in{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
+/* Live effects (orbs, bots, beams) mount one at a time after the entrance; each fades in rather than appearing. */
+.dash :is([data-ld="bot"],[data-ld="orb"])[data-ld-on]{animation:dash-fx-in .4s ease-out both;}
+@keyframes dash-fx-in{from{opacity:0;}}
+/* Pictures that were still loading come in with a fade, not a cut. */
+.dash :is(.rpg-stage,.rpg-evo-art,.rpg-achs,.rpg-party) :is(video,img,[data-ld="bot"]),.dash .rpg-achs,.dash .rpg-party > *{transition:opacity .35s ease;}
+@media (prefers-reduced-motion:reduce){.dash-body.is-entering [data-enter],.dash [data-ld-on]{animation:none!important;}.dash .rpg-achs,.dash .rpg-party > *{transition:none;}}

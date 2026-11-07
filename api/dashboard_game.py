@@ -529,10 +529,55 @@ def project_realms() -> list[dict[str, Any]]:
 
 # ── party: the Hermes agent profiles ────────────────────────────────────────
 
-def party() -> list[dict[str, Any]]:
-    """Each agent profile as a party member, busy while one of its chats runs."""
+# Building the profile rows parses every profile's config (about 2s on a cold
+# start with eight profiles), and the profile list's own cache lasts 4s, so the
+# Character page paid it on most opens. The party only shows names and models:
+# its rows are kept for a while and, once old, served while a fresh copy is built
+# in the background. Which profile is active and who is busy are read fresh on
+# every call.
+_PARTY_FRESH_S = 30.0
+_party_rows: dict[str, Any] = {"at": 0.0, "rows": None, "refreshing": False}
+_party_lock = threading.Lock()
+
+
+def _build_party_rows() -> list[dict[str, Any]]:
     from api.profiles import list_profiles_api
 
+    rows = []
+    for row in list_profiles_api():
+        name = str(row.get("name") or "")
+        if name:
+            rows.append({"name": name, "model": row.get("model") or "", "provider": row.get("provider") or "",
+                         "is_default": bool(row.get("is_default"))})
+    with _party_lock:
+        _party_rows.update(at=time.monotonic(), rows=rows, refreshing=False)
+    return rows
+
+
+def _refresh_party_rows() -> None:
+    try:
+        _build_party_rows()
+    except Exception:
+        with _party_lock:
+            _party_rows["refreshing"] = False
+
+
+def _party_profile_rows() -> list[dict[str, Any]]:
+    with _party_lock:
+        rows, age = _party_rows["rows"], time.monotonic() - _party_rows["at"]
+        stale = rows is not None and age >= _PARTY_FRESH_S
+        start = stale and not _party_rows["refreshing"]
+        if start:
+            _party_rows["refreshing"] = True
+    if rows is None:
+        return _build_party_rows()
+    if start:
+        threading.Thread(target=_refresh_party_rows, name="dashboard-party", daemon=True).start()
+    return rows
+
+
+def party() -> list[dict[str, Any]]:
+    """Each agent profile as a party member, busy while one of its chats runs."""
     busy: dict[str, int] = {}
     try:
         from api.config import STREAM_SESSION_OWNERS, STREAM_SESSION_OWNERS_LOCK
@@ -548,14 +593,15 @@ def party() -> list[dict[str, Any]]:
             busy[profile] = busy.get(profile, 0) + 1
     except Exception:
         pass
-    members = []
-    for row in list_profiles_api():
-        name = str(row.get("name") or "")
-        if not name:
-            continue
-        members.append({"name": name, "model": row.get("model") or "", "provider": row.get("provider") or "",
-                        "active": bool(row.get("is_active") or row.get("active")), "busy": busy.get(name, 0)})
-    return members
+    try:
+        from api.profiles import _profile_row_is_active, get_active_profile_name
+
+        current = get_active_profile_name() or ""
+        is_active = lambda row: _profile_row_is_active(row["name"], row["is_default"], current)  # noqa: E731
+    except Exception:
+        is_active = lambda row: False  # noqa: E731
+    return [{"name": row["name"], "model": row["model"], "provider": row["provider"],
+             "active": bool(is_active(row)), "busy": busy.get(row["name"], 0)} for row in _party_profile_rows()]
 
 
 # ── gold and the rewards shop ───────────────────────────────────────────────
