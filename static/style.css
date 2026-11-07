@@ -17511,3 +17511,32 @@ html.boot-gate main.main > .main-view,html.boot-gate .sidebar .panel-view.active
    a long draft without a visible bar. */
 textarea#msg{scrollbar-width:none;}
 textarea#msg::-webkit-scrollbar{display:none;}
+/* Files: the top bar holds the way up, the folder's name and the three actions; the
+   full path has its own row under it, so the buttons never cover it. Every button in
+   the bar is a 32px rounded square with the same 4px of room on all four sides, which
+   fills the bar's 40px exactly (its height matches the side panel's header). */
+.files-toolbar{justify-content:flex-start;gap:4px;padding:4px;}
+.files-toolbar .files-icon-btn,.files-toolbar-actions .files-action{flex:0 0 32px;width:32px;height:32px;min-height:32px;padding:0;border-radius:7px;transition:background .16s ease,border-color .16s ease,color .16s ease,opacity .2s ease;}
+.files-toolbar-actions{gap:4px;margin-left:auto;flex:0 0 auto;}
+.files-toolbar-actions .files-read-only-tag{margin-right:10px;}
+.files-up:disabled{opacity:.35;cursor:default;}
+.files-up:disabled:hover{border-color:var(--border);background:transparent;}
+.files-title{flex:1 1 auto;min-width:0;margin-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:13px;font-weight:600;}
+.files-title.is-in-forward{animation:files-in-forward .24s cubic-bezier(.22,1,.36,1);}
+.files-title.is-in-back{animation:files-in-back .24s cubic-bezier(.22,1,.36,1);}
+.files-title.is-in-in{animation:files-fade .24s ease-out;}
+.files-path{overflow:hidden;padding:10px 14px 0;}
+.files-path .files-breadcrumb{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;overflow:visible;white-space:normal;}
+.files-path .files-crumb{padding:2px 0;color:var(--muted);font-size:12px;line-height:18px;overflow-wrap:anywhere;text-align:left;transition:color .16s ease;}
+.files-path .files-crumb:last-child{color:var(--text);}
+.files-path .files-crumb:hover{color:var(--text);}
+.files-path .files-crumb-separator{font-size:12px;line-height:18px;}
+.files-path .is-new{animation:files-crumb-in .26s cubic-bezier(.22,1,.36,1) both;}
+@keyframes files-crumb-in{from{opacity:0;transform:translateX(-6px);}}
+@media (max-width:680px){
+  .files-toolbar{flex-direction:row;align-items:center;gap:6px;padding:6px;}
+  .files-toolbar .files-icon-btn,.files-toolbar-actions .files-action{flex:0 0 36px;width:36px;height:36px;min-height:36px;}
+  .files-toolbar-actions{width:auto;gap:6px;}
+  .files-path{padding:10px 12px 0;}
+}
+@media (prefers-reduced-motion:reduce){.files-title,.files-path .is-new{animation:none!important;}}

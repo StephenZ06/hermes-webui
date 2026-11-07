@@ -86,7 +86,7 @@
     if (layout && layout.dataset.spaces === placement) return layout;
     state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${placement}">
       ${placement === 'page' ? '<div class="files-spaces-slot"></div>' : ''}
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><div class="files-breadcrumb"></div><div class="files-toolbar-actions"></div></header><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
       <aside class="files-inspector" aria-label="File inspector"><div class="files-inspector-stage"><div class="files-inspector-content"></div></div></aside>
     </div>`;
     layout = state.root.firstElementChild;
@@ -133,7 +133,9 @@
     layout.dataset.readOnly = readOnly ? 'true' : 'false';
     layout.dataset.hasPreview = state.preview || state.opening ? 'true' : 'false';
     layout.dataset.surface = state.root.dataset.surface || 'browser';
-    write(layout.querySelector('.files-breadcrumb'), `${state.path !== '.' ? `<button type="button" class="files-icon-btn" data-action="up" title="Parent folder">${icons.back}</button>` : ''}${crumbMarkup}`);
+    layout.querySelector('.files-up').disabled = state.path === '.';
+    showTitle(layout.querySelector('.files-title'), state.path === '.' ? (workspace ? workspace.name : 'Files') : crumbs[crumbs.length - 1], workspace);
+    showPath(layout.querySelector('.files-path'), crumbMarkup);
     write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action" data-action="upload" aria-label="Upload">${icons.upload}</button>`);
     layout.querySelector('.files-item-count').textContent = `${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}`;
     const list = layout.querySelector('.files-list');
@@ -141,6 +143,38 @@
     write(list, listRows);
     const inspector = layout.querySelector('.files-inspector-content');
     if (write(inspector, previewMarkup) && !state.opening) restart(inspector, 'is-swapping');
+  }
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // The top bar names the folder on screen. A new name comes in from the side the move went: from the right
+  // into a folder, from the left out of one, in place for another space.
+  function showTitle(el, name, workspace) {
+    const key = `${workspace ? workspace.id : ''}:${state.path}`;
+    if (el.dataset.key === key) return;
+    const before = el.dataset.key, was = el.dataset.depth;
+    el.dataset.key = key; el.dataset.depth = String(depth(state.path));
+    el.textContent = name;
+    if (before === undefined) return;
+    el.classList.remove('is-in-forward', 'is-in-back', 'is-in-in');
+    const motion = before.split(':')[0] !== key.split(':')[0] ? 'in' : depth(state.path) > Number(was) ? 'forward' : 'back';
+    restart(el, `is-in-${motion}`);
+  }
+  // The full path stands in its own row under the top bar and wraps rather than hiding behind the buttons.
+  // A folder entered adds its crumb with a short rise, and the row eases to its new height when it wraps.
+  function showPath(section, markup) {
+    const trail = section.querySelector('.files-breadcrumb');
+    const had = new Set([...trail.querySelectorAll('.files-crumb')].map((crumb) => crumb.dataset.path));
+    const first = trail.childElementCount === 0;
+    const from = section.getBoundingClientRect().height;
+    if (!write(trail, markup) || first) return;
+    trail.querySelectorAll('.files-crumb').forEach((crumb) => {
+      if (had.has(crumb.dataset.path)) return;
+      crumb.classList.add('is-new');
+      const separator = crumb.previousElementSibling;
+      if (separator && separator.classList.contains('files-crumb-separator')) separator.classList.add('is-new');
+    });
+    const to = section.getBoundingClientRect().height;
+    if (Math.abs(to - from) < 0.5 || calm.matches || !section.animate) return;
+    section.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)' });
   }
   // One listener per surface for everything rows, crumbs and buttons do, so rewriting a part costs no rebinding.
   function onClick(event) {

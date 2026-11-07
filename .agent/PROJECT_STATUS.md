@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Files path row, menu placeholders
+
+- **Files:** the middle panel's top bar holds the up button (disabled at a space's root), the current folder's name and the three actions, all 32px rounded squares with 4px on every side. The full path moved to `.files-path`, a wrapping row between the top bar and the filter. The name slides in from the side of the move (`showTitle`), new crumbs rise in and the row eases to a new height (`showPath`). Tests: `tests/test_files_path_row_browser.py`.
+- **Menu placeholders:** the centring test measured mid-animation; it now waits for the menu to settle, which showed the workspace placeholder a pixel low on every screen. The Zeus 2.0 6px/6px override is gone. The model search box lands at y.6, so it takes even padding on 1x only.
+- **Ultrawide composer test:** it now ignores `max-width:1600px` inside a media query (the Jobs automations grid has one).
+- **Still failing, not looked at:** the four `test_goal_command_webui.py` tests (the agent checkout lacks `ruamel`).
+
 ## 2026-11-07: Composer text size, Office band glow
 
 - **Composer:** `textarea#msg` types at 14px (font-size setting 13/16/18) with `padding-top:calc(27.5px - .97em)`, which keeps the first line's ink where the 16px one sat. Graphite, Codex, Terracotta and GitHub set their own type and keep `padding-top:12px`. Touch devices still get 16px from the iOS zoom rule. No visible scrollbar in any skin.
