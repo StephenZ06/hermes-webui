@@ -26,7 +26,7 @@ import {
   poseHop,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
-  poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
+  poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches, bandGlowIntensity,
 } from './builders.js';
 import {
   createWanderer, createArrival, advanceArrival, arrivalSettle, createHopper,
@@ -705,12 +705,14 @@ export function createOfficeScene(canvas, options) {
       + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
     const idleIntensity = layer.userData.idleEmissiveIntensity || 0;
     // A platform with work under way glows a little brighter, and one under
-    // the pointer brighter again; both ease in and out.
+    // the pointer brighter again; both ease in and out. bandGlowIntensity
+    // keeps the sum under the bloom threshold.
     const ease = Math.min(1, dtMs * 0.008);
     record.activeGlow = (record.activeGlow || 0) + ((record.active ? 1 : 0) - (record.activeGlow || 0)) * ease;
     record.hoverGlow = (record.hoverGlow || 0) + ((hoveredCluster === record.cluster ? 1 : 0) - (record.hoverGlow || 0)) * ease;
-    material.emissiveIntensity = idleIntensity * bandPulse(elapsed, record.cluster)
-      * (1 + 0.35 * record.activeGlow + 0.18 * record.hoverGlow) + record.deliveryGlow * 1.45;
+    material.emissiveIntensity = bandGlowIntensity(idleIntensity, {
+      pulse: bandPulse(elapsed, record.cluster), active: record.activeGlow, hover: record.hoverGlow, delivery: record.deliveryGlow,
+    });
   }
 
   /**

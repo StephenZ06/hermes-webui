@@ -862,6 +862,21 @@ export function makePlant(palette) {
  * range actually bloom, which is what makes a working pod visibly glow
  * instead of just tinting a bit brighter.
  */
+/**
+ * A platform band's emissive intensity on a given frame. Work under way, the
+ * pointer and a packet landing each brighten the band by a share of its own
+ * idle glow, so every colour brightens alike, and together they stop at 1.3x
+ * idle: the band stays under the bloom threshold (idle sits near 0.72 of it,
+ * see makePod) and never spills a halo onto the floor. The delivery flare
+ * used to be added as a flat +1.45, which on top of the active boost bloomed
+ * a working platform into a halo at every arrival.
+ */
+export const BAND_GLOW_CAP = 1.3;
+export function bandGlowIntensity(idle, { pulse = 1, active = 0, hover = 0, delivery = 0 } = {}) {
+  const lift = Math.min(BAND_GLOW_CAP, 1 + 0.1 * active + 0.1 * hover + 0.15 * delivery);
+  return (idle || 0) * pulse * lift;
+}
+
 export function makePodGlow(width, depth, tint) {
   // The previous oversized plane bloomed as a bright rectangle beyond the
   // slab. Use the same rounded footprint, inset within the platform itself.

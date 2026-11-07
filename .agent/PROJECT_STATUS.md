@@ -1,6 +1,12 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Composer text size, Office band glow
+
+- **Composer:** `textarea#msg` types at 14px (font-size setting 13/16/18) with `padding-top:calc(27.5px - .97em)`, which keeps the first line's ink where the 16px one sat. Graphite, Codex, Terracotta and GitHub set their own type and keep `padding-top:12px`. Touch devices still get 16px from the iOS zoom rule. No visible scrollbar in any skin.
+- **Office:** a working platform bloomed into a halo at every packet arrival: the delivery flare was a flat +1.45 on top of a 1.35x active boost, past the bloom threshold. `bandGlowIntensity` in builders.js now lifts the band by shares of its idle glow, capped at 1.3x, under the threshold for every platform colour (`tests/test_office_band_glow.py`).
+- **Failing before this change too:** `test_menu_search_placeholders_are_centred[model-desktop]`, `test_ultrawide_viewports_do_not_stretch_the_composer_to_1600px`, and four `test_goal_command_webui.py` tests (the agent checkout lacks `ruamel`).
+
 ## 2026-11-07: Usage wording, wizard logos and loading states
 
 - **Usage card:** the number says "N% Remaining", matching the battery. A short-lived "N% used" wording was reversed at the user's request. The provider numbers themselves were right when "100% remaining" was queried (Codex 0% used, Claude 1% used, checked against OpenAI and 9Router).

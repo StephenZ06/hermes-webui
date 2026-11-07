@@ -99,9 +99,9 @@
   :root[data-font-size="xlarge"] .msg-role .msg-time { font-size: 14px; }
 
   /* Composer textarea (default is 16px in stylesheet) */
-  :root[data-font-size="small"] #msg { font-size: 14px; }
-  :root[data-font-size="large"] #msg { font-size: 18px; }
-  :root[data-font-size="xlarge"] #msg { font-size: 20px; }
+  :root[data-font-size="small"] #msg { font-size: 13px; }
+  :root[data-font-size="large"] #msg { font-size: 16px; }
+  :root[data-font-size="xlarge"] #msg { font-size: 18px; }
 
   /* Workspace file tree */
   :root[data-font-size="small"] .file-item { font-size: 11px; }
@@ -210,7 +210,7 @@
   :root[data-skin="graphite"] .composer-box{background:var(--surface)!important;border-color:var(--border2)!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(0,0,0,0.07);}
   :root.dark[data-skin="graphite"] .composer-box{box-shadow:0 1px 2px rgba(0,0,0,0.28);}
   :root[data-skin="graphite"] .composer-box:focus-within{border-color:var(--accent)!important;}
-  :root[data-skin="graphite"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;}
+  :root[data-skin="graphite"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;padding-top:12px;}
   :root[data-skin="graphite"] .msg-body{font-family:var(--font-conversation);font-size:13px;font-weight:430;letter-spacing:0;line-height:1.6;}
   :root[data-skin="graphite"][data-font-size="small"] .msg-body{font-size:12px;line-height:1.6;}
   :root[data-skin="graphite"][data-font-size="large"] .msg-body{font-size:15px;line-height:1.62;}
@@ -336,7 +336,7 @@
   :root[data-skin="codex"] .composer-box{background:var(--surface)!important;border-color:var(--border2)!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(0,0,0,0.07);}
   :root.dark[data-skin="codex"] .composer-box{box-shadow:0 1px 2px rgba(0,0,0,0.28);}
   :root[data-skin="codex"] .composer-box:focus-within{border-color:var(--accent)!important;}
-  :root[data-skin="codex"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;}
+  :root[data-skin="codex"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;padding-top:12px;}
   :root[data-skin="codex"] .msg-body{font-family:var(--font-conversation);font-size:13px;font-weight:430;letter-spacing:0;line-height:1.6;}
   :root[data-skin="codex"][data-font-size="small"] .msg-body{font-size:12px;line-height:1.6;}
   :root[data-skin="codex"][data-font-size="large"] .msg-body{font-size:15px;line-height:1.62;}
@@ -462,7 +462,7 @@
   :root[data-skin="terracotta"] .composer-box{background:var(--surface)!important;border-color:var(--border2)!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(0,0,0,0.07);}
   :root.dark[data-skin="terracotta"] .composer-box{box-shadow:0 1px 2px rgba(0,0,0,0.28);}
   :root[data-skin="terracotta"] .composer-box:focus-within{border-color:var(--accent)!important;}
-  :root[data-skin="terracotta"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;}
+  :root[data-skin="terracotta"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;padding-top:12px;}
   :root[data-skin="terracotta"] .msg-body{font-family:var(--font-conversation);font-size:13px;font-weight:430;letter-spacing:0;line-height:1.6;}
   :root[data-skin="terracotta"][data-font-size="small"] .msg-body{font-size:12px;line-height:1.6;}
   :root[data-skin="terracotta"][data-font-size="large"] .msg-body{font-size:15px;line-height:1.62;}
@@ -588,7 +588,7 @@
   :root[data-skin="github"] .composer-box{background:var(--surface)!important;border-color:var(--border2)!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(0,0,0,0.07);}
   :root.dark[data-skin="github"] .composer-box{box-shadow:0 1px 2px rgba(0,0,0,0.28);}
   :root[data-skin="github"] .composer-box:focus-within{border-color:var(--accent)!important;}
-  :root[data-skin="github"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;}
+  :root[data-skin="github"] textarea#msg{font-family:var(--font-ui)!important;font-size:14px;font-weight:430;letter-spacing:0;line-height:1.45;padding-top:12px;}
   :root[data-skin="github"] .msg-body{font-family:var(--font-conversation);font-size:13px;font-weight:430;letter-spacing:0;line-height:1.6;}
   :root[data-skin="github"][data-font-size="small"] .msg-body{font-size:12px;line-height:1.6;}
   :root[data-skin="github"][data-font-size="large"] .msg-body{font-size:15px;line-height:1.62;}
@@ -1060,9 +1060,7 @@
   /* Light mode: override white user-bubble-text so textarea text is black */
   :root[data-skin="geist-contrast"]:not(.dark){--user-bubble-text:#111111;}
   /* Remove scrollbar from textarea */
-  :root[data-skin="geist-contrast"] textarea#msg{scrollbar-width:none;overflow-y:auto;}
-  :root[data-skin="geist-contrast"] textarea#msg::-webkit-scrollbar{display:none;}
-
+  
   /* ── Skin: Zeus ──
      OLED-near-black skin: replaces the default dark-blue/navy surfaces with warm
      near-blacks while keeping the gold accent unchanged. Borders are gold-tinted
@@ -3011,7 +3009,7 @@
   @media (hover: hover) {
     .attach-thumb:hover{filter:brightness(1.05);transform:scale(1.04);}
   }
-  textarea#msg{width:100%;background:transparent;border:none;outline:none;color:var(--text);font-size:16px;line-height:1.65;padding:12px 16px 6px;resize:none;min-height:44px;max-height:200px;font-family:inherit;}
+  textarea#msg{width:100%;background:transparent;border:none;outline:none;color:var(--text);font-size:14px;line-height:1.65;padding:calc(27.5px - .97em) 16px 6px;resize:none;min-height:44px;max-height:200px;font-family:inherit;}
   textarea#msg::placeholder{color:var(--muted);}
   .composer-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px 10px;position:relative;container-type:inline-size;container-name:composer-footer;}
   .composer-left{display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
@@ -10045,7 +10043,7 @@ main.main > .main-view:not([id="mainChat"]):not([id="mainSettings"]) .main-view-
    iOS Safari zooms in when a focused input/select has font-size < 16px.
    This media query targets touch-primary devices (phones and tablets) and
    bumps all interactive inputs to the minimum non-zoom threshold.
-   The textarea#msg composer is already 16px; the sidebar search, rename
+   The textarea#msg composer is 14px on a desktop, so this lifts it too; the sidebar search, rename
    inputs, settings selects, and dialog inputs are not.  (#1167)
 ──────────────────────────────────────────────────────────────────────── */
 @media (hover:none) and (pointer:coarse){
@@ -17503,3 +17501,8 @@ html.boot-gate main.main > .main-view,html.boot-gate .sidebar .panel-view.active
    enough for its spinner and "Checking…", so the footer doesn't shift on click. */
 .ps-wizard .project-starter-submit.mi-busy:disabled{opacity:1;cursor:progress;}
 .ps-wizard .ps-next{min-width:calc(9ch + 46px);}
+/* The composer types at 14px, with its first line kept where the 16px one sat
+   (the top padding shrinks as the text grows; see textarea#msg), and scrolls
+   a long draft without a visible bar. */
+textarea#msg{scrollbar-width:none;}
+textarea#msg::-webkit-scrollbar{display:none;}
