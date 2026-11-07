@@ -1,6 +1,15 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Live data reset (user request); character frame preload
+
+- Reset on the live instance, backups first in `~/.hermes/webui-backups/reset-2026-11-08/` (SQLite `.backup` copies of dashboard/work_hub/notebook/notebook_vault/job_os and every agent `state.db`; `webui-files.tgz` = sessions, projects.json, ledger; `vault-notes.tgz` = the 12 deleted vault notes).
+- Deleted: all 124 WebUI conversations (through `_route_post_api_session_delete`, so journals/attachments/state.db rows went too; the 5 project folders kept, empty); every delegation tree in every agent `state.db` plus `cross_profile_delegations/` (Office history 0; a second pass was needed for compression continuations the first delete orphans and keeps); all Work Hub items, activities, views and folders (migration marker kept so nothing re-imports); the 12 main-view notes (00 Inbox, 01 Projects/<workspace>) and the old `notebook.db` store, Obsidian side untouched (21 notes); all `dashboard.db` rows; 55 jobs (50 expired, 2 skipped, 2 dead LinkedIn postings, 1 `google.co.uk` test entry), 144 left.
+- Jobs sweep: LinkedIn via the free guest endpoint `jobs-guest/jobs/api/jobPosting/<id>` (404 or "No longer accepting applications" = dead), Indeed/SEEK via `expiry._reread_with_apify` (all open). Two Bayt postings sit behind Cloudflare (direct and `apify/rag-web-browser` both fail): unknown, kept.
+- Dashboard XP re-syncs from Jobs (`_sync_jobs`, INSERT OR IGNORE): the kept resume-ready and submitted jobs re-earn 60 XP and 3 achievements. There is no reset point; deleting xp_events alone never sticks.
+- Hero frame: card frames are CSS backgrounds fetched only once a card renders; `loadFrameArt()` preloads them (prefetch and entrance) and the entrance waits for them up to 1.5s.
+
+
 ## 2026-11-08: Dashboard entrance and load cost; usage under the cron lock; Chat rows, Office band, Task Status
 
 - Dashboard was never unmounted on leaving (Files/Jobs/Notebook/Office were). Its 15s refresh kept fetching `/api/dashboard/character` behind other pages and its effects kept running hidden; a revisit spent ~2s (SwiftShader) re-masking the metal title before the repaint threw it away. `panels.js` now unmounts it, and `unmount()` empties `#dashboardRoot`, so a revisit rises in afresh.
