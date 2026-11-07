@@ -677,7 +677,14 @@ def _same_base_url_endpoint(url_a: str, url_b: str) -> bool:
     return bool(a_host) and a_host == b_host and a_scheme == b_scheme and a_port == b_port
 
 
-def _runtime_preferred_base_url(
+def _runtime_preferred_base_url(*args, **kwargs) -> str | None:
+    """The endpoint a run calls: the preferred URL, reachable from where this server runs."""
+    from api.host_loopback import host_url
+
+    return host_url(_preferred_base_url(*args, **kwargs))
+
+
+def _preferred_base_url(
     runtime_provider: dict | None,
     resolved_provider: str | None,
     configured_base_url: str | None,
@@ -4507,14 +4514,24 @@ def _extract_title_response(resp, *, aux: bool = False) -> tuple[str, str]:
         return '', f'llm_empty{suffix}'
 
 
+# Room for a model that reasons before it answers (the adaptive refresh on Luna).
+_TITLE_REASONING_MAX_TOKENS = 4000
+_TITLE_REASONING_TIMEOUT = 60.0
+
+
 def generate_title_raw_via_aux(
     user_text: str,
     assistant_text: str,
     provider: str = '',
     model: str = '',
     base_url: str = '',
+    reasoning_effort: str = '',
 ) -> tuple[Optional[str], str]:
-    """Return (raw_text, status) via auxiliary LLM route."""
+    """Return (raw_text, status) via auxiliary LLM route.
+
+    ``reasoning_effort`` asks the model to think (the adaptive refresh on Luna);
+    without it reasoning stays off, as a short title normally needs none.
+    """
     if not user_text or not assistant_text:
         return None, 'missing_exchange'
     qa, prompts = _title_prompts(user_text, assistant_text)
@@ -4541,12 +4558,16 @@ def generate_title_raw_via_aux(
         api_key = str(configured.get('api_key', '') or '').strip()
     base_max_tokens = _title_completion_budget(provider, model, base_url)
     reasoning_extra = {}
-    if not _route_rejects_reasoning_extra(provider, model, base_url):
+    if not reasoning_effort and not _route_rejects_reasoning_extra(provider, model, base_url):
         reasoning_extra["reasoning"] = {"enabled": False}
     if _is_minimax_route(provider, model, base_url):
         reasoning_extra["reasoning_split"] = True
+    reasoning_kwargs = {}
+    if reasoning_effort:
+        reasoning_kwargs["reasoning_config"] = {"enabled": True, "effort": reasoning_effort}
+        base_max_tokens = max(base_max_tokens, _TITLE_REASONING_MAX_TOKENS)
     try:
-        _timeout = _aux_title_timeout()
+        _timeout = _TITLE_REASONING_TIMEOUT if reasoning_effort else _aux_title_timeout()
         from agent.auxiliary_client import call_llm
         last_status = 'llm_error_aux'
         for idx, prompt in enumerate(prompts):
@@ -4568,6 +4589,7 @@ def generate_title_raw_via_aux(
                         temperature=0.2,
                         timeout=_timeout,
                         extra_body=reasoning_extra or None,
+                        **reasoning_kwargs,
                     )
                     raw, empty_status = _extract_title_response(resp, aux=True)
                     if raw:
@@ -4728,29 +4750,28 @@ def _generate_llm_session_title_for_agent(agent, user_text: str, assistant_text:
     return None, 'llm_invalid', str(raw)[:120]
 
 
-def _generate_llm_session_title_via_aux(user_text: str, assistant_text: str, agent=None, *, use_agent_model: bool = False) -> tuple[Optional[str], str, str]:
+def _generate_llm_session_title_via_aux(user_text: str, assistant_text: str, agent=None, *, use_agent_model: bool = False, provider: str = '', model: str = '', reasoning_effort: str = '') -> tuple[Optional[str], str, str]:
     """Generate a title via dedicated auxiliary LLM route, then sanitize/validate result.
 
     When use_agent_model is False (default), the auxiliary client resolves
     provider/model/base_url from config.yaml auxiliary.title_generation, which
     prevents the session's chat model (e.g. a Chinese model) from overriding
     the dedicated title model.  When True, the agent's attrs are passed through
-    (legacy fallback behaviour).
+    (legacy fallback behaviour).  ``provider``, ``model`` and ``reasoning_effort``
+    name a route outright, as the adaptive refresh does for Luna.
     """
+    base_url = ''
     if use_agent_model and agent:
         provider = getattr(agent, 'provider', '')
         model = getattr(agent, 'model', '')
         base_url = getattr(agent, 'base_url', '')
-    else:
-        provider = ''
-        model = ''
-        base_url = ''
     raw, status = generate_title_raw_via_aux(
         user_text,
         assistant_text,
         provider=provider,
         model=model,
         base_url=base_url,
+        reasoning_effort=reasoning_effort,
     )
     if not raw:
         return None, status, ''
@@ -4966,13 +4987,28 @@ def _run_background_title_update(session_id: str, user_text: str, assistant_text
         put_event('stream_end', {'session_id': session_id})
 
 
-def _run_background_title_refresh(session_id: str, user_text: str, assistant_text: str, current_title: str, put_event, agent=None):
+def _adaptive_title_route() -> tuple[str, str, str]:
+    """Provider, model and effort of Luna, as Jobs -> Settings -> AI names them."""
+    try:
+        from api.job_os.settings import load_settings as load_job_settings
+
+        ai = load_job_settings().get('ai') or {}
+    except Exception:
+        logger.debug("Could not read the Luna route for the adaptive title", exc_info=True)
+        return '', '', ''
+    return str(ai.get('provider') or ''), str(ai.get('model') or ''), str(ai.get('reasoning_effort') or '')
+
+
+def _run_background_title_refresh(session_id: str, user_text: str, assistant_text: str, current_title: str, put_event, agent=None, end_stream_for=None):
     """Refresh an existing LLM-generated title using the latest exchange text.
 
     Unlike _run_background_title_update, this does NOT guard on
     llm_title_generated — it assumes the title was already LLM-generated
     and the session has progressed enough to warrant a refresh.
-    It does NOT emit stream_end (the caller already did).
+
+    Luna writes the new title; when it cannot, the usual title route does.
+    The page stops listening at stream_end, so with ``end_stream_for`` this
+    sends it (for that session id) once the new title is out, on every exit.
     """
     try:
         try:
@@ -4995,8 +5031,15 @@ def _run_background_title_refresh(session_id: str, user_text: str, assistant_tex
             if not _aux_title_generation_enabled():
                 _put_title_status(put_event, session_id, 'refresh_skipped', 'title_generation_disabled', effective)
                 return
+            next_title, llm_status, raw_preview = None, '', ''
+            luna_provider, luna_model, luna_effort = _adaptive_title_route()
+            if luna_model:
+                next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(
+                    user_text, assistant_text, provider=luna_provider, model=luna_model, reasoning_effort=luna_effort)
             aux_title_configured = _aux_title_configured()
-            if agent and not aux_title_configured:
+            if next_title:
+                pass
+            elif agent and not aux_title_configured:
                 next_title, llm_status, raw_preview = _generate_llm_session_title_for_agent(agent, user_text, assistant_text)
                 if not next_title and llm_status in ('llm_error', 'llm_invalid'):
                     next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(user_text, assistant_text, agent=agent, use_agent_model=True)
@@ -5041,6 +5084,9 @@ def _run_background_title_refresh(session_id: str, user_text: str, assistant_tex
         logger.info("Adaptive title refresh: session=%s new_title=%r", session_id, effective_title)
     except Exception:
         logger.debug("Background title refresh failed for session %s", session_id, exc_info=True)
+    finally:
+        if end_stream_for:
+            put_event('stream_end', {'session_id': end_stream_for})
 
 
 
@@ -5164,29 +5210,34 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
         logger.debug("Failed to preserve pre-compression session file", exc_info=True)
 
 
-def _maybe_schedule_title_refresh(session, put_event, agent):
-    """Check if the session is due for an adaptive title refresh and schedule it."""
+def _maybe_schedule_title_refresh(session, put_event, agent, end_stream_for=None) -> bool:
+    """Start an adaptive title refresh if the session is due for one.
+
+    True means the refresh is running and sends stream_end itself; False means
+    nothing started and the caller still has to.
+    """
     refresh_interval = _get_title_refresh_interval()
     if refresh_interval <= 0:
-        return
+        return False
     current_title = str(session.title or '').strip()
     if not current_title or current_title in ('Untitled', 'New Chat'):
-        return
+        return False
     if session_has_manual_title(session):
-        return
+        return False
     if not getattr(session, 'llm_title_generated', False):
-        return
+        return False
     exchange_count = _count_exchanges(session.messages)
     if exchange_count <= 0 or exchange_count % refresh_interval != 0:
-        return
+        return False
     last_u, last_a = _latest_exchange_snippets(session.messages)
     if not last_u and not last_a:
-        return
+        return False
     threading.Thread(
         target=_run_background_title_refresh,
-        args=(session.session_id, last_u, last_a, current_title, put_event, agent),
+        args=(session.session_id, last_u, last_a, current_title, put_event, agent, end_stream_for),
         daemon=True,
     ).start()
+    return True
 
 
 def _strip_native_image_parts_from_content(content):
@@ -12646,14 +12697,19 @@ def _run_agent_streaming(
                     daemon=True,
                 ).start()
             else:
+                # Adaptive title refresh: re-generate title from latest exchange
+                # every N exchanges (when enabled in settings). The page stops
+                # listening at stream_end, so a refresh sends it after the title.
+                try:
+                    _refreshing_title = _maybe_schedule_title_refresh(s, put, agent, end_stream_for=session_id)
+                except Exception:
+                    logger.debug("Could not start the adaptive title refresh", exc_info=True)
+                    _refreshing_title = False
                 # Use the original session_id parameter (never reassigned), not s.session_id
                 # which may be rotated during context compression. The client captured
                 # activeSid = original session_id so they must match for stream_end to close.
-                put('stream_end', {'session_id': session_id})
-                # Adaptive title refresh: re-generate title from latest exchange
-                # every N exchanges (when enabled in settings). Runs after stream_end
-                # so it doesn't block the stream.
-                _maybe_schedule_title_refresh(s, put, agent)
+                if not _refreshing_title:
+                    put('stream_end', {'session_id': session_id})
         finally:
             # #4729: guaranteed-exit flush of any reasoning tail still buffered. On the
             # normal path the on_token/on_tool/post-run flushes already emptied it (no-op

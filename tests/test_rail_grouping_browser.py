@@ -9,7 +9,7 @@ import pytest
 
 from tests._pytest_port import BASE
 
-EXPECTED = ["dashboard", "chat", "notes", "notebook", "office", "|",
+EXPECTED = ["dashboard", "chat", "notes", "notebook", "office", "files", "|",
             "tasks", "jobs", "|",
             "agents", "profiles", "skills", "memory", "knowledge", "|",
             "workspaces", "insights", "logs", "audit"]

@@ -25,6 +25,8 @@ from typing import Any
 
 import yaml
 
+from api.host_loopback import host_url
+
 # Sign-ins the WebUI can run itself (see api/oauth.py). Other OAuth providers
 # still need the CLI, and the card says so.
 WEB_SIGNIN = {"openai-codex": "OpenAI Codex", "anthropic": "Claude"}
@@ -459,7 +461,7 @@ def test_route(name: str, provider: str = "") -> dict:
         main_url = str(model.get("base_url") or "") if model.get("provider") == provider else ""
         entry = {"base_url": main_url or LOCAL_NO_KEY[provider], "name": provider}
     if isinstance(entry, dict) and _endpoint_url(entry):
-        url = _endpoint_url(entry).rstrip("/") + "/models"
+        url = host_url(_endpoint_url(entry)).rstrip("/") + "/models"
         headers = {"Accept": "application/json", "User-Agent": "Hermes-WebUI/1.0"}
         key = str(entry.get("api_key") or (env.get(entry["key_env"]) if entry.get("key_env") else "") or "")
         if key:

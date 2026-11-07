@@ -1922,7 +1922,7 @@ function _playCronHighlight(list, from){
   if (from && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(list, from, {..._CRON_HIGHLIGHT, bounds: list});
 }
 
-// Side panel lists with one picked row (Personas, Profiles, Knowledge): the highlight glides from the row
+// Side panel lists with one picked row (Personas, Profiles, Knowledge, Skills, Spaces): the highlight glides from the row
 // picked before to the one picked now, as it does on Chat, Scheduled jobs and the Work Hub.
 function _pickedRowHighlight(selector, attr){
   const dashed = attr.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
@@ -1943,6 +1943,8 @@ function _playRowHighlight(list, from, cfg){
 const _AGENT_DEF_HIGHLIGHT = _pickedRowHighlight('.skill-item', 'agentDefId');
 const _PROFILE_HIGHLIGHT = _pickedRowHighlight('.profile-card', 'name');
 const _KNOWLEDGE_HIGHLIGHT = _pickedRowHighlight('.knowledge-item', 'knowledgeId');
+const _SKILL_HIGHLIGHT = _pickedRowHighlight('.skill-item', 'skillName');
+const _SPACE_HIGHLIGHT = _pickedRowHighlight('.ws-row', 'path');
 
 // A page written in at once (a persona, a memory section, a profile) arrives the way a knowledge item does:
 // its lines stand as placeholders, then cross-fade into the text (SkeletonEntrance, ui.js). Returns the host
@@ -6354,7 +6356,7 @@ function _renderInsights(d, box, wikiStatus, skillUsage) {
     </div>
     ${dowHtml}
     ${hodHtml}
-    <div style="text-align:center;color:var(--muted);font-size:10px;margin-top:12px;opacity:.6">${esc(t('insights_footer').replace('{days}', d.period_days))}</div>
+    <div style="text-align:center;color:var(--muted);font-size:10px;opacity:.6">${esc(t('insights_footer').replace('{days}', d.period_days))}</div>
   `;
 }
 
@@ -6437,6 +6439,7 @@ function renderSkills(skills) {
     for (const skill of items.sort((a,b) => a.name.localeCompare(b.name))) {
       const el = document.createElement('div');
       el.className = 'skill-item' + (skill.disabled ? ' disabled' : '');
+      el.dataset.skillName = skill.name;
       el.style.display = collapsed ? 'none' : '';
       const isDisabled = skill.disabled || false;
       const toggle = document.createElement('span');
@@ -6526,11 +6529,11 @@ function _renderSkillDetail(name, content, linkedFiles) {
   if (frontmatter) {
     html += `<details class="skill-frontmatter"><summary>${esc(t('skill_metadata'))}</summary><pre><code>${esc(frontmatter)}</code></pre></details>`;
   }
-  html += _skillMarkdownHtml(markdownBody || '(no content)');
+  html += `<div class="detail-card skill-doc-card">${_skillMarkdownHtml(markdownBody || '(no content)')}</div>`;
   const lf = linkedFiles || {};
   const categories = Object.entries(lf).filter(([,files]) => files && files.length > 0);
   if (categories.length) {
-    html += `<div class="skill-linked-files"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${esc(t('linked_files'))}</div>`;
+    html += `<div class="detail-card skill-linked-files"><div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${esc(t('linked_files'))}</div>`;
     for (const [cat, files] of categories) {
       html += `<div class="skill-linked-section"><h4>${esc(cat)}</h4>`;
       for (const f of files) {
@@ -6644,8 +6647,11 @@ function _holdSkeletonTitle(el) {
 
 async function openSkill(name, el) {
   // Highlight active skill in the sidebar list
+  const skillList = $('skillsList');
+  const glideFrom = _noteRowHighlight(skillList, _SKILL_HIGHLIGHT);
   document.querySelectorAll('.skill-item').forEach(e => e.classList.remove('active'));
   if (el) el.classList.add('active');
+  _playRowHighlight(skillList, glideFrom, _SKILL_HIGHLIGHT);
   _skillPreFormDetail = null;
   _editingSkillName = null;
   // The skill's text stands as placeholder lines until it is written in,
@@ -7563,7 +7569,7 @@ function _renderMemoryDetail(section) {
   const inner = content
     ? `<div class="memory-content preview-md">${renderMd(content)}</div>`
     : `<div class="memory-empty">${esc(_memorySectionEmpty(meta))}</div>`;
-  body.innerHTML = `<div class="main-view-content">${pathHtml}${mtimeHtml}${shadowedHtml}${inner}</div>`;
+  body.innerHTML = `<div class="main-view-content"><div class="detail-card memory-card">${pathHtml}${mtimeHtml}${shadowedHtml}${inner}</div></div>`;
   body.style.display = '';
   if (empty) empty.style.display = 'none';
   _memoryMode = 'read';
@@ -7642,20 +7648,20 @@ function _renderMemoryEntriesView() {
 
   const cardsHtml = _memoryEntryCardsHtml(activeEntries);
 
-  const addFormHtml = `<form class="memory-entry-add-form" onsubmit="event.preventDefault(); submitMemoryEntryForm();">
-    <textarea id="memEntryAddText" rows="2" placeholder="${esc(t('memory_entries_add_placeholder')||'Add a new memory entry…')}"></textarea>
-    <div class="memory-entry-add-row">
-      <label class="detail-form-check"><input type="checkbox" id="memEntryAddCorrection"> <span>${esc(t('memory_entries_mark_correction')||'Mark as correction')}</span></label>
-      <button type="submit" class="btn-secondary">${esc(t('memory_entries_add')||'Add entry')}</button>
-    </div>
-    <div id="memEntryAddError" class="detail-form-error" style="display:none"></div>
-  </form>`;
-
   const rawEditLink = !meta.readOnly
     ? `<button type="button" class="memory-entry-raw-edit-link" onclick="editCurrentMemory()">${esc(t('memory_entries_edit_raw')||'Edit raw file instead')}</button>`
     : '';
 
-  body.innerHTML = `<div class="main-view-content">${pathHtml}${mtimeHtml}${tabsHtml}<div class="memory-entry-cards">${cardsHtml}</div>${addFormHtml}${rawEditLink}</div>`;
+  const addFormHtml = `<form class="memory-entry-add-form" onsubmit="event.preventDefault(); submitMemoryEntryForm();">
+    <textarea id="memEntryAddText" rows="2" placeholder="${esc(t('memory_entries_add_placeholder')||'Add a new memory entry…')}"></textarea>
+    <div class="memory-entry-add-row">
+      <label class="detail-form-check"><input type="checkbox" id="memEntryAddCorrection"> <span>${esc(t('memory_entries_mark_correction')||'Mark as correction')}</span></label>
+      <div class="memory-entry-add-actions">${rawEditLink}<button type="submit" class="btn-secondary">${esc(t('memory_entries_add')||'Add entry')}</button></div>
+    </div>
+    <div id="memEntryAddError" class="detail-form-error" style="display:none"></div>
+  </form>`;
+
+  body.innerHTML = `<div class="main-view-content"><div class="detail-card memory-card">${pathHtml}${mtimeHtml}${tabsHtml}<div class="memory-entry-cards">${cardsHtml}</div></div><div class="detail-card memory-card">${addFormHtml}</div></div>`;
   if (typeof window !== 'undefined' && window.Micro) Micro.scan(body);
   body.style.display = '';
   if (empty) empty.style.display = 'none';
@@ -8547,9 +8553,12 @@ function openWorkspaceDetail(path, el){
   if (!_workspaceList) return;
   const ws = _workspaceList.find(w => w.path === path);
   if (!ws) return;
+  const spaceList = $('workspacesPanel');
+  const glideFrom = _noteRowHighlight(spaceList, _SPACE_HIGHLIGHT);
   document.querySelectorAll('.ws-row').forEach(e => e.classList.remove('active'));
   const target = el || document.querySelector(`.ws-row[data-path="${CSS.escape(path)}"]`);
   if (target) target.classList.add('active');
+  _playRowHighlight(spaceList, glideFrom, _SPACE_HIGHLIGHT);
   _workspacePreFormDetail = null;
   _renderWorkspaceDetail(ws);
   _closeMobileSidebarAfterPanelSelection();
@@ -9850,7 +9859,7 @@ async function _renderProfileProviders(name){
     <div class="pp-main">
       <div class="pp-main-route">
         <span class="pp-main-label">Main model</span>
-        <span class="pp-main-value">${main.provider ? esc((routes.find(r => r.provider === main.provider) || {}).label || ({lmstudio: 'LM Studio', ollama: 'Ollama'})[main.provider] || main.provider) + (main.model ? ' · ' + esc(main.model) : '') : 'Not set'}</span>
+        <span class="pp-main-value">${main.provider ? esc((routes.find(r => r.provider === main.provider) || {}).label || ({lmstudio: 'LM Studio', ollama: 'Ollama'})[main.provider] || main.provider) + (main.model ? ' · ' + esc(main.model) : '') : ''}</span>
         ${_ppBadge(main.status)}
       </div>
       <p class="profile-signin-hint pp-main-msg">${esc(main.status.message || '')}</p>
@@ -12435,7 +12444,7 @@ function _preferencesPayloadFromUi(){
   const pinnedLimitField=$('settingsPinnedSessionsLimit');
   if(pinnedLimitField) payload.pinned_sessions_limit=parseInt(pinnedLimitField.value,10);
   const autoTitleRefreshSel=$('settingsAutoTitleRefresh');
-  if(autoTitleRefreshSel) payload.auto_title_refresh_every=parseInt(autoTitleRefreshSel.value,10);
+  if(autoTitleRefreshSel) payload.auto_title_refresh_every=autoTitleRefreshSel.value;
   const defaultMessageModeSel=$('settingsDefaultMessageMode');
   if(defaultMessageModeSel) payload.default_message_mode=defaultMessageModeSel.value;
   const showBusyPlaceholderHintCb=$('settingsShowBusyPlaceholderHint');

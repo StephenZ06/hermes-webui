@@ -14,6 +14,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from api.host_loopback import host_address
+
 
 _ACTION_LOCK = threading.Lock()
 _FIRECRAWL_COMPOSE_DIR = Path.home() / "firecrawl"
@@ -51,7 +53,7 @@ def _run(command: list[str], *, timeout: float = 30.0) -> subprocess.CompletedPr
 
 def _http_reachable(host: str, port: int) -> bool:
     try:
-        conn = http.client.HTTPConnection(host, port, timeout=1.5)
+        conn = http.client.HTTPConnection(host_address(host, port), port, timeout=1.5)
         conn.request("GET", "/")
         response = conn.getresponse()
         response.read(256)

@@ -16,6 +16,7 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from api.host_loopback import host_url
 from api.job_os.env import profile_env_value
 
 MAX_RESPONSE_BYTES = 64 * 1024
@@ -65,7 +66,7 @@ class FirecrawlClient:
         self.timeout = timeout
 
     def _url(self, path: str) -> str:
-        return f"{self.config.base_url}/{path.lstrip('/')}"
+        return f"{host_url(self.config.base_url)}/{path.lstrip('/')}"
 
     def _get(self, path: str) -> tuple[int, bytes, str]:
         headers = {"Accept": "application/json"}

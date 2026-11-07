@@ -15,6 +15,9 @@
     mounted: false,
   };
 
+  const phoneWidth = window.matchMedia('(max-width:680px)');
+  phoneWidth.addEventListener('change', () => { if (state.mounted) render(); });
+
   const icon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   const icons = {
     folder: icon('<path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/>'),
@@ -28,6 +31,7 @@
     move: icon('<path d="M7 7h10M13 3l4 4-4 4M17 17H7M11 13l-4 4 4 4"/>'),
     trash: icon('<path d="M3 6h18M8 6V4h8v2m-9 0 1 15h8l1-15"/>'),
     close: icon('<path d="m18 6-12 12M6 6l12 12"/>'),
+    search: icon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
   };
 
   function esc(value) {
@@ -87,19 +91,35 @@
         <div class="files-preview-wrap">${isTextPreview()
           ? `<textarea class="files-editor" aria-label="File contents" ${readOnly ? 'readonly' : ''}>${esc(state.preview.content)}</textarea>${readOnly ? '' : `<button type="button" class="files-save" data-action="save">${icons.save}<span>Save changes</span></button>`}`
           : `<div class="files-preview-unavailable">${icons.file}<strong>Preview unavailable</strong><span>This format cannot be edited here. Download it to open it locally.</span></div>`}</div>`;
-    state.root.innerHTML = `<div class="file-manager-layout" data-read-only="${readOnly ? 'true' : 'false'}" data-has-preview="${state.preview ? 'true' : 'false'}" data-surface="${esc(state.root.dataset.surface || 'browser')}">
-      <aside class="files-workspaces" aria-label="Connected workspaces"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list">${state.workspaces.map((item) => `<button type="button" class="files-workspace${item.id === state.workspaceId ? ' is-active' : ''}" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot ${item.available ? 'is-online' : 'is-offline'}"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><div class="files-breadcrumb">${state.path !== '.' ? `<button type="button" class="files-icon-btn" data-action="up" title="Parent folder">${icons.back}</button>` : ''}${crumbMarkup}</div><div class="files-toolbar-actions">${readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file">${icons.plus}<span>New file</span></button><button type="button" class="files-action" data-action="new-folder">${icons.plus}<span>New folder</span></button><button type="button" class="files-action" data-action="upload">${icons.upload}<span>Upload</span></button>`}</div></header><div class="files-list-toolbar"><label class="files-search"><span>${icons.file}</span><input type="search" placeholder="Filter this folder" value="${esc(state.filter)}" aria-label="Filter files"></label><span class="files-item-count">${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}</span></div><div class="files-list" role="list">${listRows}</div></section>
+    // The list of spaces stands in the Files side panel. A phone has no side panel on screen, so there it
+    // stays the first of the sliding surfaces.
+    const sideHost = document.getElementById('filesSidebarHost');
+    const inSidePanel = !!sideHost && !phoneWidth.matches;
+    const spacesMarkup = `<aside class="files-workspaces" aria-label="Connected workspaces"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list" data-mi-hover=".files-workspace">${state.workspaces.map((item) => `<button type="button" class="files-workspace${item.id === state.workspaceId ? ' is-active' : ''}" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot ${item.available ? 'is-online' : 'is-offline'}"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>`;
+    if (sideHost) {
+      sideHost.innerHTML = inSidePanel ? spacesMarkup : '';
+      if (window.Micro) window.Micro.scan(sideHost);
+    }
+    state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${inSidePanel ? 'side-panel' : 'page'}" data-read-only="${readOnly ? 'true' : 'false'}" data-has-preview="${state.preview ? 'true' : 'false'}" data-surface="${esc(state.root.dataset.surface || 'browser')}">
+      ${inSidePanel ? '' : spacesMarkup}
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><div class="files-breadcrumb">${state.path !== '.' ? `<button type="button" class="files-icon-btn" data-action="up" title="Parent folder">${icons.back}</button>` : ''}${crumbMarkup}</div><div class="files-toolbar-actions">${readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file">${icons.plus}<span>New file</span></button><button type="button" class="files-action" data-action="new-folder">${icons.plus}<span>New folder</span></button><button type="button" class="files-action" data-action="upload">${icons.upload}<span>Upload</span></button>`}</div></header><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" value="${esc(state.filter)}" aria-label="Filter files"></label><span class="files-item-count">${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}</span></div><div class="files-list" role="list">${listRows}</div></section>
       <aside class="files-inspector" aria-label="File inspector">${previewMarkup}</aside>
     </div>`;
     bindEvents();
   }
   function bindEvents() {
-    state.root.querySelectorAll('[data-workspace-id]').forEach((button) => button.addEventListener('click', () => openWorkspace(button.dataset.workspaceId)));
+    document.querySelectorAll('#fileManagerRoot [data-workspace-id], #filesSidebarHost [data-workspace-id]').forEach((button) => button.addEventListener('click', () => openWorkspace(button.dataset.workspaceId)));
     state.root.querySelectorAll('[data-path]').forEach((button) => button.addEventListener('click', () => openPath(button.dataset.path)));
     state.root.querySelectorAll('[data-file-path]').forEach((button) => button.addEventListener('click', () => openEntry(button.dataset.filePath, button.dataset.fileType)));
     const filter = state.root.querySelector('.files-search input');
-    if (filter) filter.addEventListener('input', () => { state.filter = filter.value; render(); });
+    if (filter) filter.addEventListener('input', () => {
+      state.filter = filter.value;
+      const caret = filter.selectionStart;
+      render();
+      // render() writes a new field, which must not cost the typist their place.
+      const next = state.root.querySelector('.files-search input');
+      if (next) { next.focus(); next.setSelectionRange(caret, caret); }
+    });
     state.root.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => dispatchAction(button.dataset.action)));
   }
   async function loadWorkspaces() {

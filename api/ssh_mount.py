@@ -31,6 +31,9 @@ STATUS_TIMEOUT_S = 5
 # reachability probe short enough that a powered-off host cannot monopolize that
 # refresh cycle (or the server's request workers).
 REMOTE_REACHABILITY_TIMEOUT_S = 2
+# Where docker-compose.yml mounts Space keys. An entry saved before the move to
+# Docker still names the key by its host path, which does not exist in here.
+_CONTAINER_KEY_DIR = Path("/run/secrets")
 
 
 class SshMountError(Exception):
@@ -153,7 +156,17 @@ def _remote_cfg(entry: dict) -> dict:
         raise SshMountError(
             f"Incomplete remote config for workspace '{entry.get('name') or entry.get('path')}'"
         )
-    return {"host": host, "remote_path": remote_path, "key_path": key_path}
+    return {"host": host, "remote_path": remote_path, "key_path": _usable_key_path(key_path)}
+
+
+def _usable_key_path(key_path: str) -> str:
+    """The saved path, or the same key where the container mounts it. A key found
+    in neither place stays as saved, so the error names what the Space asked for."""
+    saved = Path(key_path)
+    if saved.exists():
+        return key_path
+    mounted = _CONTAINER_KEY_DIR / saved.name
+    return str(mounted) if mounted.is_file() else key_path
 
 
 def remote_reachability(entry: dict) -> str:

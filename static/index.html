@@ -183,7 +183,8 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="notebook" onclick="switchPanel('notebook',{fromRailClick:true})" data-tooltip="Notes" aria-label="Notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="kanban" hidden onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban" aria-label="Kanban"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="office" onclick="switchPanel('office',{fromRailClick:true})" data-tooltip="Office" data-i18n-title="tab_office" data-i18n-aria-label="tab_office" aria-label="Office"><span class="office-nav-mark" aria-hidden="true"></span></button>
-    <div class="rail-divider" data-after-panel="office" aria-hidden="true"></div>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
+    <div class="rail-divider" data-after-panel="files" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="tasks" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Cron-Jobs" aria-label="Cron-Jobs"><span class="page-nav-mark page-nav-mark--tasks" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="jobs" onclick="switchPanel('jobs',{fromRailClick:true})" data-tooltip="Jobs" aria-label="Jobs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v15H4z"/><path d="M8 5V3h8v2M8 10h8M8 14h5"/></svg></button>
     <div class="rail-divider" data-after-panel="jobs" aria-hidden="true"></div>
@@ -194,7 +195,6 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="knowledge" onclick="switchPanel('knowledge',{fromRailClick:true})" data-tooltip="Knowledge" data-i18n-title="tab_knowledge" aria-label="Knowledge"><span class="page-nav-mark page-nav-mark--knowledge" aria-hidden="true"></span></button>
     <div class="rail-divider" data-after-panel="knowledge" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces" aria-label="Spaces"><span class="page-nav-mark page-nav-mark--workspaces" aria-hidden="true"></span></button>
-    <button class="rail-btn nav-tab has-tooltip" data-panel="files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights" aria-label="Insights"><span class="page-nav-mark page-nav-mark--insights" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs" aria-label="Logs"><span class="page-nav-mark page-nav-mark--logs" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="audit" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit" aria-label="Activity"><span class="page-nav-mark page-nav-mark--audit" aria-hidden="true"></span></button>
@@ -215,7 +215,8 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="notebook" data-label="Notes" onclick="switchPanel('notebook',{fromRailClick:true})" data-tooltip="Notes" aria-label="Notes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="kanban" data-label="Kanban" hidden onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="office" data-label="Office" onclick="switchPanel('office',{fromRailClick:true})" data-tooltip="Office" data-i18n-title="tab_office" data-i18n-aria-label="tab_office"><span class="office-nav-mark" aria-hidden="true"></span></button>
-      <div class="sidebar-nav-divider" data-after-panel="office" aria-hidden="true"></div>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="files" data-label="Files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
+      <div class="sidebar-nav-divider" data-after-panel="files" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="tasks" data-label="Cron-Jobs" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Cron-Jobs" aria-label="Cron-Jobs"><span class="page-nav-mark page-nav-mark--tasks" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="jobs" data-label="Jobs" onclick="switchPanel('jobs',{fromRailClick:true})" data-tooltip="Jobs" aria-label="Jobs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v15H4z"/><path d="M8 5V3h8v2M8 10h8M8 14h5"/></svg></button>
       <div class="sidebar-nav-divider" data-after-panel="jobs" aria-hidden="true"></div>
@@ -226,7 +227,6 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="knowledge" data-label="Knowledge" onclick="switchPanel('knowledge',{fromRailClick:true})" data-tooltip="Knowledge" data-i18n-title="tab_knowledge"><span class="page-nav-mark page-nav-mark--knowledge" aria-hidden="true"></span></button>
       <div class="sidebar-nav-divider" data-after-panel="knowledge" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="workspaces" data-label="Spaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces"><span class="page-nav-mark page-nav-mark--workspaces" aria-hidden="true"></span></button>
-      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="files" data-label="Files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="insights" data-label="Insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights"><span class="page-nav-mark page-nav-mark--insights" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="logs" data-label="Logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs"><span class="page-nav-mark page-nav-mark--logs" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="audit" data-label="Activity" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit"><span class="page-nav-mark page-nav-mark--audit" aria-hidden="true"></span></button>
@@ -346,7 +346,7 @@
     <div class="panel-view" id="panelSkills">
       <div class="panel-head">
         <span data-i18n="tab_skills">Skills</span>
-        <div class="panel-head-actions">
+        <div class="panel-head-actions" data-mi-hover>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openSkillCreate()" data-tooltip="New skill" data-i18n-title="new_skill" aria-label="New skill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
@@ -427,16 +427,16 @@
     <div class="panel-view" id="panelWorkspaces">
       <div class="panel-head">
         <span data-i18n="tab_workspaces">Spaces</span>
-        <div class="panel-head-actions">
+        <div class="panel-head-actions" data-mi-hover>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="workspaceDeleteModeBtn" onclick="toggleWorkspaceDeleteMode()" data-tooltip="Remove spaces" aria-label="Remove spaces" aria-pressed="false" data-delete-mode-keep><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openWorkspaceCreate()" data-tooltip="Add space" data-i18n-title="workspace_add_title" aria-label="Add space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
+      <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel" data-mi-hover=".ws-row"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <div class="panel-view" id="panelFiles">
       <div class="panel-head"><span>Files</span></div>
-      <div class="files-sidebar-note">Browse and manage the spaces connected to this WebUI.</div>
+      <div class="files-sidebar-host" id="filesSidebarHost"></div>
     </div>
     <!-- `panelNotes` remains the compatibility identity for saved panel state;
          the visible product is the local Work Hub. -->

@@ -38,7 +38,7 @@ def test_section_icons_are_smaller(settings):
     out = settings.evaluate("""() => [...document.querySelectorAll('.settings-nav-item')].map(item => {
       const icon = item.querySelector('.settings-nav-icon').getBoundingClientRect(); const svg = item.querySelector('.settings-nav-icon svg').getBoundingClientRect();
       return [icon.width, icon.height, svg.width, svg.height]; })""")
-    assert out and all(box == [24, 24, 24, 24] for box in out), out
+    assert out and all(box == [20, 20, 20, 20] for box in out), out
 
 
 def test_every_section_has_the_same_room_above_and_below(settings):

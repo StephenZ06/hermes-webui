@@ -91,8 +91,10 @@
     container.prepend(pill);
     const state = { pill, shown: false };
     hoverWired.set(container, state);
+    // data-mi-hover names the rows when they are not buttons (the Spaces list).
+    const rows = container.dataset.miHover || 'button, a[href]';
     const buttonOf = (node) => {
-      const b = node && node.closest ? node.closest('button, a[href]') : null;
+      const b = node && node.closest ? node.closest(rows) : null;
       return b && b.parentNode === container && !b.disabled && b.offsetParent !== null ? b : null;
     };
     const show = (b) => {

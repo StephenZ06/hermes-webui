@@ -29,7 +29,8 @@ def test_files_page_mounts_from_navigation(browser):
     page.evaluate("async () => { await switchPanel('files'); }")
     page.wait_for_selector("#fileManagerRoot .file-manager-layout", timeout=15000)
     assert page.locator("main.main").evaluate("node => node.classList.contains('showing-files')")
-    assert page.locator("#fileManagerRoot .files-workspaces").count() == 1
+    assert page.locator("#filesSidebarHost .files-workspaces").count() == 1
+    assert page.locator("#fileManagerRoot .files-workspaces").count() == 0
 
 
 def test_files_page_has_no_phone_horizontal_overflow(browser):
@@ -37,3 +38,6 @@ def test_files_page_has_no_phone_horizontal_overflow(browser):
     page.evaluate("async () => { await switchPanel('files'); }")
     page.wait_for_selector("#fileManagerRoot .file-manager-layout", timeout=15000)
     assert page.evaluate("() => document.getElementById('mainFiles').scrollWidth <= document.getElementById('mainFiles').clientWidth + 1")
+    # A phone has no side panel on screen, so the spaces stay on the page.
+    assert page.locator("#fileManagerRoot .files-workspaces").count() == 1
+    assert page.locator("#filesSidebarHost .files-workspaces").count() == 0

@@ -31,7 +31,7 @@ def test_profile_concept_card_uses_one_divider_and_equal_responsive_gutters():
     assert '<div class="main-view-content profile-concept-content">' in help_body
     assert '<div class="detail-card profile-concept-card">' in help_body
     assert 'style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px"' not in help_body
-    assert ".profile-concept-content{max-width:none;margin-inline:-8px;}" in CSS
+    assert ".profile-concept-content{max-width:none;}" in CSS
     assert ".profile-concept-card{margin-bottom:0;}" in CSS
     assert "@media(max-width:700px){\n  .main-view-header{padding:8px 16px;}\n  .main-view-body{padding:16px;}\n  .profile-concept-content{margin-inline:0;}\n}" in CSS
 

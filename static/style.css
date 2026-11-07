@@ -9719,7 +9719,7 @@ body code[class*="language-"],body pre[class*="language-"],body pre code[class*=
 .main-view-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
 .main-view-body{flex:1;min-height:0;overflow-y:auto;padding:24px 32px;}
 .main-view-content{max-width:960px;margin:0 auto;width:100%;}
-.profile-concept-content{max-width:none;margin-inline:-8px;}
+.profile-concept-content{max-width:none;}
 .main-view-empty{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:12px;padding:40px 24px;color:var(--muted);text-align:center;
@@ -17265,12 +17265,12 @@ textarea.office-biz-input{resize:vertical;}
    already sat 1px lower, so they sit 2px lower than they started. */
 .panel-view > .panel-head > span:first-child{font-size:12px;translate:0 .5px;}
 /* Jobs Settings section list: smaller icons, and the same room above and below every section. */
-#jobOsRoot .settings-nav-icon{flex:0 0 24px;width:24px;height:24px;}
-#jobOsRoot .settings-nav-icon>svg{width:24px;height:24px;}
+#jobOsRoot .settings-nav-icon{flex:0 0 20px;width:20px;height:20px;}
+#jobOsRoot .settings-nav-icon>svg{width:20px;height:20px;}
 @media (min-width:761px){
   /* A heading has the room above it that the section under it has below: the gap between one section and
      the next, 18.5px, measured on the text. The first one is that far under the title too. */
-  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group{margin-top:8.2px;margin-bottom:8.2px;}
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group{margin-top:9.2px;margin-bottom:8.2px;}
   .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:16.5px;}
 }
 /* Number boxes: the unit is bold and has a column that runs out to the card's edge, so the room to the box
@@ -17320,7 +17320,90 @@ textarea.office-biz-input{resize:vertical;}
 #mainProfiles .pp-row .profile-signin-btn{padding-top:6.5px;padding-bottom:5.5px;}
 /* The cards on a Profile or Persona page have the same room (24px) above, below and on both sides. */
 @media (min-width:701px){
-  #profileDetailBody,#agentDefDetailBody{padding:24px;}
-  :is(#profileDetailBody,#agentDefDetailBody) .main-view-content > :last-child,
-  :is(#profileDetailBody,#agentDefDetailBody) .main-view-content > .detail-card:has(+ [hidden]:last-child){margin-bottom:0;}
+  :is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody){padding:24px;}
+  :is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .main-view-content > :last-child,
+  :is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .main-view-content > .detail-card:has(+ [hidden]:last-child){margin-bottom:0;}
+}
+
+/* ── Cards, side panel rows and Files: round 11 ────────────────────────── */
+/* Jobs Settings: the dot beside Working. */
+#jobOsRoot .settings-page .set-row.site-health-row .job-os-pill::before{top:0;}
+/* Master resume: its one row has the same room above and below. */
+#jobOsRoot #job-os-settings-resume .set-row-text{translate:0 -4px;}
+
+/* Side panel lists: the rows stand 2px apart. */
+:is(#agentsList,#knowledgeList,#skillsList) .skill-item + .skill-item{margin-top:2px;}
+
+/* Page cards: the same room from the card's edge to its contents on all four sides. text-box trims each
+   first and last line to its letters, so the padding is the room that shows. */
+:is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .detail-card{padding:20px;}
+:is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .detail-card-title{text-box:trim-both cap alphabetic;margin-bottom:14px;}
+:is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .detail-card > .detail-row:last-child{padding-bottom:0;}
+:is(#profileDetailBody,#agentDefDetailBody,#workspaceDetailBody,#memoryDetailBody,#skillDetailBody) .detail-card > .detail-row:last-child > *{text-box:trim-end cap alphabetic;}
+
+/* Personal memory */
+.memory-card .memory-detail-mtime{text-box:trim-both cap alphabetic;margin-bottom:10px;opacity:.85;}
+.memory-card .memory-detail-mtime:has(+ :is(.memory-content,.memory-empty)){margin-bottom:14px;}
+.memory-card .memory-detail-mtime:has(+ .memory-entry-tabs){margin-bottom:12px;}
+.memory-card .memory-entry-tabs{margin-bottom:20px;}
+.memory-card .memory-empty{text-box:trim-both cap alphabetic;}
+.memory-card .memory-entry-list{gap:16px;margin-bottom:0;}
+.memory-card .memory-entry-add-form{border:0;border-radius:0;padding:0;margin:0;}
+.memory-card .memory-entry-add-form textarea{display:block;}
+.memory-card .memory-entry-add-row{margin-top:20px;}
+.memory-entry-add-actions{display:flex;align-items:center;gap:14px;min-width:0;}
+.memory-card .memory-content > :first-child{margin-top:0;}
+.memory-card .memory-content > :last-child{margin-bottom:0;text-box:trim-end cap alphabetic;}
+/* A heading: the same room above its text, between the text and its rule, and below the rule. */
+.memory-card .memory-content :is(h1,h2){text-box:trim-both cap alphabetic;padding-bottom:14px;margin-bottom:14px;}
+.memory-card .memory-content > :first-child:not(:is(h1,h2)),.memory-card .memory-content :is(h1,h2) + *{text-box:trim-start cap alphabetic;}
+
+/* Skills */
+#skillDetailBody .skill-security-section,#skillDetailBody .skill-frontmatter,#skillDetailBody .skill-linked-files{border-radius:12px;margin:0 0 16px;}
+#skillDetailBody .skill-linked-files{border-top:1px solid var(--border);}
+#skillDetailBody .skill-security-section{padding:20px;}
+#skillDetailBody .skill-frontmatter > summary{padding:20px;text-box:trim-both cap alphabetic;}
+#skillDetailBody .skill-frontmatter pre{padding:20px;}
+#skillDetailBody .skill-linked-files{padding:20px;}
+#skillDetailBody .skill-linked-files > div:first-child{text-box:trim-both cap alphabetic;margin-bottom:14px!important;}
+#skillDetailBody .skill-linked-section:last-child{margin-bottom:0;}
+#skillDetailBody .skill-linked-file{margin-left:-6px;}
+#skillDetailBody .skill-linked-section:last-child .skill-linked-file:last-child{padding-bottom:0;text-box:trim-end cap alphabetic;}
+#skillsList .skill-toggle{translate:0 -.5px;}
+#panelSkills .skills-search input{padding-top:6.5px;padding-bottom:7.5px;}
+#skillDetailBody .skill-security-badge,#skillDetailBody .skill-security-trust{translate:0 .5px;}
+.skill-doc-card .preview-md > :first-child{margin-top:0;text-box:trim-start cap alphabetic;}
+.skill-doc-card .preview-md > :last-child{margin-bottom:0;text-box:trim-end cap alphabetic;}
+/* A code block's language bar and its code read as one piece, as they do in Chat. */
+.preview-md .pre-header{background:var(--code-bg);}
+.preview-md .pre-header + pre{border-radius:0 0 10px 10px;border-top:none;margin-top:0;}
+
+/* Spaces: a row keeps the same room on all four sides; the drag handle sits in that room. */
+.ws-row{position:relative;padding:12px;}
+.ws-row:last-child{margin-bottom:0;}
+.ws-row-name{text-box:trim-start cap alphabetic;margin-bottom:8px;}
+.ws-row-path{text-box:trim-end cap alphabetic;}
+.ws-drag-handle{position:absolute;left:-1px;top:50%;translate:0 -50%;opacity:0;}
+.mi-hover.mi-hover-on > .ws-row:not(.active):hover{background:transparent;}
+#workspacesPanel > .mi-hover-pill{border-radius:8px;}
+
+/* Insights: one gap between every card, and between the tiles inside them. */
+#insightsContent{display:flex;flex-direction:column;gap:16px;}
+#insightsContent > *{flex:none;margin-bottom:0;}
+#insightsContent :is(.insights-row,.insights-grid,.system-health-metrics,.wiki-status-grid,.skill-usage-grid){gap:16px;}
+#insightsContent .insights-row > *{margin-bottom:0;}
+@media(min-width:701px){#insightsContent{padding:24px;}}
+
+/* Files: the spaces stand in the side panel, the page keeps the folder and the file. */
+.files-sidebar-host{display:flex;flex:1;flex-direction:column;min-height:0;}
+.files-sidebar-host .files-workspaces{flex:1;padding:8px;border-right:0;background:none;}
+.files-sidebar-host .files-workspace{padding:8px 10px;}
+.mi-hover.mi-hover-on > .files-workspace:not(.is-active):hover{background:transparent;}
+.files-search > span{display:flex;align-items:center;}
+/* The toolbar's rule continues the side panel's header rule. */
+@media (min-width:681px){.files-toolbar{min-height:41px;padding-block:4px;}}
+.file-manager-layout[data-spaces="side-panel"]{grid-template-columns:minmax(280px,1fr) minmax(300px,.9fr);}
+@media (max-width:900px){
+  .file-manager-layout[data-spaces="side-panel"]{grid-template-columns:minmax(0,1fr);}
+  .file-manager-layout[data-spaces="side-panel"] .files-inspector{grid-column:1;}
 }

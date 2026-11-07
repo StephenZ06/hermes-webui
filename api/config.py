@@ -10638,6 +10638,9 @@ def save_settings(settings: dict) -> dict:
                     pending_skin = v
                     skin_was_explicit = True
                 continue
+            # The options are text; a number from an older page means the same one.
+            if k == "auto_title_refresh_every" and type(v) is int:
+                v = str(v)
             # Validate enum-constrained keys
             if k in _SETTINGS_ENUM_VALUES and v not in _SETTINGS_ENUM_VALUES[k]:
                 continue
