@@ -18,8 +18,8 @@ def _card(page):
       filled: document.querySelectorAll('#chatUsageWidgetBattery .is-filled').length})""")
 
 
-@pytest.mark.parametrize("used, text, filled", [(1, "1% used", 10), (0, "0% used", 10), (60, "60% used", 4), (100, "100% used", 0)])
-def test_the_card_titled_usage_says_what_is_used_and_the_battery_what_is_left(real_2x, used, text, filled):
+@pytest.mark.parametrize("used, text, filled", [(5, "95% Remaining", 10), (0, "100% Remaining", 10), (60, "40% Remaining", 4), (100, "0% Remaining", 0)])
+def test_the_number_and_the_battery_both_say_what_is_left(real_2x, used, text, filled):
     page = real_2x
     page.route("**/api/account_usage*", lambda route: route.fulfill(json={}))
     _panel(page, "chat")

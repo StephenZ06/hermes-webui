@@ -3,7 +3,7 @@
 
 ## 2026-11-07: Usage wording, wizard logos and loading states
 
-- **Usage card:** the number now says "N% used" and the battery stays a fuel gauge. "100% remaining" under a SESSION USAGE title read as used up; the provider numbers themselves were right (Codex 0% used, Claude 1% used, checked against OpenAI and 9Router).
+- **Usage card:** the number says "N% Remaining", matching the battery. A short-lived "N% used" wording was reversed at the user's request. The provider numbers themselves were right when "100% remaining" was queried (Codex 0% used, Claude 1% used, checked against OpenAI and 9Router).
 - **Logos:** the frame-and-ink metric gave logos that still looked unequal, so they are now sized by hand per mark (longest side 18.5 to 21.5 CSS px, solid shapes smaller) and shifted up to half a pixel towards their weight. `tests/test_pages_round14_browser.py` reads the rendered tile.
 - **Wizard buttons:** `working()` and `release()` in `openProviderWizard` wrap `Micro.busy`. Next is released by `nav()`, which every exit passes through, and `nav()` returns early while `st.busy` so typing during a check leaves the spinner alone.
 - **Locales:** `chat_usage_unlimited` and `audit_open_conversation` landed in English only in f0bd3f871 and broke the locale coverage tests; all 14 locales have them now.
