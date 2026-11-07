@@ -257,3 +257,43 @@ def test_other_providers_show_their_last_usage_while_a_job_holds_the_cron_lock(m
         _cron_env_lock.release()
     assert seen[-1]["windows"][0]["used_percent"] == 31  # the last reading, without waiting
     assert readings == ["openrouter"]
+
+
+def test_codex_usage_is_read_fresh_while_a_job_holds_the_cron_lock(monkeypatch, tmp_path):
+    """No Codex desktop token: the profile's own login is read through the per-profile
+    probe (its own process, its own HERMES_HOME), not left on a reading up to 30 minutes
+    old. A scheduled job every 15 minutes kept a fresh 5-hour window at "100% remaining"."""
+    from api import providers
+    from api.profiles import _cron_env_lock
+
+    profile_home = _write_profile(tmp_path, "openai-codex")
+    seen = _install(monkeypatch, tmp_path, profile_home)
+    readings = iter([2.0, 4.0])
+    probed = []
+
+    def fetch_account_usage(provider, **_kwargs):
+        return AccountUsageSnapshot(provider, (AccountUsageWindow("Session", next(readings)),))
+
+    agent_mod = types.ModuleType("agent")
+    agent_mod.__path__ = []
+    usage_mod = types.ModuleType("agent.account_usage")
+    usage_mod.fetch_account_usage = fetch_account_usage
+    monkeypatch.setitem(sys.modules, "agent", agent_mod)
+    monkeypatch.setitem(sys.modules, "agent.account_usage", usage_mod)
+    codex_auth_mod = types.ModuleType("hermes_cli.auth_codex")
+    codex_auth_mod._import_codex_cli_tokens = lambda: None
+    monkeypatch.setitem(sys.modules, "hermes_cli.auth_codex", codex_auth_mod)
+    monkeypatch.setattr(providers, "_agent_fetch_account_usage_for_home", lambda provider, home: (
+        probed.append((provider, home)) or AccountUsageSnapshot(provider, (AccountUsageWindow("Session", 4.0),))))
+
+    routes._handle_account_usage(object(), SimpleNamespace(query="profile=codex"))
+    assert seen[-1]["windows"][0]["used_percent"] == 2.0
+
+    monkeypatch.setattr("api.profiles.cron_profile_context_for_home", lambda _: _Blocked())
+    assert _cron_env_lock.acquire(timeout=5)
+    try:
+        routes._handle_account_usage(object(), SimpleNamespace(query="profile=codex"))
+    finally:
+        _cron_env_lock.release()
+    assert seen[-1]["windows"][0]["used_percent"] == 4.0
+    assert probed == [("openai-codex", profile_home)]

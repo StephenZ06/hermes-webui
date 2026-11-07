@@ -12183,9 +12183,20 @@ def _handle_account_usage(handler, parsed) -> bool:
         j(handler, {"available": False, "provider": "9router-claude"})
         return True
 
-    # The rest reads profile-scoped credentials under the cron lock. While a
-    # scheduled job holds it, answer with this profile's last reading.
+    # The rest reads profile-scoped credentials under the cron lock. A
+    # scheduled job holds it for its whole run, and a job every 15 minutes
+    # kept the card on a reading up to half an hour old (a fresh 5-hour window
+    # read "100% remaining" long after use began). While it is held, a Codex
+    # profile is read by the per-profile probe process instead, which runs with
+    # that profile's HERMES_HOME and needs no lock; only if that fails does the
+    # card fall back to the last reading.
     if _cron_env_lock.locked():
+        if normalized_profile_provider(provider_raw, base_url) == "openai-codex":
+            from api.providers import _agent_fetch_account_usage_for_home
+
+            probed = _agent_fetch_account_usage_for_home("openai-codex", profile_home)
+            if probed is not None and getattr(probed, "available", False):
+                return _answer(probed)
         with _account_usage_last_lock:
             last = _account_usage_last.get(home_key)
         if last and time.monotonic() - last[0] <= _ACCOUNT_USAGE_LAST_TTL_SECONDS:
