@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Files previews, live space status
+
+- **Previews:** images, video, audio and PDFs open in the browser's own players from `GET /api/file-manager/raw` (local spaces only, anchored open, byte ranges, `?download=1` for attachment; HTML/SVG never inline; CSP `sandbox` except PDF, which the browser cannot show sandboxed). Downloads of local files use it too, so they are no longer capped at `MAX_FILE_BYTES` (400 KB). `/read` returns `preview_kind: "binary"` (NUL or many undecodable bytes) or `"too_large"` instead of characters or an error. Office files show their extracted text read-only. Remote (SSH) spaces still have no byte stream; their media show "Preview unavailable".
+- **Space status:** dots are green with a soft glow online, red offline, 1px lower. SSH spaces count as online only after a `ssh … true` succeeds, cached 45 s (`_ssh_online`); they used to be always online. The page re-checks every 15 s and on tab return.
+- **Filter row:** the divider now sits under the path row; the filter has 10px above and to the first row, reads "Filter", text 0.5px higher. "Select a file" has equal room above and below.
+- Tests: `tests/test_file_manager_previews.py`, `tests/test_files_previews_browser.py`.
+
 ## 2026-11-07: Files path row, menu placeholders
 
 - **Files:** the middle panel's top bar holds the up button (disabled at a space's root), the current folder's name and the three actions, all 32px rounded squares with 4px on every side. The full path moved to `.files-path`, a wrapping row between the top bar and the filter. The name slides in from the side of the move (`showTitle`), new crumbs rise in and the row eases to a new height (`showPath`). Tests: `tests/test_files_path_row_browser.py`.

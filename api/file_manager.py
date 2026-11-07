@@ -11,11 +11,13 @@ import base64
 import hashlib
 import mimetypes
 import os
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from api.project_registry import list_registry_projects
-from api.ssh_workspace import SshWorkspaceError, ssh_list_dir, ssh_read_file
+from api.ssh_workspace import SshWorkspaceError, ssh_list_dir, ssh_read_file, ssh_reachable
 from api.workspace import (
     _normalize_workspace_rel_path,
     dir_signature,
@@ -130,13 +132,34 @@ def _contexts() -> list[WorkspaceFileContext]:
     return contexts
 
 
+# An SSH space is only known to be online once a connection to it succeeds. The
+# answer is kept for a short while so the page's status poll does not open a
+# connection per space on every call.
+_SSH_STATUS_TTL_S = 45.0
+_ssh_status: dict[str, tuple[float, bool]] = {}
+_ssh_status_lock = threading.Lock()
+
+
+def _ssh_online(context: WorkspaceFileContext) -> bool:
+    now = time.monotonic()
+    with _ssh_status_lock:
+        cached = _ssh_status.get(context.workspace_id)
+    if cached and now - cached[0] < _SSH_STATUS_TTL_S:
+        return cached[1]
+    online = ssh_reachable(context.project or {})
+    with _ssh_status_lock:
+        _ssh_status[context.workspace_id] = (time.monotonic(), online)
+    return online
+
+
 def list_file_manager_workspaces() -> list[dict]:
+    """Every space the page may open, each with whether it can be reached right now."""
     return [
         {
             "id": context.workspace_id,
             "name": context.name,
             "kind": context.kind,
-            "available": context.available,
+            "available": context.available and (context.kind != "ssh" or _ssh_online(context)),
             "read_only": context.read_only,
         }
         for context in _contexts()
@@ -207,18 +230,57 @@ def list_directory(workspace_id: str, path: str = ".") -> dict:
         raise FileManagerError(str(exc), 404 if isinstance(exc, FileNotFoundError) else 400) from None
 
 
+def _looks_binary(content: str) -> bool:
+    """Decoded bytes that are not text: a NUL, or many undecodable bytes, near the start."""
+    head = content[:8192]
+    return "\x00" in head or head.count("\ufffd") > max(8, len(head) // 100)
+
+
+def _without_text(payload: dict, kind: str) -> dict:
+    """A file the editor cannot show: its name and size, never its bytes as characters."""
+    content = payload.get("content") or ""
+    return {"path": payload.get("path"), "size": payload.get("size", len(content)), "preview_kind": kind}
+
+
 def read_file(workspace_id: str, path: str) -> dict:
     context = resolve_file_manager_workspace(workspace_id)
     rel = _normal_path(path)
     try:
         if context.kind == "ssh":
             payload = ssh_read_file(context.project or {}, rel)
+            if _looks_binary(str(payload.get("content") or "")):
+                payload = _without_text(payload, "binary")
             return {**payload, "workspace_id": context.workspace_id, "read_only": True}
         root = _local_context(context)
+        target, rel = _local_target(context, rel)
+        if target.is_file():
+            size = target.stat().st_size
+            if size > MAX_FILE_BYTES:
+                return {"path": rel, "size": size, "preview_kind": "too_large",
+                        "workspace_id": context.workspace_id, "read_only": False}
         payload = read_file_content(root, rel)
+        if not payload.get("preview_kind") and _looks_binary(str(payload.get("content") or "")):
+            payload = _without_text(payload, "binary")
         return {**payload, "workspace_id": context.workspace_id, "read_only": False}
     except (SshWorkspaceError, FileNotFoundError, PermissionError, OSError, ValueError) as exc:
         raise FileManagerError(str(exc), 404 if isinstance(exc, FileNotFoundError) else 400) from None
+
+
+def raw_file_target(workspace_id: str, path: str) -> tuple[Path, Path, str]:
+    """The trusted root, the file inside it and its name, for streaming a local file.
+
+    The caller opens the file anchored under the root (no symlink followed), so a
+    path swapped after this check cannot escape the space. Remote spaces have no
+    byte stream here.
+    """
+    context = resolve_file_manager_workspace(workspace_id)
+    if context.kind != "local":
+        raise FileManagerError("Previews of remote files are not available", 409)
+    root = _local_context(context)
+    target, rel = _local_target(context, path)
+    if rel == "." or not target.is_file():
+        raise FileManagerError("Not a file", 404)
+    return root, target, PurePosixPath(rel).name or "download"
 
 
 def download_file(workspace_id: str, path: str) -> tuple[bytes, str, str]:

@@ -36,6 +36,7 @@
     trash: icon('<path d="M3 6h18M8 6V4h8v2m-9 0 1 15h8l1-15"/>'),
     close: icon('<path d="m18 6-12 12M6 6l12 12"/>'),
     search: icon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+    audio: icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
   };
 
   function esc(value) {
@@ -65,6 +66,46 @@
   function isTextPreview() {
     return state.preview && typeof state.preview.content === 'string' && !state.preview.preview_kind;
   }
+  // Files the browser draws itself are streamed from the space instead of read as text.
+  const MEDIA = {
+    image: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif'],
+    video: ['.mp4', '.mov', '.m4v', '.webm', '.ogv'],
+    audio: ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.opus', '.flac'],
+    pdf: ['.pdf'],
+  };
+  const KIND_LABEL = { image: 'Image', video: 'Video', audio: 'Audio', pdf: 'PDF', office: 'Document', binary: 'Binary file', too_large: 'Large file', remote_media: 'Media' };
+  function mediaKind(path) {
+    const dot = String(path || '').lastIndexOf('.');
+    const ext = dot < 0 ? '' : String(path).slice(dot).toLowerCase();
+    return Object.keys(MEDIA).find((kind) => MEDIA[kind].includes(ext)) || '';
+  }
+  function rawUrl(path, download) {
+    return endpoint(`/raw?workspace_id=${encode(state.workspaceId)}&path=${encode(path)}${download ? '&download=1' : ''}`);
+  }
+  function previewBody(preview, readOnly) {
+    const kind = preview.preview_kind || '';
+    const name = esc(preview.path.split('/').pop() || preview.path);
+    const src = esc(rawUrl(preview.path));
+    if (kind === 'image') return `<div class="files-media files-media-image"><img src="${src}" alt="${name}" draggable="false"></div>`;
+    if (kind === 'video') return `<div class="files-media files-media-video"><video src="${src}" controls preload="metadata" playsinline></video></div>`;
+    if (kind === 'audio') return `<div class="files-media files-media-audio">${icons.audio}<strong>${name}</strong><audio src="${src}" controls preload="metadata"></audio></div>`;
+    if (kind === 'pdf') return `<div class="files-media files-media-pdf"><iframe src="${src}" title="${name}"></iframe></div>`;
+    if (kind === 'office' && typeof preview.content === 'string') return `<textarea class="files-editor" aria-label="Document text" readonly>${esc(preview.content)}</textarea>`;
+    if (isTextPreview()) return `<textarea class="files-editor" aria-label="File contents" ${readOnly ? 'readonly' : ''}>${esc(preview.content)}</textarea>${readOnly ? '' : `<button type="button" class="files-save" data-action="save">${icons.save}<span>Save changes</span></button>`}`;
+    const why = kind === 'too_large' ? 'This file is too large to open here.'
+      : kind === 'remote_media' ? 'Previews of files on a remote space are not available.'
+        : 'This file is not text, so it cannot be shown here.';
+    return `<div class="files-preview-unavailable">${icons.file}<strong>Preview unavailable</strong><span>${why} Download it to open it on your computer.</span><button type="button" class="files-action files-download-wide" data-action="download">${icons.download}<span>Download</span></button></div>`;
+  }
+  function previewMeta(preview, readOnly) {
+    const kind = preview.preview_kind || '';
+    const parts = [prettySize(preview.size)];
+    // An image's pixel size is filled in once it has loaded.
+    if (KIND_LABEL[kind]) parts.push(kind === 'image' ? `${KIND_LABEL[kind]}<span class="files-image-size"></span>` : KIND_LABEL[kind]);
+    else parts.push(`${preview.lines || 1} line${preview.lines === 1 ? '' : 's'}`);
+    if (readOnly || kind === 'office') parts.push('Read only');
+    return parts.join(' · ');
+  }
   function setMobileSurface(surface) {
     if (!state.root) return;
     state.root.dataset.surface = surface || 'browser';
@@ -86,7 +127,7 @@
     if (layout && layout.dataset.spaces === placement) return layout;
     state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${placement}">
       ${placement === 'page' ? '<div class="files-spaces-slot"></div>' : ''}
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
       <aside class="files-inspector" aria-label="File inspector"><div class="files-inspector-stage"><div class="files-inspector-content"></div></div></aside>
     </div>`;
     layout = state.root.firstElementChild;
@@ -116,13 +157,11 @@
     }).join('') : `<div class="files-empty-list">${state.filter ? 'No matching files' : 'This folder is empty'}</div>`;
     const previewMarkup = !state.preview
       ? `<div class="files-inspector-empty">${icons.file}<strong>Select a file</strong><span>Choose a file to preview, edit, rename, download, or remove it.</span></div>`
-      : `<div class="files-inspector-header"><div><div class="files-inspector-name">${esc(state.preview.path)}</div><div class="files-inspector-meta">${prettySize(state.preview.size)} · ${state.preview.lines || 1} line${state.preview.lines === 1 ? '' : 's'}${readOnly ? ' · Read only' : ''}</div></div><div class="files-inspector-actions">
+      : `<div class="files-inspector-header"><div><div class="files-inspector-name">${esc(state.preview.path)}</div><div class="files-inspector-meta">${previewMeta(state.preview, readOnly)}</div></div><div class="files-inspector-actions">
           <button type="button" class="files-icon-btn" data-action="download" title="Download">${icons.download}</button>
           ${readOnly ? '' : `<button type="button" class="files-icon-btn" data-action="rename" title="Rename">${icons.rename}</button><button type="button" class="files-icon-btn" data-action="move" title="Move">${icons.move}</button><button type="button" class="files-icon-btn files-icon-btn-danger" data-action="delete" title="Delete">${icons.trash}</button>`}
           <button type="button" class="files-icon-btn" data-action="close-preview" title="Close preview">${icons.close}</button></div></div>
-        <div class="files-preview-wrap">${isTextPreview()
-          ? `<textarea class="files-editor" aria-label="File contents" ${readOnly ? 'readonly' : ''}>${esc(state.preview.content)}</textarea>${readOnly ? '' : `<button type="button" class="files-save" data-action="save">${icons.save}<span>Save changes</span></button>`}`
-          : `<div class="files-preview-unavailable">${icons.file}<strong>Preview unavailable</strong><span>This format cannot be edited here. Download it to open it locally.</span></div>`}</div>`;
+        <div class="files-preview-wrap" data-kind="${esc(state.preview.preview_kind || 'text')}">${previewBody(state.preview, readOnly)}</div>`;
     // The list of spaces stands in the Files side panel. A phone has no side panel on screen, so there it
     // stays the first of the sliding surfaces.
     const spacesMarkup = `<aside class="files-workspaces" aria-label="Connected workspaces"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list" data-mi-hover=".files-workspace">${state.workspaces.map((item) => `<button type="button" class="files-workspace${item.id === state.workspaceId ? ' is-active' : ''}" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot ${item.available ? 'is-online' : 'is-offline'}"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>`;
@@ -312,6 +351,14 @@
   }
   async function openEntry(path, type) {
     if (type === 'dir') { await openPath(path); return; }
+    const kind = mediaKind(path);
+    if (kind) {
+      // The browser streams these itself; nothing is read as text first.
+      const workspace = currentWorkspace(), entry = state.entries.find((item) => item.path === path) || {};
+      ++state.requestId; state.selected = path; state.opening = null;
+      state.preview = { path, size: entry.size, preview_kind: workspace && workspace.read_only ? 'remote_media' : kind };
+      setMobileSurface('preview'); render(); return;
+    }
     const requestId = ++state.requestId; state.selected = path; state.opening = path;
     const inspector = state.root.querySelector('.files-inspector-stage');
     const lines = inspector && inspector.firstElementChild;
@@ -348,13 +395,46 @@
       if (action === 'rename') { const name = await window.showPromptDialog({ title: 'Rename file', message: 'Choose a new name.', value: state.preview.path.split('/').pop(), selectAll: true, confirmLabel: 'Rename' }); if (!name || !String(name).trim()) return; const response = await post('/rename', { workspace_id: workspace.id, path: state.preview.path, new_name: String(name).trim() }); state.preview.path = response.path; state.selected = response.path; await loadDirectory(); await openEntry(response.path, 'file'); return; }
       if (action === 'move') { const destination = await window.showPromptDialog({ title: 'Move file', message: 'Enter a folder path inside this workspace. Use . for the workspace root.', value: state.path, selectAll: true, confirmLabel: 'Move' }); if (destination == null) return; const response = await post('/move', { workspace_id: workspace.id, path: state.preview.path, destination: String(destination).trim() || '.' }); state.preview.path = response.path; state.selected = response.path; await openPath(response.parent_path); await openEntry(response.path, 'file'); return; }
       if (action === 'delete') { const agreed = await window.showConfirmDialog({ title: 'Delete file?', message: `“${state.preview.path}” will be permanently deleted.`, confirmLabel: 'Delete', danger: true, focusCancel: true }); if (!agreed) return; await post('/delete', { workspace_id: workspace.id, path: state.preview.path }); if (typeof window.animateRemoval === 'function') await window.animateRemoval(document.querySelector(`.files-row[data-file-path="${CSS.escape(state.preview.path)}"]`)); state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory(); notify('File deleted', 'success'); return; }
+      if (action === 'download' && !workspace.read_only) { const link = document.createElement('a'); link.href = rawUrl(state.preview.path, true); link.download = state.preview.path.split('/').pop() || 'download'; document.body.append(link); link.click(); link.remove(); return; }
       if (action === 'download') { const response = await fetch(endpoint(`/download?workspace_id=${encode(workspace.id)}&path=${encode(state.preview.path)}`)); if (!response.ok) throw new Error('Download failed'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = state.preview.path.split('/').pop() || 'download'; link.click(); URL.revokeObjectURL(url); }
     } catch (error) { notify(error.message || 'Files action failed', 'error'); }
+  }
+  // While the page is open, each space's dot follows whether it can be reached: a drive that is unplugged
+  // or a host that drops off turns red within one poll, and green again when it comes back.
+  const STATUS_POLL_MS = 15000;
+  let statusTimer = 0;
+  async function pollStatus() {
+    if (!state.mounted || document.visibilityState !== 'visible') return;
+    try {
+      const payload = await request('/workspaces');
+      if (!state.mounted) return;
+      const now = new Map((payload.workspaces || []).map((item) => [item.id, item]));
+      if (state.workspaces.length !== now.size || state.workspaces.some((item) => !now.has(item.id))) { state.workspaces = payload.workspaces || []; render(); return; }
+      let changed = false;
+      state.workspaces = state.workspaces.map((item) => { const next = now.get(item.id); if (next.available !== item.available) changed = true; return next; });
+      if (changed) render();
+    } catch (_) { /* the next poll tries again */ }
+  }
+  function startStatusPoll() { clearInterval(statusTimer); statusTimer = setInterval(pollStatus, STATUS_POLL_MS); }
+  // Coming back to the tab is when a stale dot is most likely, so it checks at once.
+  document.addEventListener('visibilitychange', () => { if (state.mounted && document.visibilityState === 'visible') pollStatus(); });
+  function onMediaLoad(event) {
+    const img = event.target;
+    if (!img || img.tagName !== 'IMG' || !img.closest('.files-media-image')) return;
+    img.classList.add('is-loaded');
+    const size = state.root && state.root.querySelector('.files-image-size');
+    if (size && img.naturalWidth) size.textContent = ` · ${img.naturalWidth} × ${img.naturalHeight}`;
+  }
+  function onMediaError(event) {
+    const media = event.target;
+    if (!media || !media.closest || !media.closest('.files-media')) return;
+    media.closest('.files-media').classList.add('is-broken');
   }
   function mount() {
     state.root = document.getElementById('fileManagerRoot');
     if (!state.root) return;
     state.mounted = true;
+    startStatusPoll();
     state.root.classList.add('files-mounted');
     if (!state.dragWired) {
       state.dragWired = true;
@@ -362,6 +442,8 @@
       state.root.addEventListener('dragover', onDragOver);
       state.root.addEventListener('drop', onDrop);
       state.root.addEventListener('dragend', onDragEnd);
+      state.root.addEventListener('load', onMediaLoad, true);
+      state.root.addEventListener('error', onMediaError, true);
       state.root.addEventListener('dragleave', (event) => { if (!state.root.contains(event.relatedTarget)) clearDropTarget(); });
     }
     wire(state.root);
@@ -370,6 +452,6 @@
     state.root.dataset.surface = 'browser';
     loadWorkspaces().catch((error) => { render(); notify(error.message, 'error'); });
   }
-  function unmount() { state.mounted = false; state.requestId += 1; state.loading = false; state.opening = null; }
+  function unmount() { clearInterval(statusTimer); state.mounted = false; state.requestId += 1; state.loading = false; state.opening = null; }
   window.HermesFileManager = { mount, unmount };
 }());

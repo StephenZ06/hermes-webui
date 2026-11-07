@@ -15214,6 +15214,30 @@ def _route_get_api_file_manager_read(handler, parsed):
     return _file_manager_response(handler, lambda: read_file(workspace_id, path))
 
 
+def _route_get_api_file_manager_raw(handler, parsed):
+    """Stream a local space's file for the Files page's image, audio, video and PDF
+    previews and for downloads of any size (with byte ranges for seeking)."""
+    from api.file_manager import FileManagerError, raw_file_target
+
+    query = parse_qs(parsed.query or "")
+    workspace_id = str((query.get("workspace_id") or [""])[0])
+    path = str((query.get("path") or [""])[0])
+    try:
+        root, target, name = raw_file_target(workspace_id, path)
+    except FileManagerError as exc:
+        return bad(handler, str(exc), exc.status)
+    mime = MIME_MAP.get(target.suffix.lower(), "application/octet-stream")
+    force_download = (query.get("download") or [""])[0] == "1"
+    # Markup that could run script is never served inline; an <img> still draws an SVG.
+    dangerous = mime in {"text/html", "application/xhtml+xml", "image/svg+xml"}
+    disposition = "attachment" if force_download or dangerous else "inline"
+    # A sandboxed document cannot host the browser's PDF viewer; a PDF runs no script
+    # of the page's own, so it alone goes without the sandbox.
+    csp = None if mime == "application/pdf" else "sandbox"
+    return _serve_file_bytes(handler, target, mime, disposition, "no-store", csp=csp,
+                             anchor_root=root, download_name=name)
+
+
 def _route_get_api_file_manager_download(handler, parsed):
     from api.file_manager import FileManagerError, download_file
 
@@ -16358,6 +16382,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/file-manager/list"), _route_get_api_file_manager_list),
         (Exact("/api/file-manager/read"), _route_get_api_file_manager_read),
         (Exact("/api/file-manager/download"), _route_get_api_file_manager_download),
+        (Exact("/api/file-manager/raw"), _route_get_api_file_manager_raw),
         (Exact("/api/office/integrations"), _route_get_api_office_integrations),
         (Exact("/api/office/scheduled-tasks"), _route_get_api_office_scheduled_tasks),
         (Prefix(_BUSINESS_OFFICE_PREFIX), _route_get_api_office_business),

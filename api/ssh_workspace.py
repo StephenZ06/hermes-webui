@@ -76,6 +76,18 @@ def _run_remote(project: dict, remote_command: str) -> str:
     return (proc.stdout or b"").decode("utf-8", errors="replace")
 
 
+def ssh_reachable(project: dict) -> bool:
+    """Whether a connection to the project's host succeeds now. Never raises."""
+    try:
+        _run_remote(project, "true")
+        return True
+    except SshWorkspaceError:
+        return False
+    except Exception:  # a status check must not take down the list that shows it
+        logger.debug("SSH reachability check failed for '%s'", project.get("key"), exc_info=True)
+        return False
+
+
 def _classify_ssh_error(stderr: str, returncode: int) -> str:
     """Map raw ssh stderr to a generic, browser-safe error category.
 

@@ -17540,3 +17540,35 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .files-path{padding:10px 12px 0;}
 }
 @media (prefers-reduced-motion:reduce){.files-title,.files-path .is-new{animation:none!important;}}
+/* Files: a space's dot says whether it can be reached right now, green with a soft
+   glow when it can, red when it cannot, and sits 1px below the name's centre. */
+.files-workspace-dot{position:relative;top:1px;transition:background-color .3s ease,box-shadow .3s ease;}
+.files-workspace-dot.is-online{background:var(--success,#3fb950);box-shadow:0 0 0 1px color-mix(in srgb,var(--success,#3fb950) 30%,transparent),0 0 6px 1px color-mix(in srgb,var(--success,#3fb950) 55%,transparent);}
+.files-workspace-dot.is-offline{background:var(--error,#e5534b);box-shadow:0 0 0 1px color-mix(in srgb,var(--error,#e5534b) 25%,transparent);}
+/* The path row ends on the divider; the filter sits under it with as much room
+   below it (down to the first row) as above it. */
+.files-path{padding-bottom:10px;border-bottom:1px solid var(--border-subtle);}
+.files-list-toolbar{padding-bottom:2px;border-bottom:0;}
+.files-search input{padding-bottom:1px;}
+@media (max-width:680px){.files-list-toolbar{padding-bottom:1px;}}
+/* Files previews: images, video, audio and PDFs are drawn by the browser from the
+   file itself, never read as characters. */
+.files-preview-wrap[data-kind="image"],.files-preview-wrap[data-kind="video"],.files-preview-wrap[data-kind="audio"],.files-preview-wrap[data-kind="pdf"]{padding:12px;}
+.files-media{position:relative;display:flex;flex:1;min-height:0;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border-subtle);border-radius:8px;background:color-mix(in srgb,var(--bg) 70%,#000);}
+.files-media-image{background-color:color-mix(in srgb,var(--bg) 80%,#000);background-image:linear-gradient(45deg,color-mix(in srgb,var(--text) 5%,transparent) 25%,transparent 25%,transparent 75%,color-mix(in srgb,var(--text) 5%,transparent) 75%),linear-gradient(45deg,color-mix(in srgb,var(--text) 5%,transparent) 25%,transparent 25%,transparent 75%,color-mix(in srgb,var(--text) 5%,transparent) 75%);background-size:16px 16px;background-position:0 0,8px 8px;}
+.files-media-image img{display:block;max-width:calc(100% - 24px);max-height:calc(100% - 24px);object-fit:contain;opacity:0;transform:scale(.985);transition:opacity .28s ease,transform .36s cubic-bezier(.22,1,.36,1);}
+.files-media-image img.is-loaded{opacity:1;transform:none;}
+.files-media-video{background:#000;}
+.files-media-video video{display:block;width:100%;height:100%;max-height:100%;object-fit:contain;background:#000;}
+.files-media-audio{flex-direction:column;gap:12px;padding:28px;color:var(--muted);font-size:12px;text-align:center;}
+.files-media-audio > svg{width:34px;height:34px;color:var(--accent);}
+.files-media-audio strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:13px;}
+.files-media-audio audio{width:min(100%,420px);}
+.files-media-pdf{align-items:stretch;background:var(--bg);}
+.files-media-pdf iframe{flex:1;width:100%;height:100%;border:0;}
+.files-media.is-broken > *{display:none;}
+.files-media.is-broken::after{content:"This file could not be loaded.";color:var(--muted);font-size:12px;}
+.files-download-wide{width:auto;margin-top:6px;padding:0 12px;}
+@media (prefers-reduced-motion:reduce){.files-media-image img{transition:none;transform:none;}}
+/* "Select a file" has as much room above it, from the icon, as below it, to the line under it. */
+.files-inspector-empty strong{margin-top:1.5px;margin-bottom:-1.5px;}
