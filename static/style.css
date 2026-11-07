@@ -17582,3 +17582,6 @@ textarea#msg::-webkit-scrollbar{display:none;}
    easing), so it used to shrink first and the filter sat over "Workspace". */
 .files-browser > :is(.files-toolbar,.files-path,.files-list-toolbar){flex-shrink:0;}
 .files-browser > .files-list{flex:1 1 auto;min-height:0;}
+/* Chat: a conversation row stands as tall as a project folder row (34px), its
+   line centred in it, whatever outline a skin gives the active row. */
+@media (min-width:641px){#sessionList .session-item:not(.project-folder-sessions .session-item){box-sizing:border-box;height:34px;padding-top:0;padding-bottom:0;align-items:center;}}
