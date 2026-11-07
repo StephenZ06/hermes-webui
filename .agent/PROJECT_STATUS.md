@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-07: Files spaces list in place, Raspberry Pi space
+
+- **Pi space missing:** `_contexts` skipped every saved `kind: remote` (SSHFS) space by design. They are now offered as `mount:<digest>` contexts browsed like a local folder (writes included), available only while `workspace_availability` reports the mount live, re-checked on every request so nothing lands in a bare mountpoint. The id hashes the saved path without resolving it (a stat through a dead mount can hang).
+- **Flicker:** picking a space rewrote the whole spaces list, replaying its fade and dropping the hover pill under the pointer. The list is now built once per set of spaces (`data-spaces-key`); picks and status changes only toggle classes.
+- **Spacing:** "Connected spaces" 15/15.2 above/below; "Workspace" 17.5 above, 17.5 down to the filter (6px path padding, 7px either side of the filter); item count removed, filter full width.
+- Tests: `tests/test_files_spaces_browser.py`, Pi case in `tests/test_file_manager_previews.py`.
+
 ## 2026-11-07: Files previews, live space status
 
 - **Previews:** images, video, audio and PDFs open in the browser's own players from `GET /api/file-manager/raw` (local spaces only, anchored open, byte ranges, `?download=1` for attachment; HTML/SVG never inline; CSP `sandbox` except PDF, which the browser cannot show sandboxed). Downloads of local files use it too, so they are no longer capped at `MAX_FILE_BYTES` (400 KB). `/read` returns `preview_kind: "binary"` (NUL or many undecodable bytes) or `"too_large"` instead of characters or an error. Office files show their extracted text read-only. Remote (SSH) spaces still have no byte stream; their media show "Preview unavailable".

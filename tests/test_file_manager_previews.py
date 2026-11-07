@@ -103,3 +103,29 @@ def test_ssh_reachable_never_raises(monkeypatch):
     assert ssh_workspace.ssh_reachable({"key": "x"}) is False
     monkeypatch.setattr(ssh_workspace, "_run_remote", lambda project, command: "")
     assert ssh_workspace.ssh_reachable({"key": "x"}) is True
+
+
+def test_a_saved_sshfs_space_is_browsed_while_its_mount_is_live(monkeypatch, tmp_path):
+    """The Raspberry Pi space: a saved remote entry whose folder is the SSHFS mountpoint."""
+    mount = tmp_path / "remote" / "raspberry-pi-5"
+    mount.mkdir(parents=True)
+    (mount / "hello.txt").write_text("from the pi", encoding="utf-8")
+    entry = {"name": "Raspberry Pi 5", "kind": "remote", "path": str(mount)}
+    live = {"value": "online"}
+    monkeypatch.setattr(file_manager, "load_workspaces", lambda: [entry])
+    monkeypatch.setattr(file_manager, "list_registry_projects", lambda: [])
+    monkeypatch.setattr(file_manager, "workspace_availability", lambda e: live["value"])
+
+    space = file_manager.list_file_manager_workspaces()[0]
+    assert (space["name"], space["available"], space["read_only"]) == ("Raspberry Pi 5", True, False)
+    assert space["id"].startswith("mount:") and str(mount) not in space["id"]
+    assert [e["name"] for e in file_manager.list_directory(space["id"], ".")["entries"]] == ["hello.txt"]
+    assert file_manager.read_file(space["id"], "hello.txt")["content"] == "from the pi"
+
+    # The mount drops: the space turns offline and nothing is written into the bare mountpoint.
+    live["value"] = "offline"
+    assert file_manager.list_file_manager_workspaces()[0]["available"] is False
+    with pytest.raises(file_manager.FileManagerError) as exc:
+        file_manager.create_file(space["id"], "new.txt", "x")
+    assert exc.value.status == 409
+    assert not (mount / "new.txt").exists()

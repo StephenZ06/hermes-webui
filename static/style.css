@@ -17545,12 +17545,15 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .files-workspace-dot{position:relative;top:1px;transition:background-color .3s ease,box-shadow .3s ease;}
 .files-workspace-dot.is-online{background:var(--success,#3fb950);box-shadow:0 0 0 1px color-mix(in srgb,var(--success,#3fb950) 30%,transparent),0 0 6px 1px color-mix(in srgb,var(--success,#3fb950) 55%,transparent);}
 .files-workspace-dot.is-offline{background:var(--error,#e5534b);box-shadow:0 0 0 1px color-mix(in srgb,var(--error,#e5534b) 25%,transparent);}
-/* The path row ends on the divider; the filter sits under it with as much room
-   below it (down to the first row) as above it. */
-.files-path{padding-bottom:10px;border-bottom:1px solid var(--border-subtle);}
-.files-list-toolbar{padding-bottom:2px;border-bottom:0;}
+/* The path row ends on a faint divider and the filter, the full width of the
+   column, sits under it. "Workspace" has as much room under it, down to the filter,
+   as above it from the top bar (17.5px of ink-to-edge each way); the filter has 7px
+   from the divider and 7px down to the first row. */
+.files-path{padding-bottom:6px;border-bottom:1px solid var(--border-subtle);}
+.files-list-toolbar{padding-top:7px;padding-bottom:0;border-bottom:0;}
+.files-list{padding-top:7px;}
+.files-search{max-width:none;}
 .files-search input{padding-bottom:1px;}
-@media (max-width:680px){.files-list-toolbar{padding-bottom:1px;}}
 /* Files previews: images, video, audio and PDFs are drawn by the browser from the
    file itself, never read as characters. */
 .files-preview-wrap[data-kind="image"],.files-preview-wrap[data-kind="video"],.files-preview-wrap[data-kind="audio"],.files-preview-wrap[data-kind="pdf"]{padding:12px;}
@@ -17572,3 +17575,5 @@ textarea#msg::-webkit-scrollbar{display:none;}
 @media (prefers-reduced-motion:reduce){.files-media-image img{transition:none;transform:none;}}
 /* "Select a file" has as much room above it, from the icon, as below it, to the line under it. */
 .files-inspector-empty strong{margin-top:1.5px;margin-bottom:-1.5px;}
+/* "Connected spaces" sits halfway between the panel's header rule and the first space. */
+.files-sidebar-host .files-section-heading{position:relative;top:.5px;}

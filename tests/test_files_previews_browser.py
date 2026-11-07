@@ -146,7 +146,7 @@ def test_the_filter_sits_under_the_divider_with_equal_room_and_reads_filter(real
       return {divider: getComputedStyle(path).borderBottomStyle, toolbarRule: getComputedStyle(document.querySelector('.files-list-toolbar')).borderBottomStyle,
         above: input.top - path.getBoundingClientRect().bottom, below: r('.files-row').top - input.bottom,
         placeholder: document.querySelector('.files-search input').placeholder}; }""")
-    assert out == {"divider": "solid", "toolbarRule": "none", "above": 10, "below": 10, "placeholder": "Filter"}, out
+    assert out == {"divider": "solid", "toolbarRule": "none", "above": 7, "below": 7, "placeholder": "Filter"}, out
     shift = _moved(page, ".files-search input", "text", ".files-search input{padding-bottom:0!important}")
     assert shift == -0.5, shift
 

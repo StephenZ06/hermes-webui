@@ -127,7 +127,7 @@
     if (layout && layout.dataset.spaces === placement) return layout;
     state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${placement}">
       ${placement === 'page' ? '<div class="files-spaces-slot"></div>' : ''}
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter" aria-label="Filter files"></label></div><div class="files-list" role="list"></div></section>
       <aside class="files-inspector" aria-label="File inspector"><div class="files-inspector-stage"><div class="files-inspector-content"></div></div></aside>
     </div>`;
     layout = state.root.firstElementChild;
@@ -164,10 +164,28 @@
         <div class="files-preview-wrap" data-kind="${esc(state.preview.preview_kind || 'text')}">${previewBody(state.preview, readOnly)}</div>`;
     // The list of spaces stands in the Files side panel. A phone has no side panel on screen, so there it
     // stays the first of the sliding surfaces.
-    const spacesMarkup = `<aside class="files-workspaces" aria-label="Connected workspaces"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list" data-mi-hover=".files-workspace">${state.workspaces.map((item) => `<button type="button" class="files-workspace${item.id === state.workspaceId ? ' is-active' : ''}" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot ${item.available ? 'is-online' : 'is-offline'}"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>`;
+    // The list is built once per set of spaces. Picking a space or a status change only moves the classes
+    // on the rows already there: rebuilding it replayed the panel's fade (a flicker on every pick) and
+    // dropped the sliding hover highlight, which lives on the list element.
+    const spacesKey = JSON.stringify(state.workspaces.map((item) => [item.id, item.name, !!item.read_only]));
+    const spacesMarkup = `<aside class="files-workspaces" aria-label="Connected workspaces" data-spaces-key="${esc(spacesKey)}"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list" data-mi-hover=".files-workspace">${state.workspaces.map((item) => `<button type="button" class="files-workspace" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>`;
     const sideHost = document.getElementById('filesSidebarHost');
     const spacesHost = layout.dataset.spaces === 'side-panel' ? sideHost : layout.querySelector('.files-spaces-slot');
-    if (write(spacesHost, spacesMarkup) && window.Micro) window.Micro.scan(spacesHost);
+    const listed = spacesHost && spacesHost.querySelector(':scope > .files-workspaces');
+    if (!listed || listed.dataset.spacesKey !== spacesKey) {
+      if (write(spacesHost, spacesMarkup) && window.Micro) window.Micro.scan(spacesHost);
+    }
+    if (spacesHost) {
+      const byId = new Map(state.workspaces.map((item) => [item.id, item]));
+      spacesHost.querySelectorAll('.files-workspace[data-workspace-id]').forEach((row) => {
+        const item = byId.get(row.dataset.workspaceId);
+        if (!item) return;
+        row.classList.toggle('is-active', item.id === state.workspaceId);
+        const dot = row.querySelector('.files-workspace-dot');
+        dot.classList.toggle('is-online', !!item.available);
+        dot.classList.toggle('is-offline', !item.available);
+      });
+    }
     if (sideHost && spacesHost !== sideHost) write(sideHost, '');
     layout.dataset.readOnly = readOnly ? 'true' : 'false';
     layout.dataset.hasPreview = state.preview || state.opening ? 'true' : 'false';
@@ -176,7 +194,6 @@
     showTitle(layout.querySelector('.files-title'), state.path === '.' ? (workspace ? workspace.name : 'Files') : crumbs[crumbs.length - 1], workspace);
     showPath(layout.querySelector('.files-path'), crumbMarkup);
     write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action" data-action="upload" aria-label="Upload">${icons.upload}</button>`);
-    layout.querySelector('.files-item-count').textContent = `${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}`;
     const list = layout.querySelector('.files-list');
     list.classList.toggle('is-loading', state.loading);
     write(list, listRows);

@@ -79,14 +79,37 @@ def _context_from_local(entry: dict) -> WorkspaceFileContext | None:
     )
 
 
+def _context_from_mount(entry: dict) -> WorkspaceFileContext | None:
+    path = str(entry.get("path") or "").strip()
+    if not path:
+        return None
+    # The id comes from the saved path as written: resolving it would stat through
+    # the mount, which can hang while its host is unreachable.
+    digest = hashlib.sha256(os.path.normpath(os.path.expanduser(path)).encode("utf-8")).hexdigest()[:20]
+    root = Path(path).expanduser()
+    return WorkspaceFileContext(
+        workspace_id=f"mount:{digest}",
+        name=str(entry.get("name") or root.name or "Remote space"),
+        kind="local",
+        available=workspace_availability(entry) == "online",
+        root=root,
+    )
+
+
 def _contexts() -> list[WorkspaceFileContext]:
     """Build the only workspace allow-list accepted by the Files API."""
     contexts: list[WorkspaceFileContext] = []
     seen_roots: set[str] = set()
     for entry in load_workspaces():
         if entry.get("kind") == "remote":
-            # Saved SSHFS mounts have no agent-side command policy.  Remote
-            # browsing is intentionally exposed only through registry projects.
+            # A saved SSHFS space is a folder the remote host is mounted on, so it is
+            # browsed like any local folder, every operation anchored under it. It is
+            # offered only while the mount is live (checked again on every request),
+            # so nothing is written into the empty mountpoint of a dropped mount.
+            context = _context_from_mount(entry)
+            if context is not None and context.workspace_id not in seen_roots:
+                seen_roots.add(context.workspace_id)
+                contexts.append(context)
             continue
         context = _context_from_local(entry)
         if context is None:
