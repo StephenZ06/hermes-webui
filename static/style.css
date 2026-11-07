@@ -17316,7 +17316,7 @@ textarea.office-biz-input{resize:vertical;}
 .profile-health-banner{margin-inline:0;}
 #profilesPanel .profile-concept-divider{margin-inline:0;}
 #profilesPanel .profile-card:last-child{margin-bottom:0;}
-.pp-card-head .pp-setup{padding:0 12px 1px;}
+.pp-card-head .pp-setup{padding:1px 12px 0;}
 #mainProfiles .pp-row .profile-signin-btn{padding-top:6.5px;padding-bottom:5.5px;}
 /* The cards on a Profile or Persona page have the same room (24px) above, below and on both sides. */
 @media (min-width:701px){
@@ -17361,7 +17361,7 @@ textarea.office-biz-input{resize:vertical;}
 /* Skills */
 #skillDetailBody .skill-security-section,#skillDetailBody .skill-frontmatter,#skillDetailBody .skill-linked-files{border-radius:12px;margin:0 0 16px;}
 #skillDetailBody .skill-linked-files{border-top:1px solid var(--border);}
-#skillDetailBody .skill-security-section{padding:20px;}
+#skillDetailBody .skill-security-section{padding:12px 20px;}
 #skillDetailBody .skill-frontmatter > summary{padding:20px;text-box:trim-both cap alphabetic;}
 #skillDetailBody .skill-frontmatter pre{padding:20px;}
 #skillDetailBody .skill-linked-files{padding:20px;}
@@ -17369,7 +17369,7 @@ textarea.office-biz-input{resize:vertical;}
 #skillDetailBody .skill-linked-section:last-child{margin-bottom:0;}
 #skillDetailBody .skill-linked-file{margin-left:-6px;}
 #skillDetailBody .skill-linked-section:last-child .skill-linked-file:last-child{padding-bottom:0;text-box:trim-end cap alphabetic;}
-#skillsList .skill-toggle{translate:0 -.5px;}
+#skillsList .skill-toggle{translate:0 -1px;}
 #panelSkills .skills-search input{padding-top:6.5px;padding-bottom:7.5px;}
 #skillDetailBody .skill-security-badge,#skillDetailBody .skill-security-trust{translate:0 .5px;}
 .skill-doc-card .preview-md > :first-child{margin-top:0;text-box:trim-start cap alphabetic;}
@@ -17406,4 +17406,67 @@ textarea.office-biz-input{resize:vertical;}
 @media (max-width:900px){
   .file-manager-layout[data-spaces="side-panel"]{grid-template-columns:minmax(0,1fr);}
   .file-manager-layout[data-spaces="side-panel"] .files-inspector{grid-column:1;}
+}
+
+/* ── Modals, Jobs Settings, Logs, Activity and Files: round 12 ─────────── */
+/* Every overlay and form arrives and leaves softly. */
+@keyframes overlay-in{from{opacity:0;}}
+@keyframes overlay-out{to{opacity:0;}}
+@keyframes dialog-in{from{opacity:0;transform:translateY(8px) scale(.985);}}
+@keyframes form-in{from{opacity:0;transform:translateY(6px);}}
+.cmdk-overlay,#wikiBrowserOverlay,#checkpointDiffModal,#auxAdvancedOverlay,.kanban-modal-overlay:not([hidden]){animation:overlay-in .18s ease-out;}
+.cmdk-modal,#wikiBrowserOverlay > div,#checkpointDiffModal > div,#auxAdvancedOverlay > div,.kanban-modal{animation:dialog-in .24s cubic-bezier(.22,1,.36,1);}
+.overlay-closing,#wikiBrowserOverlay.overlay-closing,#checkpointDiffModal.overlay-closing{animation:overlay-out .16s ease-in forwards;}
+.main-view-body .detail-form{animation:form-in .26s cubic-bezier(.22,1,.36,1);}
+
+/* Jobs Settings: the description stands as far above the first card as the cards stand apart. */
+.set-head{padding-bottom:0;}
+.set-head > :last-child{text-box:trim-end cap alphabetic;}
+@media(min-width:761px){
+  #jobOsRoot .settings-nav-item > *,#jobOsRoot .settings-nav-group{translate:0 1px;}
+}
+
+/* Logs: the card fills the page and keeps the same 24px as the cards on the other pages. */
+.logs-main-body{display:flex;min-height:0;overflow:hidden;}
+.logs-main-body > .logs-content{display:flex;flex:1;min-width:0;min-height:0;}
+.logs-main-body .logs-output{flex:1;min-width:0;max-height:none;}
+@media(min-width:701px){.logs-main-body{padding:24px;}}
+
+/* Activity: a card opens its conversation. */
+.audit-entry{cursor:pointer;transition:border-color .16s ease,background .16s ease,translate .16s ease;}
+.audit-entry:last-child{margin-bottom:0;}
+.audit-entry:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));background:var(--accent-bg);}
+.audit-entry:active{translate:0 1px;}
+.audit-entry:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
+/* Files */
+.file-manager-layout{--files-pane:clamp(268px,calc(12.5vw + 100px),300px);} /* the width of .sidebar */
+.file-manager-layout[data-spaces="side-panel"]{grid-template-columns:var(--files-pane) minmax(0,1fr);}
+.files-sidebar-host .files-workspace{box-sizing:border-box;height:32px;padding:0 10px;}
+.files-sidebar-host .files-workspaces{animation:files-fade .22s ease-out;}
+.files-mask{display:block;width:15px;height:15px;background:currentColor;-webkit-mask:var(--files-mask) center/contain no-repeat;mask:var(--files-mask) center/contain no-repeat;}
+.files-mask-file{--files-mask:url(files-icons/new-file.png);}
+.files-mask-folder{--files-mask:url(files-icons/new-folder.png);}
+@media (min-width:681px){.files-toolbar-actions .files-action{width:32px;padding:0;}}
+.files-inspector-stage,.files-inspector-content{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;}
+.files-inspector-stage{position:relative;}
+.files-inspector-content.is-swapping{animation:files-fade .22s ease-out;}
+.files-inspector .skel--doc{padding:20px 20px 0;}
+@keyframes files-fade{from{opacity:0;}}
+@keyframes files-in-forward{from{opacity:0;transform:translateX(10px);}}
+@keyframes files-in-back{from{opacity:0;transform:translateX(-10px);}}
+.files-list{transition:opacity .15s ease .1s;}
+.files-list.is-loading{opacity:.55;}
+.files-list.is-in-forward{animation:files-in-forward .22s cubic-bezier(.22,1,.36,1);}
+.files-list.is-in-back{animation:files-in-back .22s cubic-bezier(.22,1,.36,1);}
+.files-list.is-in-in{animation:files-fade .22s ease-out;}
+.files-row{transition:background .14s ease,opacity .14s ease,border-color .14s ease;}
+.files-row.is-dragging{opacity:.4;}
+.files-row.files-drop-target,.files-crumb.files-drop-target{border-color:var(--accent);background:var(--accent-bg);}
+.files-crumb.files-drop-target{border-radius:6px;}
+.files-browser.files-drop-target{box-shadow:inset 0 0 0 2px var(--accent);}
+
+@media (prefers-reduced-motion:reduce){
+  .cmdk-overlay,#wikiBrowserOverlay,#checkpointDiffModal,#auxAdvancedOverlay,.kanban-modal-overlay,.cmdk-modal,#wikiBrowserOverlay > div,#checkpointDiffModal > div,#auxAdvancedOverlay > div,.kanban-modal,.overlay-closing,.main-view-body .detail-form,
+  .files-sidebar-host .files-workspaces,.files-inspector-content.is-swapping,.files-list.is-in-forward,.files-list.is-in-back,.files-list.is-in-in{animation:none;}
 }

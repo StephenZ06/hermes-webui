@@ -11,6 +11,10 @@
     selected: null,
     preview: null,
     filter: '',
+    loading: false,
+    opening: null,
+    dragging: null,
+    dragWired: false,
     requestId: 0,
     mounted: false,
   };
@@ -65,8 +69,36 @@
     if (!state.root) return;
     state.root.dataset.surface = surface || 'browser';
   }
+  // A part of the page is written only when its markup changed, so nothing already on screen is rebuilt: the
+  // field keeps its focus, an open editor keeps its text and the highlight keeps gliding.
+  const written = new WeakMap();
+  function write(el, html) {
+    if (!el || written.get(el) === html) return false;
+    el.innerHTML = html; written.set(el, html); return true;
+  }
+  function restart(el, name) {
+    if (!el) return;
+    el.classList.remove(name); void el.offsetWidth; el.classList.add(name);
+  }
+  function shell() {
+    const placement = spacesInSidePanel() ? 'side-panel' : 'page';
+    let layout = state.root.querySelector(':scope > .file-manager-layout');
+    if (layout && layout.dataset.spaces === placement) return layout;
+    state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${placement}">
+      ${placement === 'page' ? '<div class="files-spaces-slot"></div>' : ''}
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><div class="files-breadcrumb"></div><div class="files-toolbar-actions"></div></header><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" aria-label="Filter files"></label><span class="files-item-count"></span></div><div class="files-list" role="list"></div></section>
+      <aside class="files-inspector" aria-label="File inspector"><div class="files-inspector-stage"><div class="files-inspector-content"></div></div></aside>
+    </div>`;
+    layout = state.root.firstElementChild;
+    const filter = layout.querySelector('.files-search input');
+    filter.value = state.filter;
+    filter.addEventListener('input', () => { state.filter = filter.value; render(); });
+    return layout;
+  }
+  function spacesInSidePanel() { return !!document.getElementById('filesSidebarHost') && !phoneWidth.matches; }
   function render() {
     if (!state.root) return;
+    const layout = shell();
     state.root.dataset.hasPreview = state.preview ? 'true' : 'false';
     const workspace = currentWorkspace();
     const visibleEntries = state.entries.filter((entry) => !state.filter || String(entry.name || '').toLowerCase().includes(state.filter.toLowerCase()));
@@ -76,10 +108,10 @@
       .concat(crumbs.map((part, index) => `<span class="files-crumb-separator">/</span><button type="button" class="files-crumb" data-path="${esc(crumbs.slice(0, index + 1).join('/'))}">${esc(part)}</button>`)).join('');
     const listRows = visibleEntries.length ? visibleEntries.map((entry) => {
       const selected = state.selected === entry.path;
-      const entryIcon = entry.type === 'dir' || entry.is_dir ? icons.folder : icons.file;
-      return `<button type="button" class="files-row${selected ? ' is-selected' : ''}" data-file-path="${esc(entry.path)}" data-file-type="${esc(entry.type || '')}">
-        <span class="files-row-icon">${entryIcon}</span><span class="files-row-name">${esc(entry.name)}</span>
-        <span class="files-row-meta">${entry.type === 'dir' || entry.is_dir ? 'Folder' : prettySize(entry.size)}</span>
+      const isDir = entry.type === 'dir' || entry.is_dir;
+      return `<button type="button" class="files-row${selected ? ' is-selected' : ''}" data-file-path="${esc(entry.path)}" data-file-type="${esc(entry.type || '')}"${readOnly ? '' : ' draggable="true"'}>
+        <span class="files-row-icon">${isDir ? icons.folder : icons.file}</span><span class="files-row-name">${esc(entry.name)}</span>
+        <span class="files-row-meta">${isDir ? 'Folder' : prettySize(entry.size)}</span>
       </button>`;
     }).join('') : `<div class="files-empty-list">${state.filter ? 'No matching files' : 'This folder is empty'}</div>`;
     const previewMarkup = !state.preview
@@ -93,64 +125,176 @@
           : `<div class="files-preview-unavailable">${icons.file}<strong>Preview unavailable</strong><span>This format cannot be edited here. Download it to open it locally.</span></div>`}</div>`;
     // The list of spaces stands in the Files side panel. A phone has no side panel on screen, so there it
     // stays the first of the sliding surfaces.
-    const sideHost = document.getElementById('filesSidebarHost');
-    const inSidePanel = !!sideHost && !phoneWidth.matches;
     const spacesMarkup = `<aside class="files-workspaces" aria-label="Connected workspaces"><div class="files-section-heading">Connected spaces</div><div class="files-workspace-list" data-mi-hover=".files-workspace">${state.workspaces.map((item) => `<button type="button" class="files-workspace${item.id === state.workspaceId ? ' is-active' : ''}" data-workspace-id="${esc(item.id)}"><span class="files-workspace-dot ${item.available ? 'is-online' : 'is-offline'}"></span><span>${esc(item.name)}</span>${item.read_only ? '<span class="files-read-only-tag">Read only</span>' : ''}</button>`).join('') || '<div class="files-empty-list">No connected spaces</div>'}</div><p class="files-sidebar-caption">Files stays inside the workspaces Hermes already knows.</p></aside>`;
-    if (sideHost) {
-      sideHost.innerHTML = inSidePanel ? spacesMarkup : '';
-      if (window.Micro) window.Micro.scan(sideHost);
-    }
-    state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${inSidePanel ? 'side-panel' : 'page'}" data-read-only="${readOnly ? 'true' : 'false'}" data-has-preview="${state.preview ? 'true' : 'false'}" data-surface="${esc(state.root.dataset.surface || 'browser')}">
-      ${inSidePanel ? '' : spacesMarkup}
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><div class="files-breadcrumb">${state.path !== '.' ? `<button type="button" class="files-icon-btn" data-action="up" title="Parent folder">${icons.back}</button>` : ''}${crumbMarkup}</div><div class="files-toolbar-actions">${readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file">${icons.plus}<span>New file</span></button><button type="button" class="files-action" data-action="new-folder">${icons.plus}<span>New folder</span></button><button type="button" class="files-action" data-action="upload">${icons.upload}<span>Upload</span></button>`}</div></header><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter this folder" value="${esc(state.filter)}" aria-label="Filter files"></label><span class="files-item-count">${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}</span></div><div class="files-list" role="list">${listRows}</div></section>
-      <aside class="files-inspector" aria-label="File inspector">${previewMarkup}</aside>
-    </div>`;
-    bindEvents();
+    const sideHost = document.getElementById('filesSidebarHost');
+    const spacesHost = layout.dataset.spaces === 'side-panel' ? sideHost : layout.querySelector('.files-spaces-slot');
+    if (write(spacesHost, spacesMarkup) && window.Micro) window.Micro.scan(spacesHost);
+    if (sideHost && spacesHost !== sideHost) write(sideHost, '');
+    layout.dataset.readOnly = readOnly ? 'true' : 'false';
+    layout.dataset.hasPreview = state.preview || state.opening ? 'true' : 'false';
+    layout.dataset.surface = state.root.dataset.surface || 'browser';
+    write(layout.querySelector('.files-breadcrumb'), `${state.path !== '.' ? `<button type="button" class="files-icon-btn" data-action="up" title="Parent folder">${icons.back}</button>` : ''}${crumbMarkup}`);
+    write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action" data-action="upload" aria-label="Upload">${icons.upload}</button>`);
+    layout.querySelector('.files-item-count').textContent = `${visibleEntries.length} item${visibleEntries.length === 1 ? '' : 's'}`;
+    const list = layout.querySelector('.files-list');
+    list.classList.toggle('is-loading', state.loading);
+    write(list, listRows);
+    const inspector = layout.querySelector('.files-inspector-content');
+    if (write(inspector, previewMarkup) && !state.opening) restart(inspector, 'is-swapping');
   }
-  function bindEvents() {
-    document.querySelectorAll('#fileManagerRoot [data-workspace-id], #filesSidebarHost [data-workspace-id]').forEach((button) => button.addEventListener('click', () => openWorkspace(button.dataset.workspaceId)));
-    state.root.querySelectorAll('[data-path]').forEach((button) => button.addEventListener('click', () => openPath(button.dataset.path)));
-    state.root.querySelectorAll('[data-file-path]').forEach((button) => button.addEventListener('click', () => openEntry(button.dataset.filePath, button.dataset.fileType)));
-    const filter = state.root.querySelector('.files-search input');
-    if (filter) filter.addEventListener('input', () => {
-      state.filter = filter.value;
-      const caret = filter.selectionStart;
-      render();
-      // render() writes a new field, which must not cost the typist their place.
-      const next = state.root.querySelector('.files-search input');
-      if (next) { next.focus(); next.setSelectionRange(caret, caret); }
-    });
-    state.root.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => dispatchAction(button.dataset.action)));
+  // One listener per surface for everything rows, crumbs and buttons do, so rewriting a part costs no rebinding.
+  function onClick(event) {
+    const target = event.target.closest('[data-workspace-id],[data-path],[data-file-path],[data-action]');
+    if (!target) return;
+    if (target.dataset.workspaceId) openWorkspace(target.dataset.workspaceId);
+    else if (target.dataset.path) openPath(target.dataset.path);
+    else if (target.dataset.filePath) openEntry(target.dataset.filePath, target.dataset.fileType);
+    else dispatchAction(target.dataset.action);
+  }
+  // ── Drag and drop: rows onto a folder or a crumb move them, files from the computer upload ──
+  function clearDropTarget() {
+    document.querySelectorAll('.files-drop-target').forEach((el) => el.classList.remove('files-drop-target'));
+  }
+  function folderUnder(node) {
+    const row = node.closest ? node.closest('.files-row[data-file-type="dir"]') : null;
+    const crumb = node.closest ? node.closest('.files-crumb[data-path]') : null;
+    return { el: row || crumb, path: row ? row.dataset.filePath : crumb ? crumb.dataset.path : null };
+  }
+  function canMoveTo(source, folder) {
+    return folder !== null && folder !== source && parentPath(source) !== folder && !folder.startsWith(`${source}/`);
+  }
+  function onDragStart(event) {
+    const row = event.target.closest && event.target.closest('.files-row[draggable="true"]');
+    if (!row) return;
+    state.dragging = row.dataset.filePath;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', row.querySelector('.files-row-name').textContent);
+    requestAnimationFrame(() => row.classList.add('is-dragging'));
+  }
+  function onDragOver(event) {
+    const workspace = currentWorkspace();
+    const fromComputer = !state.dragging && [...event.dataTransfer.types].includes('Files');
+    if (!state.dragging && !fromComputer) return;
+    if (!workspace || workspace.read_only) {
+      // Refused here, or the browser would open the dropped file in place of the app.
+      event.preventDefault(); event.dataTransfer.dropEffect = 'none'; return;
+    }
+    const folder = folderUnder(event.target);
+    let target = null;
+    if (state.dragging) { if (canMoveTo(state.dragging, folder.path)) target = folder.el; }
+    else target = folder.el || event.target.closest('.files-browser');
+    clearDropTarget();
+    if (!target) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = state.dragging ? 'move' : 'copy';
+    target.classList.add('files-drop-target');
+  }
+  function onDragEnd() {
+    state.dragging = null; clearDropTarget();
+    document.querySelectorAll('.files-row.is-dragging').forEach((row) => row.classList.remove('is-dragging'));
+  }
+  async function onDrop(event) {
+    const source = state.dragging, folder = folderUnder(event.target).path;
+    const items = [...(event.dataTransfer.items || [])].map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null));
+    const files = [...event.dataTransfer.files];
+    event.preventDefault(); onDragEnd();
+    try {
+      if (source) { if (canMoveTo(source, folder)) await moveEntry(source, folder); return; }
+      const uploads = files.filter((file, index) => !(items[index] && items[index].isDirectory));
+      if (uploads.length < files.length) notify('Folders cannot be uploaded. Drop the files inside them.', 'error');
+      await uploadFiles(uploads, folder === null ? state.path : folder);
+    } catch (error) { notify(error.message || 'Files action failed', 'error'); }
+  }
+  async function moveEntry(source, folder) {
+    const workspace = currentWorkspace();
+    const response = await post('/move', { workspace_id: workspace.id, path: source, destination: folder });
+    // An open file that moved, or sits in a folder that moved, keeps its preview under its new path.
+    if (state.preview && (state.preview.path === source || state.preview.path.startsWith(`${source}/`))) {
+      state.preview.path = response.path + state.preview.path.slice(source.length);
+      state.selected = state.preview.path;
+    }
+    await loadDirectory();
+    notify(`Moved to ${folder === '.' ? 'Workspace' : folder}`, 'success');
+  }
+  async function uploadFiles(files, folder) {
+    const workspace = currentWorkspace();
+    let done = 0;
+    for (const file of files) {
+      if (file.size > 25 * 1024 * 1024) { notify(`${file.name} is over 25 MB`, 'error'); continue; }
+      const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = () => reject(new Error(`Could not read ${file.name}`)); reader.readAsDataURL(file); });
+      await post('/upload', { workspace_id: workspace.id, path: folder, filename: file.name, data_base64: data });
+      done += 1;
+    }
+    if (!done) return;
+    await loadDirectory();
+    notify(done === 1 ? `${files[0].name} uploaded` : `${done} files uploaded`, 'success');
+  }
+  function wire(surface) {
+    if (!surface || surface.dataset.filesWired) return;
+    surface.dataset.filesWired = '1';
+    surface.addEventListener('click', onClick);
   }
   async function loadWorkspaces() {
     const payload = await request('/workspaces');
     state.workspaces = payload.workspaces || [];
     if (!state.workspaces.some((item) => item.id === state.workspaceId)) state.workspaceId = (state.workspaces.find((item) => item.available) || state.workspaces[0] || {}).id || '';
     state.path = '.'; state.entries = []; state.selected = null; state.preview = null;
-    if (state.workspaceId) await loadDirectory(); else render();
+    if (state.workspaceId) await loadDirectory('in'); else render();
+  }
+  // Back on the page: what was on screen stays there, and only what changed since is written.
+  async function refresh() {
+    const payload = await request('/workspaces');
+    if (!state.mounted) return;
+    state.workspaces = payload.workspaces || [];
+    if (!state.workspaces.some((item) => item.id === state.workspaceId)) { await loadWorkspaces(); return; }
+    render();
+    await loadDirectory();
   }
   async function openWorkspace(workspaceId) {
     if (!workspaceId || workspaceId === state.workspaceId) return;
-    state.workspaceId = workspaceId; state.path = '.'; state.entries = []; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory();
+    state.workspaceId = workspaceId; state.path = '.'; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory('in');
   }
-  async function openPath(path) { state.path = path || '.'; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory(); }
-  async function loadDirectory() {
+  const depth = (path) => (path === '.' ? 0 : path.split('/').length);
+  async function openPath(path) {
+    const next = path || '.', motion = depth(next) < depth(state.path) ? 'back' : 'forward';
+    state.path = next; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory(motion);
+  }
+  // `motion` names how the new listing arrives: 'forward' into a folder, 'back' out of one, 'in' as a fresh list.
+  // Without it (after a change on the same folder) the listing is updated where it stands.
+  async function loadDirectory(motion) {
     const requestId = ++state.requestId;
+    state.loading = !!motion;
     render();
     try {
       const payload = await request(`/list?workspace_id=${encode(state.workspaceId)}&path=${encode(state.path)}`);
       if (requestId !== state.requestId) return;
-      state.path = payload.path || '.'; state.entries = payload.entries || []; render();
-    } catch (error) { if (requestId === state.requestId) { state.entries = []; render(); notify(error.message, 'error'); } }
+      state.path = payload.path || '.'; state.entries = payload.entries || []; state.loading = false; render();
+      if (motion) {
+        const list = state.root.querySelector('.files-list');
+        list.classList.remove('is-in-forward', 'is-in-back', 'is-in-in');
+        restart(list, `is-in-${motion}`);
+      }
+    } catch (error) { if (requestId === state.requestId) { state.entries = []; state.loading = false; render(); notify(error.message, 'error'); } }
   }
   async function openEntry(path, type) {
     if (type === 'dir') { await openPath(path); return; }
-    const requestId = ++state.requestId; state.selected = path; render();
+    const requestId = ++state.requestId; state.selected = path; state.opening = path;
+    const inspector = state.root.querySelector('.files-inspector-stage');
+    const lines = inspector && inspector.firstElementChild;
+    render();
+    // The file's lines stand as placeholders until it is written in, then cross-fade into it.
+    const token = window.SkeletonEntrance && inspector ? window.SkeletonEntrance.start(inspector, { shape: 'doc', hide: [lines] }) : 0;
+    const settle = () => { state.opening = null; render(); };
     try {
       const payload = await request(`/read?workspace_id=${encode(state.workspaceId)}&path=${encode(path)}`);
       if (requestId !== state.requestId) return;
-      state.preview = payload; state.selected = path; setMobileSurface('preview'); render();
-    } catch (error) { if (requestId === state.requestId) { state.preview = null; render(); notify(error.message, 'error'); } }
+      state.preview = payload; state.selected = path; setMobileSurface('preview'); settle();
+      if (token) window.SkeletonEntrance.reveal(inspector, token);
+    } catch (error) {
+      if (requestId !== state.requestId) return;
+      if (token) window.SkeletonEntrance.cancel(inspector);
+      state.preview = null; settle(); notify(error.message, 'error');
+    }
   }
   async function prompt(options) { return typeof window.showPromptDialog === 'function' ? window.showPromptDialog(options) : window.prompt(options.message || options.title || '', options.value || ''); }
   async function confirm(options) { return typeof window.showConfirmDialog === 'function' ? window.showConfirmDialog(options) : window.confirm(options.message || options.title || 'Continue?'); }
@@ -166,7 +310,7 @@
         const path = state.path === '.' ? String(name).trim() : `${state.path}/${String(name).trim()}`;
         await post(action === 'new-file' ? '/create' : '/create-dir', { workspace_id: workspace.id, path }); await loadDirectory(); notify(`${label} created`, 'success'); return;
       }
-      if (action === 'upload') { const input = document.createElement('input'); input.type = 'file'; input.onchange = async () => { const file = input.files && input.files[0]; if (!file) return; if (file.size > 25 * 1024 * 1024) { notify('Files must be 25 MB or smaller', 'error'); return; } const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); await post('/upload', { workspace_id: workspace.id, path: state.path, filename: file.name, data_base64: data }); await loadDirectory(); notify(`${file.name} uploaded`, 'success'); }; input.click(); return; }
+      if (action === 'upload') { const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => uploadFiles([...input.files], state.path).catch((error) => notify(error.message || 'Upload failed', 'error')); input.click(); return; }
       if (!state.preview) return;
       if (action === 'save') { const editor = state.root.querySelector('.files-editor'); await post('/save', { workspace_id: workspace.id, path: state.preview.path, content: editor ? editor.value : '' }); state.preview.content = editor ? editor.value : state.preview.content; notify('Changes saved', 'success'); return; }
       if (action === 'rename') { const name = await prompt({ title: 'Rename file', message: 'Choose a new name.', value: state.preview.path.split('/').pop(), selectAll: true, confirmLabel: 'Rename' }); if (!name || !String(name).trim()) return; const response = await post('/rename', { workspace_id: workspace.id, path: state.preview.path, new_name: String(name).trim() }); state.preview.path = response.path; state.selected = response.path; await loadDirectory(); await openEntry(response.path, 'file'); return; }
@@ -175,7 +319,25 @@
       if (action === 'download') { const response = await fetch(endpoint(`/download?workspace_id=${encode(workspace.id)}&path=${encode(state.preview.path)}`)); if (!response.ok) throw new Error('Download failed'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = state.preview.path.split('/').pop() || 'download'; link.click(); URL.revokeObjectURL(url); }
     } catch (error) { notify(error.message || 'Files action failed', 'error'); }
   }
-  function mount() { state.root = document.getElementById('fileManagerRoot'); if (!state.root) return; state.mounted = true; state.root.classList.add('files-mounted'); state.root.dataset.surface = 'browser'; loadWorkspaces().catch((error) => { render(); notify(error.message, 'error'); }); }
-  function unmount() { state.mounted = false; state.requestId += 1; }
+  function mount() {
+    state.root = document.getElementById('fileManagerRoot');
+    if (!state.root) return;
+    state.mounted = true;
+    state.root.classList.add('files-mounted');
+    if (!state.dragWired) {
+      state.dragWired = true;
+      state.root.addEventListener('dragstart', onDragStart);
+      state.root.addEventListener('dragover', onDragOver);
+      state.root.addEventListener('drop', onDrop);
+      state.root.addEventListener('dragend', onDragEnd);
+      state.root.addEventListener('dragleave', (event) => { if (!state.root.contains(event.relatedTarget)) clearDropTarget(); });
+    }
+    wire(state.root);
+    wire(document.getElementById('filesSidebarHost'));
+    if (state.workspaces.length) { render(); refresh().catch(() => {}); return; }
+    state.root.dataset.surface = 'browser';
+    loadWorkspaces().catch((error) => { render(); notify(error.message, 'error'); });
+  }
+  function unmount() { state.mounted = false; state.requestId += 1; state.loading = false; state.opening = null; }
   window.HermesFileManager = { mount, unmount };
 }());

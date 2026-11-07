@@ -49,7 +49,9 @@ def test_every_section_has_the_same_room_above_and_below(settings):
         else { blocks.push({top: r(el.querySelector('strong')).top, bottom: r(el.querySelector('.settings-nav-hint')).bottom, name: el.dataset.section}); } }
       return blocks.map((b, i) => [b.name, i ? +(b.top - blocks[i - 1].bottom).toFixed(2) : 0]).slice(1); }""")
     gaps = [gap for _, gap in out]
-    assert len(gaps) >= 10 and all(abs(gap - 18.5) <= .75 for gap in gaps), out  # item to item, heading to item, item to heading, title to heading
+    # item to item, heading to item, item to heading; the list moved a pixel down from the title in round 12
+    assert len(gaps) >= 10 and all(abs(gap - 18.5) <= .75 for gap in gaps[1:]), out
+    assert abs(gaps[0] - 19.5) <= .75, out
 
 
 # ── Number boxes ────────────────────────────────────────────────────────────

@@ -155,7 +155,7 @@ def test_the_cards_on_a_page_have_the_same_room_above_below_and_on_both_sides(re
 def test_set_up_a_provider_reads_half_a_pixel_higher_and_sign_in_again_half_a_pixel_lower(real_2x):
     page = real_2x
     _profile_page(page)
-    assert _moved(page, "#mainProfiles .pp-setup", "text", "#mainProfiles .pp-card-head .pp-setup{padding:0 12px!important}") == -.5
+    assert _moved(page, "#mainProfiles .pp-setup", "text", "#mainProfiles .pp-card-head .pp-setup{padding:0 12px!important}") == .5  # round 12 brought it a pixel lower
     sign = "#mainProfiles .pp-signin .pp-row .profile-signin-btn"
     page.eval_on_selector("#mainProfiles .pp-more", "e => { e.open = true; }")
     page.eval_on_selector(sign, "e => e.scrollIntoView({block: 'center'})")

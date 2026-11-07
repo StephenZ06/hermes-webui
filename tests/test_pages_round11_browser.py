@@ -298,7 +298,7 @@ def test_the_search_text_and_the_switches_read_half_a_pixel_higher_and_the_names
     _open(page, "skills", "#skillsList .skill-item")
     undo = "#panelSkills .skills-search input{padding-top:7px!important;padding-bottom:7px!important}"
     assert _moved(page, "#panelSkills .skills-search input", "text", undo) == -.5
-    assert page.evaluate("() => getComputedStyle(document.querySelector('#skillsList .skill-toggle')).translate") == "0px -0.5px"
+    assert page.evaluate("() => getComputedStyle(document.querySelector('#skillsList .skill-toggle')).translate") == "0px -1px"
     toggle = _rect(page, "#skillsList .skill-item .skill-toggle")
     ink = _ink(page, "#skillsList .skill-item .skill-name", "text")
     assert abs((ink["top"] + ink["bottom"]) / 2 - (toggle["y"] + toggle["height"] / 2)) <= .5

@@ -1922,6 +1922,13 @@ function _playCronHighlight(list, from){
   if (from && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(list, from, {..._CRON_HIGHLIGHT, bounds: list});
 }
 
+// An overlay shown by its display style leaves the way it came: it fades, then goes.
+function _closeOverlay(overlay) {
+  if (!overlay || overlay.classList.contains('overlay-closing')) return;
+  overlay.classList.add('overlay-closing');
+  setTimeout(() => { overlay.style.display = 'none'; overlay.classList.remove('overlay-closing'); }, 160);
+}
+
 // Side panel lists with one picked row (Personas, Profiles, Knowledge, Skills, Spaces): the highlight glides from the row
 // picked before to the one picked now, as it does on Chat, Scheduled jobs and the Work Hub.
 function _pickedRowHighlight(selector, attr){
@@ -1955,7 +1962,7 @@ function _beginDetailEntrance(body, title, empty, key){
   if (empty) empty.style.display = 'none';
   body.style.display = '';
   const heldTitle = _holdSkeletonTitle(title);
-  const token = SkeletonEntrance.start(host, {shape: 'doc', align: body, hide: [body, heldTitle], title: heldTitle, key});
+  const token = SkeletonEntrance.start(host, {shape: 'doc', align: body, inset: 21, sameLayout: true, hide: [body, heldTitle], title: heldTitle, key});
   SkeletonEntrance.revealOnChange(host, body, token);
   return host;
 }
@@ -5829,6 +5836,7 @@ async function loadAuditTrail() {
   const box = $('auditList');
   const refreshBtn = $('auditRefreshBtn');
   if (!box) return;
+  _wireAuditList();
   if (refreshBtn) { refreshBtn.style.opacity = '0.5'; refreshBtn.disabled = true; }
   const sessionFilter = $('auditSessionFilter');
   const sessionId = sessionFilter ? sessionFilter.value : '';
@@ -5856,7 +5864,7 @@ function _auditEntryRow(entry) {
   const runSummary = entry.run_summary
     ? `<div class="audit-entry-run-summary">${esc((entry.run_summary.event_count || 0) + ' events · ' + (entry.run_summary.last_event || entry.run_summary.terminal_state || ''))}</div>`
     : '';
-  return `<article class="audit-entry" data-audit-status="${esc(entry.status)}">
+  return `<article class="audit-entry" role="button" tabindex="0" aria-label="${esc(t('audit_open_conversation') || 'Open this conversation')}" data-audit-session="${esc(entry.session_id)}" data-audit-status="${esc(entry.status)}">
     <div class="audit-entry-head">
       <span class="audit-entry-status-badge audit-entry-status-${esc(entry.status)}">${statusLabel}</span>
       <span class="audit-entry-session">${esc(entry.session_id)}</span>
@@ -5876,6 +5884,29 @@ function _renderAuditEntries(entries) {
     return;
   }
   box.innerHTML = entries.map(_auditEntryRow).join('');
+}
+
+// An activity card opens the conversation it happened in.
+async function _openAuditEntry(card) {
+  const sid = card && card.dataset.auditSession;
+  if (!sid) return;
+  try {
+    await loadSession(sid);
+    if (typeof switchPanel === 'function') await switchPanel('chat');
+  } catch (e) {
+    showToast((t('error_prefix') || '') + e.message, 'error');
+  }
+}
+function _wireAuditList() {
+  const box = $('auditList');
+  if (!box || box.dataset.wired) return;
+  box.dataset.wired = '1';
+  box.addEventListener('click', e => { _openAuditEntry(e.target.closest('.audit-entry')); });
+  box.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.audit-entry');
+    if (card) { e.preventDefault(); _openAuditEntry(card); }
+  });
 }
 
 // ── Insights panel ──
@@ -6065,7 +6096,7 @@ async function _openWikiBrowser() {
   overlay.id = 'wikiBrowserOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
 
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeOverlay(overlay); });
   document.addEventListener('keydown', function escHandler(e) {
     if (e.key === 'Escape') { overlay.style.display = 'none'; document.removeEventListener('keydown', escHandler); }
   });
@@ -6076,7 +6107,7 @@ async function _openWikiBrowser() {
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
       <strong style="font-size:14px;">${esc(t('wiki_browse'))}</strong>
-      <button onclick="document.getElementById('wikiBrowserOverlay').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">&#x2715;</button>
+      <button onclick="_closeOverlay(document.getElementById('wikiBrowserOverlay'))" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">&#x2715;</button>
     </div>
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);">
       <input id="wikiBrowserSearch" type="text" placeholder="${esc(t('wiki_search_placeholder'))}" style="width:100%;padding:6px 10px;background:var(--input-bg,var(--bg));border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;box-sizing:border-box;" />
@@ -6664,7 +6695,7 @@ async function openSkill(name, el) {
     if (empty) empty.style.display = 'none';
     skillBody.style.display = '';
     const title = _holdSkeletonTitle($('skillDetailTitle'));
-    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title], title, key: 'skill:' + name});
+    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, inset: 21, hide: [skillBody, title], title, key: 'skill:' + name});
     SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
   }
   try {
@@ -17267,7 +17298,7 @@ async function _viewCheckpointDiff(workspace,checkpoint){
       <div style="background:var(--bg,${getComputedStyle(document.documentElement).getPropertyValue('--bg')||'#1a1a2e'});border:1px solid var(--border,rgba(255,255,255,0.12));border-radius:12px;width:90vw;max-width:800px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border,rgba(255,255,255,0.08))">
           <div id="checkpointDiffModalTitle" style="font-weight:600;font-size:14px"></div>
-          <button onclick="document.getElementById('checkpointDiffModal').style.display='none'" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:18px;padding:0 4px">&times;</button>
+          <button onclick="_closeOverlay(document.getElementById('checkpointDiffModal'))" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:18px;padding:0 4px">&times;</button>
         </div>
         <div id="checkpointDiffModalBody" style="flex:1;overflow:auto;padding:12px 16px">
           <div style="color:var(--muted);font-size:12px">${esc(t('checkpoint_loading'))}</div>

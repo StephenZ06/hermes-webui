@@ -266,7 +266,7 @@ def test_a_chat_placeholder_stays_on_screen_while_the_transcript_jumps_to_its_en
 def test_remembered_shapes_keep_only_the_most_recent_items(page):
     _open(page, "knowledge")
     page.evaluate("""() => { const all = {}; for (let i = 0; i < 250; i++) all['old:' + i] = {t: i, s: {w: 100, bars: [[0, 0, 10, 10, 0]]}};
-      localStorage.setItem('hermes-skel-shapes', JSON.stringify(all)); }""")
+      localStorage.setItem('hermes-skel-shapes-2', JSON.stringify(all)); }""")
     page.reload()
     page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
     page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
@@ -275,5 +275,5 @@ def test_remembered_shapes_keep_only_the_most_recent_items(page):
     page.evaluate("() => openKnowledgeItem('k1')")
     page.wait_for_function("() => document.getElementById('knowledgeDetailBody').innerText.includes('knowledge body 1')", timeout=15000)
     page.wait_for_timeout(1200)
-    kept = page.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('hermes-skel-shapes')))")
+    kept = page.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('hermes-skel-shapes-2')))")
     assert len(kept) == 200 and "kn:k1" in kept and "old:0" not in kept, (len(kept), kept[:3])

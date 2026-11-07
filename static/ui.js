@@ -23058,11 +23058,13 @@ const SkeletonEntrance=(()=>{
   // item opens the placeholder already has its lines. Shapes are positions
   // only, never text, kept for the most recent STORE_MAX items, measured
   // from the host's visible top and the content's left edge.
-  const STORE='hermes-skel-shapes', STORE_MAX=200, MORPH_MS=180, MAX_BARS=80;
+  // A shape is only as good as the layout it was measured on: the name changes when pages move, or every item
+  // would open on its old lines and slide onto the new ones.
+  const STORE='hermes-skel-shapes-2', STORE_MAX=200, MORPH_MS=180, MAX_BARS=80;
   let store=null, saveTimer=0;
   function shapes(){
     if(store) return store;
-    try{ store=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(_){ store=null; }
+    try{ localStorage.removeItem('hermes-skel-shapes'); store=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(_){ store=null; }
     if(!store||typeof store!=='object'||Array.isArray(store)) store={};
     return store;
   }
@@ -23081,9 +23083,12 @@ const SkeletonEntrance=(()=>{
     entry.t=Date.now();
     return entry.s;
   }
-  function remember(key,shape){
+  // Items of one kind ('persona:…') that share a page's layout: the last one seen stands in for one not opened yet.
+  const kindOf=(key)=>key&&key.includes(':')?key.slice(0,key.indexOf(':'))+':*':'';
+  function remember(key,shape,sameLayout){
     if(!key) return;
     shapes()[key]={t:Date.now(),s:shape};
+    if(sameLayout&&kindOf(key)&&shape.bars.length) shapes()[kindOf(key)]={t:Date.now(),s:shape};
     saveShapes();
   }
   // The frame shapes are measured in: the host's visible top, the content's
@@ -23294,9 +23299,10 @@ const SkeletonEntrance=(()=>{
     const el=document.createElement('div');
     el.setAttribute('aria-hidden','true');
     host._skelKey=opts.key||'';
+    host._skelSameLayout=!!opts.sameLayout;
     host._skelAlign=opts.align||null;
     const f=frame(host,opts.align);
-    const known=recall(opts.key,Math.round(f.width));
+    const known=recall(opts.key,Math.round(f.width))||(opts.sameLayout?recall(kindOf(opts.key),Math.round(f.width)):null);
     // An item last seen empty keeps the usual lines for its body (it may
     // have text now); its title's length still applies.
     const knownBody=known&&known.bars.length?known:null;
@@ -23315,6 +23321,11 @@ const SkeletonEntrance=(()=>{
       el.style.left=(a.left-h.left+host.scrollLeft)+'px';
       el.style.right='auto';
       el.style.width=a.width+'px';
+      // The usual lines start where the content will: inside the page's padding, and a card's when it has one.
+      if(!opts.shape||opts.shape==='doc'){
+        const cs=getComputedStyle(opts.align), inset=opts.inset||0;
+        el.style.padding=`${parseFloat(cs.paddingTop)+inset}px ${parseFloat(cs.paddingRight)+inset}px 0 ${parseFloat(cs.paddingLeft)+inset}px`;
+      }
     }
     host.classList.add('skel-host');
     host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
@@ -23354,7 +23365,7 @@ const SkeletonEntrance=(()=>{
       // The title's bar takes the length of the title's text.
       const bar=host._skelTitle, titleWidth=bar?titleTextWidth(host._skelTitleEl):0;
       if(titleWidth) target.title=titleWidth;
-      if(target.bars.length||titleWidth) remember(host._skelKey,target);
+      if(target.bars.length||titleWidth) remember(host._skelKey,target,host._skelSameLayout);
       const reshapeTitle=!!(titleWidth&&Math.abs(bar.getBoundingClientRect().width-titleWidth)>2);
       if(reshapeTitle){ bar.classList.add('is-morphing'); bar.style.width=titleWidth+'px'; }
       // Nothing to mirror (an empty note), or the remembered shape still

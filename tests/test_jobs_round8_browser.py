@@ -74,7 +74,7 @@ def test_the_section_list_opens_with_a_general_title_and_every_heading_has_the_s
     for i in (1, 4):  # the last line before AUTOMATION and before YOU
         page.evaluate("i => { document.querySelectorAll('.settings-nav-item')[i].querySelector('.settings-nav-text small').id = 'fxHint' + i; }", i)
         inks.append(_ink(page, f"#fxHint{i}", "text")["bottom"])
-    first = out["tops"][0] - out["titleBottom"]
+    first = out["tops"][0] - out["titleBottom"] - 1  # round 12 moved the list a pixel down from the title
     others = [out["tops"][1] - inks[0], out["tops"][2] - inks[1]]  # last ink above the heading to the heading's capitals
     for gap in others:
         assert abs(first - gap) <= 2, (first, others)
