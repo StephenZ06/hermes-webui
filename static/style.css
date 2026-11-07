@@ -17585,3 +17585,9 @@ textarea#msg::-webkit-scrollbar{display:none;}
 /* Chat: a conversation row stands as tall as a project folder row (34px), its
    line centred in it, whatever outline a skin gives the active row. */
 @media (min-width:641px){#sessionList .session-item:not(.project-folder-sessions .session-item){box-sizing:border-box;height:34px;padding-top:0;padding-bottom:0;align-items:center;}}
+/* Task Status: a row's one column is the card's width, not its longest word.
+   A goal with an unbroken run (a URL, a path) sized the implicit column to it
+   and the text ran out past the card's right edge; it now wraps inside. */
+.office-tasks-row{grid-template-columns:minmax(0,1fr);}
+.office-tasks-row-select,.office-tasks-row-detail,.office-tasks-row-detail-inner{min-width:0;}
+.office-tasks-row :is(.office-tasks-row-goal,.office-tasks-row-meta,.office-detail-title,.office-detail-goal,.office-detail-row,.office-detail-tool){overflow-wrap:anywhere;}
