@@ -9989,10 +9989,11 @@ function _showProjectPicker(session, anchorEl){
 
 // ── Project starter wizard ─────────────────────────────────────────────────
 // Step by step: kind → location → template → brief → planner questions →
-// create. A new project is planned by the Architecture profile on Codex Sol:
-// it reviews the brief for missing facts and then writes the project's
-// instruction files. Adopting an existing folder hands it to Docs-Git
-// (docs-gits profile), which adapts the instruction files it finds. The template
+// create. The Architecture profile, pinned to GPT-6.1 Sol, does all of the
+// agent work: it reviews the brief for missing facts, recommends answers,
+// then installs the project's dependencies and writes linked instruction
+// files. Adopting an existing folder hands it to the same agent, which adapts
+// the instruction files it finds. The template
 // list and the files each one creates come from the server, so the preview
 // always matches what is written.
 const _PROJECT_STARTER_ICONS={
@@ -10082,12 +10083,10 @@ async function _openProjectStarterWizard(profile){
   }catch(error){ showToast('Could not open the project starter: '+(error.message||error)); return null; }
   if(!workspaces.length){ showToast('Add or reconnect a workspace before creating a project.'); return null; }
   const templates=catalog.templates||[];
-  const docsAgent=!!catalog.docs_agent;
-  // A new project is planned by the Architecture profile (Codex Sol);
-  // adopting an existing one stays with Docs-Git.
-  const planner=Object.assign({profile:'architecture',label:'Architecture',available:false},catalog.planner||{});
+  // One agent does all of the wizard's work: the Architecture profile on GPT-6.1 Sol.
+  const planner=Object.assign({profile:'architecture',label:'Architecture',model:'GPT-6.1 Sol',available:false},catalog.planner||{});
   const plannerAgent=!!planner.available;
-  const P=planner.label;
+  const P=planner.label,PM=planner.model||'GPT-6.1 Sol';
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false};
   const folderCache=new Map();
@@ -10129,7 +10128,7 @@ async function _openProjectStarterWizard(profile){
     document.addEventListener('keydown',onKey,true);
 
     const stepsFor=()=>st.mode==='adopt'
-      ?[{n:1,label:'Start'},{n:2,label:'Project folder'},{n:6,label:'Docs-Git'}]
+      ?[{n:1,label:'Start'},{n:2,label:'Project folder'},{n:6,label:P}]
       :[{n:1,label:'Start'},{n:2,label:'Location'},{n:3,label:'Template'},{n:4,label:'Brief'},{n:5,label:'Details'},{n:6,label:'Create'}];
     const paintStepper=()=>{
       stepper.innerHTML='';
@@ -10172,8 +10171,8 @@ async function _openProjectStarterWizard(profile){
       sub.textContent='Hermes sets up the folder, the instruction files, and a handoff so every agent starts with context.';
       const wrap=section('Please pick one:');
       const grid=_psEl('div','ps-choice-grid');
-      [['new','newProject','New project from scratch','Pick a location and template, describe it, and '+P+' plans it and writes the instruction files.'],
-       ['adopt','existing','Use existing project','Point at a folder you already have. Docs-Git reads it and adapts the instruction files to match.']]
+      [['new','newProject','New project from scratch','Pick a location and template, describe it, and '+P+' plans it, installs what it needs and writes the instruction files.'],
+       ['adopt','existing','Use existing project','Point at a folder you already have. '+P+' reads it, installs its dependencies and adapts the instruction files to match.']]
       .forEach(([mode,icon,label,desc])=>{
         const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';card.style.setProperty('--i',grid.children.length);
         card.setAttribute('aria-pressed',st.mode===mode?'true':'false');
@@ -10184,14 +10183,14 @@ async function _openProjectStarterWizard(profile){
           st.mode=mode;
           grid.querySelectorAll('.ps-choice').forEach(n=>{const on=n===card;n.classList.toggle('is-selected',on);n.setAttribute('aria-pressed',on?'true':'false');});
           const note=wrap.querySelector('.ps-note');if(note)note.remove();
-          if(mode==='adopt'&&!docsAgent) wrap.append(_psEl('p','ps-note','The Docs-Git profile is not set up, so Hermes will only add the missing continuity files.'));
+          if(mode==='adopt'&&!plannerAgent) wrap.append(_psEl('p','ps-note','The '+P+' profile is not set up, so Hermes will only add the missing continuity files.'));
           paintStepper();setNav({showPrev:false,canNext:true});
         };
         card.ondblclick=()=>{st.mode=mode;go(2,1);};
         grid.append(card);
       });
       wrap.append(grid);
-      if(st.mode==='adopt'&&!docsAgent) wrap.append(_psEl('p','ps-note','The Docs-Git profile is not set up, so Hermes will only add the missing continuity files.'));
+      if(st.mode==='adopt'&&!plannerAgent) wrap.append(_psEl('p','ps-note','The '+P+' profile is not set up, so Hermes will only add the missing continuity files.'));
       setNav({showPrev:false,canNext:!!st.mode});
     }
 
@@ -10206,7 +10205,7 @@ async function _openProjectStarterWizard(profile){
       const adopt=st.mode==='adopt';
       sub.textContent=adopt?'Choose the folder that holds your existing project.':'Choose where the new project folder should be created.';
       const wrap=section(adopt?'Select the existing project folder:':'Select the Workspace Location:',
-        adopt?'Docs-Git will read this folder and adapt its instruction files.':'Expand a workspace and pick the folder that will contain the new project.');
+        adopt?P+' will read this folder and adapt its instruction files.':'Expand a workspace and pick the folder that will contain the new project.');
       const tree=_psEl('div','ps-tree');tree.setAttribute('role','tree');
       const selectedKey=()=>st.workspace?st.workspace.path+'\u0000'+st.parent:'';
       const row=(ws,rel,label,depth,icon)=>{
@@ -10304,7 +10303,7 @@ async function _openProjectStarterWizard(profile){
 
     // Step 4 — brief (typed, attached or dropped) + planner review
     function renderBrief(){
-      sub.textContent=plannerAgent?P+' reviews the brief on Codex Sol and only asks about what is missing.':'The brief seeds every document Hermes creates.';
+      sub.textContent=plannerAgent?P+' reviews the brief on '+PM+' and only asks about what is missing.':'The brief seeds every document Hermes creates.';
       const wrap=section("Describe what you're building:");
       const brief=_psEl('textarea','ps-brief');brief.rows=7;brief.maxLength=100000;brief.value=st.brief;
       brief.placeholder='What are you building, who is it for, and what does done look like? Mention the stack if you already know it.';
@@ -10460,32 +10459,56 @@ async function _openProjectStarterWizard(profile){
       // The planner's recommendation is preselected once; the user can change it.
       if(item.recommended&&st.answers[item.id]===undefined) st.answers[item.id]=item.recommended;
       const current=st.answers[item.id]||'';
-      const other=_psEl('input','ps-other');other.placeholder='Or type your own answer';other.maxLength=300;
-      const isOption=item.options.includes(current);
-      if(current&&!isOption) other.value=current;
-      item.options.forEach((label,i)=>{
+      const choices=item.options.slice(0,3),details=item.details||[];
+      // Keys 1-3 are the planner's choices; key 4 is the user's own answer, typed in place.
+      const key=(n)=>{const k=_psEl('span','ps-option-key');k.setAttribute('aria-hidden','true');
+        if(n<=4){const img=document.createElement('img');img.src='static/wizard/key-'+n+'.png';img.alt='';img.width=24;img.height=24;img.decoding='async';k.classList.add('has-art');k.append(img);}
+        else k.textContent=String(n);return k;};
+      const mark=(node,on)=>{node.classList.toggle('is-selected',on);node.setAttribute('aria-checked',on?'true':'false');};
+      choices.forEach((label,i)=>{
         const opt=_psEl('button','ps-option'+(current===label?' is-selected':''));opt.type='button';opt.setAttribute('role','radio');
         opt.setAttribute('aria-checked',current===label?'true':'false');
-        opt.innerHTML='<span class="ps-option-key">'+(i+1)+'</span>';opt.append(_psEl('span','ps-option-label',label));
+        const text=_psEl('span','ps-option-text');text.append(_psEl('span','ps-option-label',label));
+        if(details[i]) text.append(_psEl('span','ps-option-detail',details[i]));
+        opt.append(key(i+1),text);
         if(item.recommended===label){opt.classList.add('is-recommended');opt.append(_psEl('span','ps-option-rec','Recommended'));}
-        opt.onclick=()=>{st.answers[item.id]=label;other.value='';renderQuestions();};
+        opt.onclick=()=>{st.answers[item.id]=label;renderQuestions();};
         opts.append(opt);
       });
-      other.oninput=()=>{st.answers[item.id]=other.value.trim();opts.querySelectorAll('.ps-option').forEach(n=>{n.classList.remove('is-selected');n.setAttribute('aria-checked','false');});updateNav();};
-      other.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
-      if(item.recommended&&item.why){const why=_psEl('p','ps-rec-why');why.append(_psEl('strong',null,'Why '+item.recommended+': '),document.createTextNode(item.why));wrap.append(opts,why,other);}
-      else wrap.append(opts,other);
+      const typedOn=!!current&&!choices.includes(current);
+      const typed=_psEl('label','ps-option ps-option-typed'+(typedOn?' is-selected':''));typed.setAttribute('role','radio');
+      typed.setAttribute('aria-checked',typedOn?'true':'false');
+      const other=_psEl('input','ps-option-input');other.type='text';other.maxLength=300;
+      other.placeholder=item.other||'Something else';other.setAttribute('aria-label',other.placeholder);
+      if(typedOn) other.value=current;
+      typed.append(key(choices.length+1),other);
+      opts.append(typed);
+      other.onfocus=()=>{opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!other.value.trim()));typed.classList.add('is-typing');};
+      other.onblur=()=>typed.classList.remove('is-typing');
+      other.oninput=()=>{const v=other.value.trim();
+        st.answers[item.id]=v;
+        opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!v));updateNav();};
+      other.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
+      wrap.append(opts);
+      if(item.recommended&&item.why){
+        const why=_psEl('div','ps-rec-why');
+        why.append(_psEl('p','ps-rec-why-title','Why '+item.recommended),_psEl('p','ps-rec-why-text',item.why));
+        if((item.examples||[]).length){const list=_psEl('ul','ps-rec-why-examples');item.examples.forEach(e=>list.append(_psEl('li',null,e)));why.append(list);}
+        wrap.append(why);
+      }
       function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
       updateNav();
-      opts.onkeydown=(event)=>{const n=Number(event.key);if(n>=1&&n<=item.options.length){st.answers[item.id]=item.options[n-1];renderQuestions();}};
-      setTimeout(()=>{const sel=opts.querySelector('.is-selected')||opts.querySelector('.ps-option');if(sel)sel.focus();},30);
+      opts.onkeydown=(event)=>{const n=Number(event.key);
+        if(n>=1&&n<=choices.length){event.preventDefault();st.answers[item.id]=choices[n-1];renderQuestions();}
+        else if(n===choices.length+1){event.preventDefault();other.focus();}};
+      setTimeout(()=>{const sel=opts.querySelector('.ps-option.is-selected:not(.ps-option-typed)')||(typedOn?other:opts.querySelector('.ps-option'));if(sel)sel.focus();},30);
     }
 
-    // Step 6 — create, then follow the setup agent (Docs-Git adopts, the planner writes new projects)
+    // Step 6 — create, then follow the setup agent (Architecture, new or adopted)
     async function renderCreate(){
       const adopt=st.mode==='adopt';
-      const agent=adopt?'Docs-Git':P,agentReady=adopt?docsAgent:plannerAgent;
-      sub.textContent=adopt?'Registering the project and handing it to Docs-Git.':'Creating the folder and handing it to '+P+'.';
+      const agent=P,agentReady=plannerAgent;
+      sub.textContent=adopt?'Registering the project and handing it to '+P+'.':'Creating the folder and handing it to '+P+'.';
       const wrap=section(adopt?'Adopting '+st.name:'Creating '+st.name.trim());
       const list=_psEl('ul','ps-tasks');wrap.append(list);
       const task=(label,waiting)=>{const li=_psEl('li','ps-task '+(waiting?'is-waiting':'is-running'));li.innerHTML='<span class="ps-task-mark">'+(waiting?'':'<span class="ps-pulse"></span>')+'</span>';li.append(_psEl('span','ps-task-label',label));list.append(li);
@@ -10498,7 +10521,7 @@ async function _openProjectStarterWizard(profile){
       const first=task(adopt?'Register the project':'Create the project folder and starter files');
       // The whole step is laid out up front (second task waiting, buttons
       // disabled) so the dialog settles once instead of growing in stages.
-      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':P+' plans the project and writes the instruction files',true);
+      const docs=task(adopt?P+' installs dependencies and adapts the instruction files':P+' installs dependencies and writes the linked instruction files',true);
       const actions=_psEl('div','ps-done-actions');
       const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';chat.disabled=true;
       const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.disabled=true;
@@ -10570,10 +10593,10 @@ function _onProjectStarterCreated(project){
   if(window.AgentCanvas&&typeof window.AgentCanvas.renderSidebar==='function') window.AgentCanvas.renderSidebar();
 }
 
-// Polls a project setup job (Docs-Git or the Architecture planner). Keeps
+// Polls a project setup job (the Architecture agent). Keeps
 // going after the dialog closes so the user still hears when the docs are ready.
 function _followProjectDocsJob(jobId,project,view){
-  const agent=view.agent||'Docs-Git';
+  const agent=view.agent||'Architecture';
   const poll=async()=>{
     let job;
     try{ job=await api('/api/projects/starter/job?job_id='+encodeURIComponent(jobId)); }

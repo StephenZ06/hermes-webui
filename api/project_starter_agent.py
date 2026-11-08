@@ -1,21 +1,21 @@
 """Agent assistance for the project starter wizard.
 
-Two kinds of hidden job run here. A new project is planned by the
-``architecture`` profile on Codex Sol; an existing project is adopted by the
-``docs-gits`` profile:
+Two kinds of hidden job run here, both under the ``architecture`` profile
+pinned to GPT-6.1 Sol on Codex, for new and adopted projects alike:
 
 * ``start_analysis`` reviews a project brief and returns the questions still
   needed to fill the template's instruction files.
 * ``start_docs_setup`` works inside the project folder with the agent's own
-  tools, writing (new project, Architecture) or adapting (existing project,
-  Docs-Git) the instruction files, and returns its summary.
+  tools: it installs the project's dependencies, writes (new project) or
+  adapts (existing project) the linked instruction files, and returns its
+  summary.
 
 Both are hidden, non-persistent (ephemeral) turns tracked as in-memory jobs
-the wizard polls. A visible chat would live in the docs-gits profile, and
+the wizard polls. A visible chat would live in the architecture profile, and
 opening it would switch the user's whole UI to that profile.
 
 The profile is never substituted: when it is missing the job fails with a
-clear reason and the wizard carries on without Docs-Git.
+clear reason and the wizard carries on without the agent.
 """
 
 from __future__ import annotations
@@ -32,16 +32,18 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DOCS_PROFILE = "docs-gits"
-# A new project's planning (brief review, follow-up questions, and writing the
-# instruction files from the brief) runs under the Architecture profile on
-# Codex's Sol model. Adopting an existing project stays with Docs-Git.
+# The wizard's agent work (brief review, follow-up questions, and writing or
+# adapting the instruction files) runs under the Architecture profile, pinned
+# to GPT-6.1 Sol on Codex so it does not drift with the profile's default.
 PLANNER_PROFILE = "architecture"
-PLANNER_MODEL = "gpt-5.6-sol"
+PLANNER_MODEL = "gpt-6.1-sol"
+PLANNER_MODEL_LABEL = "GPT-6.1 Sol"
 PLANNER_PROVIDER = "openai-codex"
 AGENT_LABELS = {DOCS_PROFILE: "Docs-Git", PLANNER_PROFILE: "Architecture"}
 _ANALYSIS_TIMEOUT_SECONDS = 240
-_SETUP_TIMEOUT_SECONDS = 1200
-_JOB_TTL_SECONDS = 1800
+# Setup now installs dependencies too, which can take a while on a cold cache.
+_SETUP_TIMEOUT_SECONDS = 1800
+_JOB_TTL_SECONDS = 3600
 _MAX_QUESTIONS = 6
 
 _jobs: dict[str, dict] = {}
@@ -109,8 +111,12 @@ def planner_readiness() -> dict:
 _ANALYSIS_PROMPT = """You are helping set up a new software project's instruction files.
 Do not use any tools and do not create files. Reply with ONLY one JSON object:
 {{"complete": true|false, "summary": "one sentence", "questions": [
-  {{"id": "short_snake_id", "question": "...", "options": ["...", "..."],
-    "recommended": "one of the options, copied exactly", "why": "one short reason tied to the brief"}}]}}
+  {{"id": "short_snake_id", "question": "...",
+    "options": [{{"label": "...", "detail": "what it is, in under 12 words"}}, ...exactly 3],
+    "other": "placeholder for a typed answer, e.g. Other stack (type it)",
+    "recommended": "one of the option labels, copied exactly",
+    "why": "2-4 sentences tied to the brief",
+    "examples": ["concrete example", "..."]}}]}}
 
 The project will be created from the "{template}" template, which writes these
 files: {files}. To fill them well we need: what is being built and for whom, the
@@ -119,12 +125,17 @@ how it is deployed or delivered (skip what does not apply to this template).
 
 Set "complete" to true only when the brief already answers everything that
 applies. Otherwise ask at most {max_questions} short questions, one per missing
-fact, most important first. Give each question 3-6 concrete, mutually exclusive
-options that suit the brief (the user can also type their own answer). For every
-question, pick the option you would recommend for THIS project (its users,
-scale, platform and constraints in the brief) as "recommended", and say why in
-under 15 words as "why". Prefer mainstream, well-supported choices unless the
-brief points elsewhere.
+fact, most important first. Give each question exactly 3 concrete, mutually
+exclusive options that suit the brief, each with a short "detail". Do not add
+an "Other" option: the user types their own answer in a fourth field, whose
+placeholder you write as "other". For every question, pick the option you would
+recommend for THIS project (its users, scale, platform and constraints in the
+brief) as "recommended". In "why", explain in 2-4 sentences why it fits this
+brief better than the other two, naming the trade-off you accept. In
+"examples", give 2-3 short concrete illustrations (a well-known product built
+that way, a library or service it pairs with, or what it means for this
+project's first milestone). Prefer mainstream, well-supported choices unless
+the brief points elsewhere.
 
 Project name: {name}
 Brief:
@@ -182,37 +193,58 @@ def _job_worker(job_id: str, work) -> None:
     try:
         _finish(job_id, status="done", result=work())
     except Exception as exc:  # reported to the wizard, which offers retry/skip
-        logger.warning("Project starter Docs-Git job failed: %s", exc)
-        _finish(job_id, status="error", error=str(exc) or "Docs-Git could not finish.")
+        logger.warning("Project starter agent job failed: %s", exc)
+        _finish(job_id, status="error", error=str(exc) or "Architecture could not finish.")
 
 
 def parse_analysis(text: str) -> dict:
-    """Validate Docs-Git's JSON reply into the wizard's question format."""
+    """Validate the planner's JSON reply into the wizard's question format.
+
+    Each question keeps at most three choices (the wizard's keys 1-3) plus a
+    typed answer (key 4) whose placeholder is ``other``. An "Other ..." choice
+    the model adds anyway becomes that placeholder instead of a fourth choice.
+    """
     raw = str(text or "").strip()
     match = re.search(r"\{.*\}", raw, re.S)
     if not match:
-        logger.warning("Docs-Git review was not JSON (%d chars): %r", len(raw), raw[:300])
-        raise ValueError("Docs-Git did not return a readable review.")
+        logger.warning("Planner review was not JSON (%d chars): %r", len(raw), raw[:300])
+        raise ValueError("Architecture did not return a readable review.")
     data = json.loads(match.group(0))
     if not isinstance(data, dict):
-        raise ValueError("Docs-Git did not return a readable review.")
+        raise ValueError("Architecture did not return a readable review.")
     questions = []
     seen = set()
     for item in data.get("questions") or []:
         if not isinstance(item, dict):
             continue
         question = str(item.get("question") or "").strip()[:300]
-        options = [str(o).strip()[:120] for o in item.get("options") or [] if str(o).strip()][:6]
+        other = str(item.get("other") or "").strip()[:80]
+        choices = []
+        for raw_option in item.get("options") or []:
+            label, detail = (raw_option.get("label"), raw_option.get("detail")) if isinstance(raw_option, dict) else (raw_option, "")
+            label, detail = str(label or "").strip()[:120], str(detail or "").strip()[:160]
+            if not label:
+                continue
+            if re.match(r"(other|something else)\b", label, re.I):
+                other = other or label[:80]
+                continue
+            choices.append((label, detail))
+        choices = choices[:3]
+        options = [label for label, _ in choices]
         qid = re.sub(r"[^a-z0-9_]+", "_", str(item.get("id") or question).lower()).strip("_")[:40] or f"q{len(questions) + 1}"
         if not question or qid in seen:
             continue
         seen.add(qid)
         recommended = str(item.get("recommended") or "").strip()
         match = next((o for o in options if o.casefold() == recommended.casefold()), "")
-        entry = {"id": qid, "question": question, "options": options}
+        entry = {"id": qid, "question": question, "options": options,
+                 "details": [detail for _, detail in choices], "other": other or "Something else"}
         if match:
             entry["recommended"] = match
-            entry["why"] = str(item.get("why") or "").strip()[:160]
+            entry["why"] = str(item.get("why") or "").strip()[:600]
+            examples = [str(e).strip()[:160] for e in item.get("examples") or [] if isinstance(e, str) and str(e).strip()]
+            if examples:
+                entry["examples"] = examples[:3]
         questions.append(entry)
         if len(questions) >= _MAX_QUESTIONS:
             break
@@ -316,7 +348,25 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                 pass
 
 
-# ── Docs-Git project setup ──────────────────────────────────────────────────
+# ── Project setup (Architecture) ────────────────────────────────────────────
+
+_SETUP_RULES = (
+    "Dependencies: install everything the chosen stack needs so the project runs "
+    "from a clean checkout. Use the stack's own package manager and lockfile "
+    "(npm/pnpm/yarn, uv/pip with a virtual environment inside the project, cargo, "
+    "go mod, Swift Package Manager, Gradle...), never global installs or sudo. "
+    "Create the manifest if there is none, install, then run the install and "
+    "test commands once to prove they work, and record the exact commands in "
+    ".agent/CONTEXT.md and the README's Getting started. If something cannot be "
+    "installed here, say what and why in .agent/ECC_HANDOFF.md instead of "
+    "pretending it worked.\n"
+    "Linking: every instruction file ends with a \"Related documents\" list "
+    "linking to the others with relative Markdown links. Keep those lists, link "
+    "any document you add from AGENTS.md, README.md and the other lists, refer to "
+    "related documents inline where a reader needs them (for example "
+    "ARCHITECTURE.md pointing at TESTING.md for the test commands), and leave no "
+    "dead links."
+)
 
 def _new_project_prompt(name: str, template_label: str, files: list[str]) -> str:
     return (
@@ -327,8 +377,12 @@ def _new_project_prompt(name: str, template_label: str, files: list[str]) -> str
         "replace placeholder text with concrete guidance derived from the brief and the "
         "decisions recorded in them (stack, structure, conventions, testing, delivery). "
         "Keep AGENTS.md's continuity rules about .agent/ECC_HANDOFF.md, and update that "
-        "handoff to record what you set up. Do not write application code yet. "
-        "Finish with a short summary of what each file now covers and any open questions."
+        "handoff to record what you set up. Do not write application features yet; a "
+        "manifest, config and the smallest entry point the toolchain needs to install "
+        "and run its tests are fine.\n\n"
+        f"{_SETUP_RULES}\n\n"
+        "Finish with a short summary of what each file now covers, what was installed "
+        "and verified, and any open questions."
     )
 
 
@@ -343,14 +397,15 @@ def _adopt_prompt(name: str) -> str:
         "duplicate, and never delete or overwrite user-written guidance. AGENTS.md must "
         "require reading and updating .agent/ECC_HANDOFF.md for every persisted change.\n"
         "3. Record the verified current state (stack, commands, test status) in the handoff.\n\n"
-        "Do not change application code. Finish with a short summary of what you learned "
-        "and which files you created or edited."
+        f"{_SETUP_RULES}\n\n"
+        "Do not change application code. Finish with a short summary of what you learned, "
+        "what was installed and verified, and which files you created or edited."
     )
 
 
 def setup_profile(adopt: bool) -> str:
-    """Which profile writes the instruction files: Docs-Git adopts, Architecture plans new projects."""
-    return DOCS_PROFILE if adopt else PLANNER_PROFILE
+    """Which profile writes the instruction files: Architecture, for new and adopted projects."""
+    return PLANNER_PROFILE
 
 
 def start_docs_setup(project: dict, *, adopt: bool, template_label: str = "", files=None) -> str | None:
@@ -360,7 +415,7 @@ def start_docs_setup(project: dict, *, adopt: bool, template_label: str = "", fi
         return None
     prompt = _adopt_prompt(project["name"]) if adopt else _new_project_prompt(
         project["name"], template_label or "Blank project", list(files or []))
-    run = {"profile": DOCS_PROFILE} if adopt else _planner_run()
+    run = _planner_run()
     run["title"] = f"{AGENT_LABELS[profile]}: {'adopt' if adopt else 'set up'} {project['name']}"
     return _start_job("setup", lambda: {"summary": _run_ephemeral_turn(
         prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=project["workspace_path"], **run).strip()})

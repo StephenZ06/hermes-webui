@@ -120,3 +120,51 @@ def test_provider_wizard_cards_keep_their_side_by_side_layout(real_2x):
     page.wait_for_selector(".pw-choice")
     direction = page.evaluate("() => getComputedStyle(document.querySelector('.pw-choice')).flexDirection")
     assert direction == "row"
+
+
+QUESTIONS = {"status": "done", "result": {"complete": False, "summary": "A shop", "questions": [{
+    "id": "stack", "question": "Which stack?", "options": ["Next.js", "Django", "Rails"],
+    "details": ["React with server rendering", "Python, batteries included", ""],
+    "other": "Other stack (type it)", "recommended": "Next.js",
+    "why": "Server rendering keeps product pages fast and indexable.",
+    "examples": ["Vercel deploys it in one step", "Stripe has a ready Next.js starter"]}]}}
+
+
+def _to_details_step(page):
+    _to_template_step(page)
+    page.route("**/api/projects/starter/analyze", lambda route: route.fulfill(json={"job_id": "j1"}))
+    page.route("**/api/projects/starter/job?*", lambda route: route.fulfill(json=QUESTIONS))
+    page.click(".ps-template >> nth=1")
+    page.click(".ps-next")
+    page.fill(".ps-brief", "An online candle shop.")
+    page.click(".ps-next")
+    page.wait_for_selector(".ps-options")
+
+
+def test_details_step_types_the_fourth_answer_in_place_and_explains_the_pick(real_2x):
+    page = real_2x
+    _to_details_step(page)
+    assert page.locator(".ps-other").count() == 0  # no separate "type your own" box below
+    keys = page.evaluate("() => [...document.querySelectorAll('.ps-options .ps-option-key img')].map(i => new URL(i.src).pathname)")
+    assert keys == [f"/static/wizard/key-{n}.png" for n in range(1, 5)]
+    assert page.evaluate("() => [...document.querySelectorAll('.ps-options .ps-option-key img')].every(i => i.complete && i.naturalWidth > 0)")
+    field = page.locator(".ps-options .ps-option-typed input")
+    assert field.get_attribute("placeholder") == "Other stack (type it)"
+    assert "React with server rendering" in page.inner_text(".ps-options")
+    why = page.inner_text(".ps-rec-why")
+    assert "Why Next.js" in why and "indexable" in why and "Stripe has a ready Next.js starter" in why
+
+    field.click()
+    page.wait_for_timeout(250)  # the placeholder fades out over 150ms
+    assert page.evaluate("() => document.activeElement.classList.contains('ps-option-input')")
+    # The placeholder disappears as soon as the field is focused.
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.ps-option-input'), '::placeholder').color") == "rgba(0, 0, 0, 0)"
+    field.type("SvelteKit")
+    assert page.evaluate("() => [...document.querySelectorAll('.ps-option.is-selected')].map(n => n.classList.contains('ps-option-typed'))") == [True]
+    assert page.is_enabled(".ps-next")
+    # Picking a listed choice clears the typed one; key 4 jumps back to the field.
+    page.click(".ps-option >> nth=1")
+    assert page.input_value(".ps-option-input") == ""
+    page.wait_for_function("() => document.activeElement.classList.contains('is-selected')")
+    page.keyboard.press("4")
+    assert page.evaluate("() => document.activeElement.classList.contains('ps-option-input')")

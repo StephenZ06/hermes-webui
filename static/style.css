@@ -17709,3 +17709,26 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .ps-dropzone.is-dragging{border-color:var(--accent);background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent-bg);}
 .ps-dropzone .project-starter-file-status{white-space:normal;text-align:center;}
 @media (prefers-reduced-motion:reduce){.ps-dropzone{transition:none;}}
+/* Create-project wizard, Details step: keycap art for choices 1-4, the fourth
+   choice is the user's own answer typed in place, and a fuller reason under
+   the recommended choice. */
+.ps-option{align-items:center;}
+.ps-option-text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.ps-option-detail{font-size:11.5px;line-height:1.4;color:var(--muted);}
+.ps-option-key.has-art{width:24px;height:24px;border:0;border-radius:0;background:none;filter:saturate(.6);opacity:.82;transition:transform .2s cubic-bezier(.3,1.4,.5,1),filter .2s,opacity .2s;}
+.ps-option-key.has-art img{display:block;width:24px;height:24px;}
+.ps-option:hover .ps-option-key.has-art{opacity:1;filter:none;}
+.ps-option.is-selected .ps-option-key.has-art,.ps-option-typed.is-typing .ps-option-key.has-art{animation:none;background:none;opacity:1;filter:drop-shadow(0 2px 4px color-mix(in srgb,#f5a623 35%,transparent));transform:scale(1.08);}
+.ps-option-typed{cursor:text;}
+.ps-option-typed.is-typing{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent);box-shadow:0 0 0 3px var(--accent-bg);transform:none;}
+.ps-option-input,.ps-section .ps-option-input{flex:1 1 auto;min-width:0;border:0;outline:0;background:none;box-shadow:none;padding:0;margin:0;color:var(--text);font:inherit;font-size:13px;}
+.ps-option-input:focus,.ps-option-input:focus-visible,.ps-section .ps-option-input:focus{border:0;border-radius:0;background:none;outline:0;box-shadow:none;}
+.ps-option-input::placeholder{color:var(--muted);opacity:1;transition:color .15s;}
+.ps-option-input:focus::placeholder{color:transparent;}
+.ps-rec-why{margin:2px 0 0;padding:10px 12px;border-radius:9px;border:1px solid var(--border2);border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 4%,transparent);font-size:12.5px;line-height:1.55;color:var(--muted);animation:ps-why-in .24s ease-out both;}
+.ps-rec-why p{margin:0;}
+.ps-rec-why-title{color:var(--text);font-weight:600;margin-bottom:4px !important;}
+.ps-rec-why-examples{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px;}
+.ps-rec-why-examples li::marker{color:var(--accent);}
+@keyframes ps-why-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion: reduce){.ps-option-key.has-art,.ps-rec-why{transition:none;animation:none;}}

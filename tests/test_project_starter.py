@@ -184,7 +184,9 @@ def test_docs_git_review_is_parsed_into_bounded_questions():
 
     assert result["complete"] is False
     assert len(result["questions"]) == 6
-    assert result["questions"][0] == {"id": "q0", "question": "Q0?", "options": ["a", "b", "c", "d", "e", "f"]}
+    # Three choices plus a typed answer: the wizard's four numbered keys.
+    assert result["questions"][0] == {"id": "q0", "question": "Q0?", "options": ["a", "b", "c"],
+                                      "details": ["", "", ""], "other": "Something else"}
     assert parse_analysis('{"complete": true, "questions": []}')["complete"] is True
     try:
         parse_analysis("no json here")
@@ -241,3 +243,33 @@ def test_hidden_docs_git_sessions_never_reach_the_sidebar():
     assert _hide_from_default_sidebar({"session_id": "abc", "source_tag": "project_starter"},
                                       show_cron=True, show_webhook=True, show_kanban=True) is True
     assert _hide_from_default_sidebar({"session_id": "abc", "source_tag": "webui"}) is False
+
+
+def test_an_other_option_becomes_the_typed_answer_and_reasons_carry_examples():
+    from api.project_starter_agent import parse_analysis
+
+    result = parse_analysis('{"complete": false, "questions": [{"id": "stack", "question": "Stack?", "options": ['
+                            '{"label": "Next.js", "detail": "React with server rendering"}, "Django", "Rails", "Other stack (type it)"],'
+                            '"recommended": "Next.js", "why": "' + "x" * 700 + '",'
+                            '"examples": ["Vercel hosts it free", "Shopify Hydrogen uses React", "", "a", "b"]}]}')
+    [q] = result["questions"]
+    assert q["options"] == ["Next.js", "Django", "Rails"]
+    assert q["details"] == ["React with server rendering", "", ""]
+    assert q["other"] == "Other stack (type it)"
+    assert len(q["why"]) == 600
+    assert q["examples"] == ["Vercel hosts it free", "Shopify Hydrogen uses React", "a"]
+
+
+def test_every_starter_document_links_to_the_others(tmp_path: Path):
+    import re
+
+    project_starter.create_starter_pack(tmp_path, "shop", "web", "An online candle shop.")
+    root = tmp_path / "shop"
+    docs = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.md"))
+    for rel in docs:
+        text = (root / rel).read_text(encoding="utf-8")
+        targets = {((root / rel).parent / m).resolve() for m in re.findall(r"\]\(([^)#]+\.md)\)", text)}
+        for target in targets:
+            assert target.is_file(), (rel, target)  # no dead links
+        linked = {t.relative_to(root.resolve()).as_posix() for t in targets}
+        assert linked >= set(docs) - {rel}, (rel, set(docs) - {rel} - linked)

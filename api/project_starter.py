@@ -448,7 +448,24 @@ def _pack_files(name: str, template_key: str, brief: str) -> dict[str, str]:
     }
     for doc in docs:
         files[f"docs/{doc}"] = _doc(doc, brief)
-    return files
+    return {rel: content + _related(rel, files) for rel, content in files.items()}
+
+
+def _related(rel: str, files: dict[str, str]) -> str:
+    """A closing list linking each document to every other one in the pack,
+    with paths relative to the document, so the set reads as one connected
+    whole in any Markdown viewer (GitHub, Obsidian, the Files page)."""
+    import posixpath
+
+    here = posixpath.dirname(rel) or "."
+    lines = []
+    for other in files:
+        if other == rel:
+            continue
+        title = posixpath.basename(other).removesuffix(".md").replace("_", " ")
+        title = title if title.isupper() and len(title) <= 6 else title.title()
+        lines.append(f"- [{title}]({posixpath.relpath(other, here)}) (`{other}`)")
+    return "\n## Related documents\n\n" + "\n".join(lines) + "\n"
 
 
 def create_starter_pack(

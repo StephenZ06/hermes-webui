@@ -15484,11 +15484,13 @@ def _route_get_api_work_hub_plan(handler, parsed):
 
 def _route_get_api_projects_starter_templates(handler, parsed):
     from api.project_starter import template_catalog
-    from api.project_starter_agent import PLANNER_PROFILE, docs_profile_available, planner_profile_available
+    from api.project_starter_agent import PLANNER_MODEL_LABEL, PLANNER_PROFILE, planner_profile_available
 
-    return j(handler, {"templates": template_catalog(), "docs_agent": docs_profile_available(),
+    # docs_agent: whether the setup agent can run at all (one profile does all of it now).
+    available = planner_profile_available()
+    return j(handler, {"templates": template_catalog(), "docs_agent": available,
                        "planner": {"profile": PLANNER_PROFILE, "label": "Architecture",
-                                   "available": planner_profile_available()}})
+                                   "model": PLANNER_MODEL_LABEL, "available": available}})
 
 
 def _route_get_api_projects_starter_folders(handler, parsed):
@@ -15511,7 +15513,7 @@ def _route_get_api_projects_starter_job(handler, parsed):
 
     job = get_job((parse_qs(parsed.query).get("job_id") or [""])[0])
     if job is None:
-        return bad(handler, "That Docs-Git job has expired.", 404)
+        return bad(handler, "That setup job has expired.", 404)
     return j(handler, job)
 
 
@@ -20156,7 +20158,7 @@ def _starter_workspace_root(body):
 
 
 def _starter_docs_job(proj, *, adopt, template_key):
-    """Hand the project to its setup agent (Docs-Git adopts, Architecture plans); job id or None."""
+    """Hand the project to its setup agent (Architecture, new or adopted); job id or None."""
     from api.project_starter import template_catalog
     from api.project_starter_agent import agent_readiness, setup_profile, start_docs_setup
 
