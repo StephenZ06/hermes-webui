@@ -1,6 +1,14 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Create-project wizard polish; new projects planned by Architecture on Codex Sol
+
+- Stepper: finished steps use `--success` (green tick). The current and finished circles carry `padding-bottom:1px` in a border-box, lifting their number/tick by 0.5px. The provider wizard (`openProviderWizard`) shares `.ps-stepper`, so it gets the same look.
+- Template step: cards stack the artwork on top, centred, with equal room above it and between it and the title (13/12px). Scoped with `:not(.pw-choice)` because the provider wizard's cards reuse `.ps-template` and keep their side-by-side layout. The "Pick a template…" line is centred in its dashed box.
+- Brief step: "Attach brief file" now sits in a dashed drop zone (`.ps-dropzone`). Dropping a .md/.txt file on the zone or on the brief fills the brief; other files are refused with a message.
+- Planning: a new project's brief review, follow-up questions and instruction-file writing now run under the `architecture` profile pinned to `gpt-5.6-sol` / `openai-codex` (`project_starter_agent.PLANNER_*`). Adopting an existing project stays with Docs-Git (`docs-gits`). `/api/projects/starter/templates` adds `planner: {profile, label, available}`; readiness and sign-in/setup in the brief step target the planner profile.
+- Tests: `tests/test_project_starter_planner.py`, `tests/test_project_starter_wizard_browser.py` (red on the old code, green now). Already failing on HEAD before this change: `test_2235...agent_fallback`, two `test_async_delegation_webui_bridge` real-core tests, `test_issue3947...read_only_rows`. `test_page_navigation_icons` fails locally only because the untracked `icons/` folder has no `Tasks.png`.
+
 ## 2026-11-08: Deleted workspaces leave Notes; Chat-style focus halo everywhere; untitled vault notes
 
 - A workspace deleted on the Chat page stayed on the Notes page for two reasons. (1) Notes caches its bootstrap across panel switches and never refetched; it now listens to the Chat sidebar's `project-sessions-changed` signal (the one Work Hub already used) and refetches on its next visit, or at once if it is showing. (2) With an Obsidian vault connected, the workspace's `01 Projects/<name>` folder and its `vault_places` row outlived the project, so the Obsidian view kept listing it after any reload. `notebook_vault._forget_deleted_projects` now runs in each bootstrap: it drops place rows for ids `load_projects()` no longer lists and `rmdir`s their folder only if empty (a folder still holding notes stays). It fails closed: an empty `load_projects()` answer is trusted only when `projects.json` really holds `[]`, never when it is missing or mid-write.

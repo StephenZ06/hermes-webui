@@ -125,7 +125,8 @@ def test_docs_git_readiness_blocks_only_without_a_usable_main_or_fallback(homes,
     pp.set_api_key("docs", "openrouter", "or")
     pp.set_fallbacks("docs", [{"provider": "openrouter", "model": "x"}])
     assert agent.docs_agent_readiness() == {"ready": True, "state": "fallback", "provider": "opencode-go",
-                                            "message": "Using a fallback model."}
+                                            "message": "Using a fallback model.",
+                                            "profile": "docs", "agent": "docs"}
 
     pp.set_api_key("docs", "opencode-go", "go")
     assert agent.docs_agent_readiness()["state"] == "ready"

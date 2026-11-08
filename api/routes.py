@@ -15484,9 +15484,11 @@ def _route_get_api_work_hub_plan(handler, parsed):
 
 def _route_get_api_projects_starter_templates(handler, parsed):
     from api.project_starter import template_catalog
-    from api.project_starter_agent import docs_profile_available
+    from api.project_starter_agent import PLANNER_PROFILE, docs_profile_available, planner_profile_available
 
-    return j(handler, {"templates": template_catalog(), "docs_agent": docs_profile_available()})
+    return j(handler, {"templates": template_catalog(), "docs_agent": docs_profile_available(),
+                       "planner": {"profile": PLANNER_PROFILE, "label": "Architecture",
+                                   "available": planner_profile_available()}})
 
 
 def _route_get_api_projects_starter_folders(handler, parsed):
@@ -20154,11 +20156,11 @@ def _starter_workspace_root(body):
 
 
 def _starter_docs_job(proj, *, adopt, template_key):
-    """Hand the new project to Docs-Git; returns the job id or None."""
+    """Hand the project to its setup agent (Docs-Git adopts, Architecture plans); job id or None."""
     from api.project_starter import template_catalog
-    from api.project_starter_agent import docs_agent_readiness, start_docs_setup
+    from api.project_starter_agent import agent_readiness, setup_profile, start_docs_setup
 
-    if not docs_agent_readiness()["ready"]:
+    if not agent_readiness(setup_profile(adopt))["ready"]:
         return None
     template = next((t for t in template_catalog() if t["key"] == template_key), None) or {}
     return start_docs_setup(proj, adopt=adopt, template_label=template.get("label", ""), files=template.get("files"))
@@ -20176,9 +20178,9 @@ def _route_post_api_projects_starter_analyze(handler, parsed, body, diag):
     template = next((t for t in template_catalog() if t["key"] == str(body.get("template") or "blank")), None)
     if template is None:
         return bad(handler, "Unknown project template.")
-    from api.project_starter_agent import docs_agent_readiness
+    from api.project_starter_agent import planner_readiness
 
-    readiness = docs_agent_readiness()
+    readiness = planner_readiness()
     if not readiness["ready"]:
         return j(handler, {"error": readiness["message"], "code": "docs_agent_setup", "setup": readiness}, status=409)
     job_id = start_analysis(name=str(body.get("name") or "")[:96], brief=brief, template=template)

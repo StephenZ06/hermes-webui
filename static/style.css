@@ -17692,3 +17692,20 @@ textarea#msg::-webkit-scrollbar{display:none;}
    take the same accent border and soft halo as every other field. Themed
    skins (Geist Contrast, Neon, the RPG dashboard) keep their own. */
 .clarify-input:focus,.office-biz-input:focus-visible,.selection-chip-edit:focus,.dash-inline-form input:focus,.dash-inline-form select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
+/* Create-project wizard. Finished steps read as done (green tick), and the
+   step number in the current or finished circle sits half a pixel higher,
+   where it looks centred in the larger circle. */
+.ps-step.is-done .ps-step-dot{background:var(--success,#3fb950);color:var(--bg,#000);}
+.ps-step.is-current .ps-step-dot,.ps-step.is-done .ps-step-dot{box-sizing:border-box;padding-bottom:1px;}
+/* Template cards: the artwork sits at the top, centred, with as much room
+   above it as between it and the title. */
+.ps-template:not(.pw-choice){flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;padding:12px 12px 14px;text-align:center;}
+.ps-template:not(.pw-choice) .ps-template-text{align-items:center;}
+/* "Pick a template…" sits in the middle of its dashed box. */
+.ps-files:has(> .ps-files-empty){display:flex;align-items:center;justify-content:center;}
+.ps-files-empty{padding-top:0;}
+/* Brief drop zone: the attach button inside a dashed box that lights up while a file is dragged over it. */
+.ps-dropzone{justify-content:center;flex-wrap:wrap;row-gap:6px;min-height:64px;padding:14px 16px;box-sizing:border-box;border:1px dashed var(--border2);border-radius:10px;background:var(--input-bg);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;}
+.ps-dropzone.is-dragging{border-color:var(--accent);background:var(--accent-bg);box-shadow:0 0 0 3px var(--accent-bg);}
+.ps-dropzone .project-starter-file-status{white-space:normal;text-align:center;}
+@media (prefers-reduced-motion:reduce){.ps-dropzone{transition:none;}}

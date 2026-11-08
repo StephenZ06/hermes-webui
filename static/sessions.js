@@ -9988,9 +9988,11 @@ function _showProjectPicker(session, anchorEl){
 }
 
 // ── Project starter wizard ─────────────────────────────────────────────────
-// Step by step: kind → location → template → brief → Docs-Git questions →
-// create. Docs-Git (docs-gits profile) reviews the brief for missing facts
-// and then writes or adapts the project's instruction files. The template
+// Step by step: kind → location → template → brief → planner questions →
+// create. A new project is planned by the Architecture profile on Codex Sol:
+// it reviews the brief for missing facts and then writes the project's
+// instruction files. Adopting an existing folder hands it to Docs-Git
+// (docs-gits profile), which adapts the instruction files it finds. The template
 // list and the files each one creates come from the server, so the preview
 // always matches what is written.
 const _PROJECT_STARTER_ICONS={
@@ -10081,6 +10083,11 @@ async function _openProjectStarterWizard(profile){
   if(!workspaces.length){ showToast('Add or reconnect a workspace before creating a project.'); return null; }
   const templates=catalog.templates||[];
   const docsAgent=!!catalog.docs_agent;
+  // A new project is planned by the Architecture profile (Codex Sol);
+  // adopting an existing one stays with Docs-Git.
+  const planner=Object.assign({profile:'architecture',label:'Architecture',available:false},catalog.planner||{});
+  const plannerAgent=!!planner.available;
+  const P=planner.label;
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false};
   const folderCache=new Map();
@@ -10165,7 +10172,7 @@ async function _openProjectStarterWizard(profile){
       sub.textContent='Hermes sets up the folder, the instruction files, and a handoff so every agent starts with context.';
       const wrap=section('Please pick one:');
       const grid=_psEl('div','ps-choice-grid');
-      [['new','newProject','New project from scratch','Pick a location and template, describe it, and Docs-Git writes the instruction files.'],
+      [['new','newProject','New project from scratch','Pick a location and template, describe it, and '+P+' plans it and writes the instruction files.'],
        ['adopt','existing','Use existing project','Point at a folder you already have. Docs-Git reads it and adapts the instruction files to match.']]
       .forEach(([mode,icon,label,desc])=>{
         const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';card.style.setProperty('--i',grid.children.length);
@@ -10295,16 +10302,18 @@ async function _openProjectStarterWizard(profile){
       setNav({canNext:!!st.template});
     }
 
-    // Step 4 — brief + Docs-Git review
+    // Step 4 — brief (typed, attached or dropped) + planner review
     function renderBrief(){
-      sub.textContent=docsAgent?'Docs-Git reviews the brief and only asks about what is missing.':'The brief seeds every document Hermes creates.';
+      sub.textContent=plannerAgent?P+' reviews the brief on Codex Sol and only asks about what is missing.':'The brief seeds every document Hermes creates.';
       const wrap=section("Describe what you're building:");
       const brief=_psEl('textarea','ps-brief');brief.rows=7;brief.maxLength=100000;brief.value=st.brief;
       brief.placeholder='What are you building, who is it for, and what does done look like? Mention the stack if you already know it.';
-      const fileRow=_psEl('div','project-starter-file-row');
+      // Dashed drop zone under the brief: attach with the button or drop a
+      // .md/.txt file anywhere on it (or on the brief itself).
+      const fileRow=_psEl('div','project-starter-file-row ps-dropzone');
       const upload=_psEl('input');upload.type='file';upload.accept='.md,.txt,text/markdown,text/plain';upload.hidden=true;
       const uploadButton=_psEl('button',null,'Attach brief file');uploadButton.type='button';
-      const fileStatus=_psEl('span','project-starter-file-status',st.fileName?'Using '+st.fileName:'Optional · .md or .txt, up to 100 KB');
+      const fileStatus=_psEl('span','project-starter-file-status',st.fileName?'Using '+st.fileName:'or drop a .md or .txt file here · up to 100 KB');
       fileRow.append(uploadButton,upload,fileStatus);
       const review=_psEl('div','ps-review');
       wrap.append(brief,fileRow,review);
@@ -10312,11 +10321,22 @@ async function _openProjectStarterWizard(profile){
       const suggest=()=>{if(!st.templateChosen){st.template=_inferProjectTemplate(st.brief);}};
       brief.oninput=()=>{st.brief=brief.value;suggest();invalidate();};
       uploadButton.onclick=()=>upload.click();
-      upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}
-        try{brief.value=(await file.text()).slice(0,100000);st.brief=brief.value;st.fileName=file.name;fileStatus.textContent='Using '+file.name;suggest();invalidate();}catch(_){fileStatus.textContent='Could not read that file.';}};
+      const useFile=async(file)=>{
+        if(!file) return;
+        if(!/\.(md|markdown|txt)$/i.test(file.name||'')&&!/^text\/(plain|markdown)$/.test(file.type||'')){fileStatus.textContent='Only .md or .txt files can be used as a brief.';return;}
+        if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}
+        try{brief.value=(await file.text()).slice(0,100000);st.brief=brief.value;st.fileName=file.name;fileStatus.textContent='Using '+file.name;suggest();invalidate();}catch(_){fileStatus.textContent='Could not read that file.';}
+      };
+      upload.onchange=()=>{const file=upload.files&&upload.files[0];upload.value='';useFile(file);};
+      const hasFiles=(event)=>!!(event.dataTransfer&&[...(event.dataTransfer.types||[])].includes('Files'));
+      [fileRow,brief].forEach(target=>{
+        target.addEventListener('dragover',(event)=>{if(!hasFiles(event))return;event.preventDefault();event.dataTransfer.dropEffect='copy';fileRow.classList.add('is-dragging');});
+        target.addEventListener('dragleave',(event)=>{if(!target.contains(event.relatedTarget))fileRow.classList.remove('is-dragging');});
+        target.addEventListener('drop',(event)=>{if(!hasFiles(event))return;event.preventDefault();fileRow.classList.remove('is-dragging');useFile(event.dataTransfer.files&&event.dataTransfer.files[0]);});
+      });
       function paintReview(){
         review.innerHTML='';review.className='ps-review';
-        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span',null,'Docs-Git is reviewing your brief…'));}
+        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span',null,P+' is reviewing your brief…'));}
         else if(st.analysisSetup){ paintSetup(review); }
         else if(st.analysisError){
           review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
@@ -10324,17 +10344,17 @@ async function _openProjectStarterWizard(profile){
           const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
           review.append(retry,skip);
           if(/credential|sign in|auth|access_token|api key/i.test(st.analysisError)){
-            const fix=_psEl('button','ps-link','Set up Docs-Git');fix.type='button';
+            const fix=_psEl('button','ps-link','Set up '+P);fix.type='button';
             fix.onclick=async()=>{
-              if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin('docs-gits');return;}
-              const r=await openProviderWizard('docs-gits',{title:'Set up Docs-Git'});
+              if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin(planner.profile);return;}
+              const r=await openProviderWizard(planner.profile,{title:'Set up '+P});
               if(r&&!done) analyze();
             };
             review.append(fix);
           }
         }else if(st.analysis&&st.analysis.complete){
           review.classList.add('is-ok');review.innerHTML=_psIcon('check',16);
-          review.append(_psEl('span',null,st.analysis.summary||'Docs-Git has everything it needs.'));
+          review.append(_psEl('span',null,st.analysis.summary||P+' has everything it needs.'));
         }
         const canNext=!!st.brief.trim()&&!st.busy;
         if(st.analysis&&st.analysis.complete) setNav({canNext,nextLabel:'Create project'});
@@ -10344,13 +10364,13 @@ async function _openProjectStarterWizard(profile){
       setTimeout(()=>brief.focus(),30);
       renderBrief.paint=paintReview;
     }
-    // Docs-Git's profile has no usable model yet: offer the sign-in right
+    // The planner's profile has no usable model yet: offer the sign-in right
     // here (Codex / Claude), or the Profiles page for keys and endpoints.
     function paintSetup(review){
       const setup=st.analysisSetup||{};
       review.classList.add('is-setup');
       const head=_psEl('div','ps-setup-head');
-      head.append(_psEl('strong',null,'Docs-Git needs a model'),_psEl('span',null,setup.message||'Its profile has no usable model yet.'));
+      head.append(_psEl('strong',null,P+' needs a model'),_psEl('span',null,setup.message||'Its profile has no usable model yet.'));
       review.append(head);
       const flow=_psEl('div','ps-setup-flow');
       const actions=_psEl('div','ps-setup-actions');
@@ -10360,11 +10380,11 @@ async function _openProjectStarterWizard(profile){
         signIn.onclick=()=>startSignin(setup.provider,flow,signIn);
         actions.append(signIn);
       }
-      const profiles=_psEl('button','project-starter-cancel','Set up Docs-Git');profiles.type='button';
+      const profiles=_psEl('button','project-starter-cancel','Set up '+P);profiles.type='button';
       // Opens the provider wizard on top; the project draft stays as it is.
       profiles.onclick=async()=>{
-        if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin('docs-gits');return;}
-        const r=await openProviderWizard('docs-gits',{title:'Set up Docs-Git'});
+        if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin(planner.profile);return;}
+        const r=await openProviderWizard(planner.profile,{title:'Set up '+P});
         if(r&&!done) analyze();
       };
       const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
@@ -10374,7 +10394,7 @@ async function _openProjectStarterWizard(profile){
     async function startSignin(provider,flow,button){
       button.disabled=true;flow.innerHTML='<span class="ps-pulse"></span> Starting sign-in…';
       let start;
-      try{start=await api('/api/profiles/oauth/start',{method:'POST',body:JSON.stringify({name:'docs-gits'})});}
+      try{start=await api('/api/profiles/oauth/start',{method:'POST',body:JSON.stringify({name:planner.profile})});}
       catch(e){flow.textContent=e.message||'Could not start sign-in.';button.disabled=false;return;}
       if(start.status==='success'){analyze();return;}
       const id=start.flow_id;signinFlow=id;
@@ -10386,7 +10406,7 @@ async function _openProjectStarterWizard(profile){
         const li2=_psEl('li',null,'Enter ');const code=_psEl('code','ps-setup-code',start.user_code);
         const copy=_psEl('button','ps-link','Copy');copy.type='button';copy.onclick=()=>{try{navigator.clipboard.writeText(start.user_code);showToast('Code copied');}catch(_){}};
         li2.append(code,copy);
-        steps.append(li1,li2,_psEl('li',null,'Approve it. Docs-Git retries by itself.'));
+        steps.append(li1,li2,_psEl('li',null,'Approve it. '+P+' retries by itself.'));
         flow.append(steps);
       }else flow.append(_psEl('p',null,'Sign in to Claude Code on this machine (run claude and log in). Hermes links it automatically.'));
       const wait=_psEl('div','ps-setup-wait');wait.innerHTML='<span class="ps-pulse"></span>';wait.append(_psEl('span',null,'Waiting for approval…'));flow.append(wait);
@@ -10397,13 +10417,13 @@ async function _openProjectStarterWizard(profile){
         if(done||signinFlow!==id) return;
         if(r.status==='pending'){setTimeout(poll,every);return;}
         signinFlow=null;
-        if(r.status==='success'){showToast('Docs-Git is signed in');analyze();return;}
+        if(r.status==='success'){showToast(P+' is signed in');analyze();return;}
         flow.textContent=r.status==='expired'?'The code expired. Try again.':(r.error||'Sign-in did not complete.');button.disabled=false;
       };
       setTimeout(poll,every);
     }
     async function analyze(){
-      if(!docsAgent){go(6,1);return;}
+      if(!plannerAgent){go(6,1);return;}
       st.busy=true;st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
       try{
         const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
@@ -10414,14 +10434,14 @@ async function _openProjectStarterWizard(profile){
               if(j.status==='running'){pollTimer=setTimeout(poll,1500);return;}res(j);}catch(e){rej(e);}
           };poll();
         });
-        if(job.status==='error') throw new Error(job.error||'Docs-Git could not review the brief.');
+        if(job.status==='error') throw new Error(job.error||P+' could not review the brief.');
         st.analysis=job.result;st.questions=job.result.questions||[];st.q=0;
       }catch(error){
         if(done) return;
         st.analysisSetup=null;
         if(error&&error.code==='docs_agent_setup'){
           try{st.analysisSetup=JSON.parse(error.body).setup;}catch(_){st.analysisSetup={state:'unknown',message:error.message};}
-        }else st.analysisError=(error&&error.message)||'Docs-Git could not review the brief.';
+        }else st.analysisError=(error&&error.message)||P+' could not review the brief.';
       }
       st.busy=false;
       if(done) return;
@@ -10429,15 +10449,15 @@ async function _openProjectStarterWizard(profile){
       renderBrief.paint&&renderBrief.paint();
     }
 
-    // Step 5 — Docs-Git's follow-up questions, one at a time
+    // Step 5 — the planner's follow-up questions, one at a time
     function renderQuestions(){
       const total=st.questions.length;const item=st.questions[st.q];
-      sub.textContent='Question '+(st.q+1)+' of '+total+' · Docs-Git needs these to fill the instruction files.';
+      sub.textContent='Question '+(st.q+1)+' of '+total+' · '+P+' needs these to plan the project.';
       const wrap=section(item.question);
       const progress=_psEl('div','ps-progress');const bar=_psEl('span');bar.style.width=((st.q+1)/total*100)+'%';progress.append(bar);
       wrap.prepend(progress);
       const opts=_psEl('div','ps-options');opts.setAttribute('role','radiogroup');
-      // Docs-Git's recommendation is preselected once; the user can change it.
+      // The planner's recommendation is preselected once; the user can change it.
       if(item.recommended&&st.answers[item.id]===undefined) st.answers[item.id]=item.recommended;
       const current=st.answers[item.id]||'';
       const other=_psEl('input','ps-other');other.placeholder='Or type your own answer';other.maxLength=300;
@@ -10461,10 +10481,11 @@ async function _openProjectStarterWizard(profile){
       setTimeout(()=>{const sel=opts.querySelector('.is-selected')||opts.querySelector('.ps-option');if(sel)sel.focus();},30);
     }
 
-    // Step 6 — create, then follow Docs-Git
+    // Step 6 — create, then follow the setup agent (Docs-Git adopts, the planner writes new projects)
     async function renderCreate(){
       const adopt=st.mode==='adopt';
-      sub.textContent=adopt?'Registering the project and handing it to Docs-Git.':'Creating the folder and handing it to Docs-Git.';
+      const agent=adopt?'Docs-Git':P,agentReady=adopt?docsAgent:plannerAgent;
+      sub.textContent=adopt?'Registering the project and handing it to Docs-Git.':'Creating the folder and handing it to '+P+'.';
       const wrap=section(adopt?'Adopting '+st.name:'Creating '+st.name.trim());
       const list=_psEl('ul','ps-tasks');wrap.append(list);
       const task=(label,waiting)=>{const li=_psEl('li','ps-task '+(waiting?'is-waiting':'is-running'));li.innerHTML='<span class="ps-task-mark">'+(waiting?'':'<span class="ps-pulse"></span>')+'</span>';li.append(_psEl('span','ps-task-label',label));list.append(li);
@@ -10477,7 +10498,7 @@ async function _openProjectStarterWizard(profile){
       const first=task(adopt?'Register the project':'Create the project folder and starter files');
       // The whole step is laid out up front (second task waiting, buttons
       // disabled) so the dialog settles once instead of growing in stages.
-      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':'Docs-Git writes the instruction files',true);
+      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':P+' plans the project and writes the instruction files',true);
       const actions=_psEl('div','ps-done-actions');
       const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';chat.disabled=true;
       const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.disabled=true;
@@ -10504,9 +10525,10 @@ async function _openProjectStarterWizard(profile){
       chat.onclick=()=>{finish(response);_startProjectChat(response.project);};
       closeBtn.onclick=()=>finish(response);
       if(response.docs_job) docs.run();
-      if(!response.docs_job){docs.skip(docsAgent?'Docs-Git did not start.':'The Docs-Git profile is not set up.');return;}
+      if(!response.docs_job){docs.skip(agentReady?agent+' did not start.':'The '+agent+' profile is not set up.');return;}
       const summary=_psEl('div','ps-summary');summary.hidden=true;wrap.insertBefore(summary,actions);
       _followProjectDocsJob(response.docs_job,response.project,{
+        agent,
         isOpen:()=>!done,
         ok:(text)=>{docs.ok();if(text){summary.hidden=false;summary.textContent=text;}},
         fail:(text)=>docs.fail(text),
@@ -10548,20 +10570,21 @@ function _onProjectStarterCreated(project){
   if(window.AgentCanvas&&typeof window.AgentCanvas.renderSidebar==='function') window.AgentCanvas.renderSidebar();
 }
 
-// Polls a Docs-Git setup job. Keeps going after the dialog closes so the
-// user still hears when the docs are ready.
+// Polls a project setup job (Docs-Git or the Architecture planner). Keeps
+// going after the dialog closes so the user still hears when the docs are ready.
 function _followProjectDocsJob(jobId,project,view){
+  const agent=view.agent||'Docs-Git';
   const poll=async()=>{
     let job;
     try{ job=await api('/api/projects/starter/job?job_id='+encodeURIComponent(jobId)); }
-    catch(error){ if(view.isOpen()) view.fail(error.message||'Lost track of Docs-Git.'); return; }
+    catch(error){ if(view.isOpen()) view.fail(error.message||'Lost track of '+agent+'.'); return; }
     if(job.status==='running'){ setTimeout(poll,3000); return; }
     if(job.status==='done'){
       const text=job.result&&job.result.summary||'';
-      if(view.isOpen()) view.ok(text); else showToast('Docs-Git finished setting up "'+project.name+'".');
+      if(view.isOpen()) view.ok(text); else showToast(agent+' finished setting up "'+project.name+'".');
     }else{
-      const text=job.error||'Docs-Git could not finish.';
-      if(view.isOpen()) view.fail(text); else showToast('Docs-Git could not set up "'+project.name+'": '+text);
+      const text=job.error||agent+' could not finish.';
+      if(view.isOpen()) view.fail(text); else showToast(agent+' could not set up "'+project.name+'": '+text);
     }
   };
   poll();

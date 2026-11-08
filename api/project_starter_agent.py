@@ -1,12 +1,14 @@
-"""Docs-Git assistance for the project starter wizard.
+"""Agent assistance for the project starter wizard.
 
-Two jobs run under the ``docs-gits`` profile:
+Two kinds of hidden job run here. A new project is planned by the
+``architecture`` profile on Codex Sol; an existing project is adopted by the
+``docs-gits`` profile:
 
 * ``start_analysis`` reviews a project brief and returns the questions still
   needed to fill the template's instruction files.
-* ``start_docs_setup`` works inside the project folder with Docs-Git's own
-  tools, writing (new project) or adapting (existing project) the
-  instruction files, and returns its summary.
+* ``start_docs_setup`` works inside the project folder with the agent's own
+  tools, writing (new project, Architecture) or adapting (existing project,
+  Docs-Git) the instruction files, and returns its summary.
 
 Both are hidden, non-persistent (ephemeral) turns tracked as in-memory jobs
 the wizard polls. A visible chat would live in the docs-gits profile, and
@@ -30,6 +32,13 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DOCS_PROFILE = "docs-gits"
+# A new project's planning (brief review, follow-up questions, and writing the
+# instruction files from the brief) runs under the Architecture profile on
+# Codex's Sol model. Adopting an existing project stays with Docs-Git.
+PLANNER_PROFILE = "architecture"
+PLANNER_MODEL = "gpt-5.6-sol"
+PLANNER_PROVIDER = "openai-codex"
+AGENT_LABELS = {DOCS_PROFILE: "Docs-Git", PLANNER_PROFILE: "Architecture"}
 _ANALYSIS_TIMEOUT_SECONDS = 240
 _SETUP_TIMEOUT_SECONDS = 1200
 _JOB_TTL_SECONDS = 1800
@@ -39,40 +48,60 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
-def docs_profile_available() -> bool:
+def profile_available(profile: str) -> bool:
     try:
         from api.profiles import get_hermes_home_for_profile
 
-        home = Path(get_hermes_home_for_profile(DOCS_PROFILE))
-        return home.name == DOCS_PROFILE and (home / "config.yaml").is_file()
+        home = Path(get_hermes_home_for_profile(profile))
+        return home.name == profile and (home / "config.yaml").is_file()
     except Exception:
         return False
 
 
-def docs_agent_readiness() -> dict:
-    """Can Docs-Git start? Checked before a run so the wizard can offer setup.
+def docs_profile_available() -> bool:
+    return profile_available(DOCS_PROFILE)
+
+
+def planner_profile_available() -> bool:
+    return profile_available(PLANNER_PROFILE)
+
+
+def agent_readiness(profile: str) -> dict:
+    """Can this profile's agent start? Checked before a run so the wizard can offer setup.
 
     Blocks only on a definite gap (no sign-in / no key / no model) with no
     usable fallback; routes Hermes can't verify from here are let through and
     the agent reports any problem itself.
     """
-    if not docs_profile_available():
-        return {"ready": False, "state": "missing", "provider": "",
-                "message": "The Docs-Git profile is not set up."}
+    label = AGENT_LABELS.get(profile, profile)
+    base = {"profile": profile, "agent": label}
+    named = {DOCS_PROFILE: docs_profile_available, PLANNER_PROFILE: planner_profile_available}
+    available = named[profile]() if profile in named else profile_available(profile)
+    if not available:
+        return {**base, "ready": False, "state": "missing", "provider": "",
+                "message": f"The {label} profile is not set up."}
     from api.profile_providers import overview
 
     try:
-        view = overview(DOCS_PROFILE)
+        view = overview(profile)
     except Exception:
-        return {"ready": True, "state": "unknown", "provider": "", "message": ""}
+        return {**base, "ready": True, "state": "unknown", "provider": "", "message": ""}
     main = view["main"]
     state = main["status"]["state"]
     if state not in {"signin", "key", "unset"}:
-        return {"ready": True, "state": state, "provider": main["provider"], "message": main["status"]["message"]}
+        return {**base, "ready": True, "state": state, "provider": main["provider"], "message": main["status"]["message"]}
     if any(f["status"]["state"] == "ready" for f in view["fallbacks"]):
-        return {"ready": True, "state": "fallback", "provider": main["provider"], "message": "Using a fallback model."}
-    return {"ready": False, "state": state, "provider": main["provider"],
-            "message": f"Docs-Git can't run yet: {main['status']['message']}"}
+        return {**base, "ready": True, "state": "fallback", "provider": main["provider"], "message": "Using a fallback model."}
+    return {**base, "ready": False, "state": state, "provider": main["provider"],
+            "message": f"{label} can't run yet: {main['status']['message']}"}
+
+
+def docs_agent_readiness() -> dict:
+    return agent_readiness(DOCS_PROFILE)
+
+
+def planner_readiness() -> dict:
+    return agent_readiness(PLANNER_PROFILE)
 
 
 # ── Brief analysis ─────────────────────────────────────────────────────────
@@ -118,7 +147,13 @@ def start_analysis(*, name: str, brief: str, template: dict) -> str:
         name=name or "Untitled project",
         brief=brief[:20000],
     )
-    return _start_job("analysis", lambda: parse_analysis(_run_ephemeral_turn(prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS)))
+    return _start_job("analysis", lambda: parse_analysis(_run_ephemeral_turn(
+        prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, **_planner_run())))
+
+
+def _planner_run() -> dict:
+    return {"profile": PLANNER_PROFILE, "title": "Architecture",
+            "model": PLANNER_MODEL, "model_provider": PLANNER_PROVIDER}
 
 
 def _start_job(kind: str, work) -> str:
@@ -203,10 +238,17 @@ def _profile_model(session) -> tuple[str | None, str | None]:
     return model, model_provider
 
 
-def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = None, title: str = "Docs-Git") -> str:
-    """Run one hidden Docs-Git turn and return its final answer."""
-    if not docs_profile_available():
-        raise RuntimeError("The Docs-Git profile is not set up.")
+def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = None, title: str = "Docs-Git",
+                        profile: str = DOCS_PROFILE, model: str | None = None,
+                        model_provider: str | None = None) -> str:
+    """Run one hidden agent turn under ``profile`` and return its final answer.
+
+    ``model``/``model_provider`` pin the model; otherwise the profile's own
+    default is used.
+    """
+    label = AGENT_LABELS.get(profile, profile)
+    if not profile_available(profile):
+        raise RuntimeError(f"The {label} profile is not set up.")
     from api.models import new_session
     from api.routes import (
         STREAMS,
@@ -217,8 +259,9 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
         register_stream_owner,
     )
 
-    session = new_session(workspace=workspace, profile=DOCS_PROFILE)
-    model, model_provider = _profile_model(session)
+    session = new_session(workspace=workspace, profile=profile)
+    if not model:
+        model, model_provider = _profile_model(session)
     session.model = model
     session.model_provider = model_provider
     session.title = title[:80]
@@ -255,12 +298,12 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                 if payload.get("failure_reason"):
                     # The model never answered: report why, not "unreadable".
                     detail = str(payload.get("failure_message") or "").strip()
-                    raise RuntimeError(detail or f"Docs-Git's model failed ({payload['failure_reason']}).")
+                    raise RuntimeError(detail or f"{label}'s model failed ({payload['failure_reason']}).")
                 return str(payload.get("answer") or "")
             if name in ("error", "apperror", "cancel"):
                 message = (data or {}).get("message") if isinstance(data, dict) else None
-                raise RuntimeError(message or "Docs-Git stopped before answering.")
-        raise RuntimeError("Docs-Git took too long to answer.")
+                raise RuntimeError(message or f"{label} stopped before answering.")
+        raise RuntimeError(f"{label} took too long to answer.")
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
@@ -305,12 +348,19 @@ def _adopt_prompt(name: str) -> str:
     )
 
 
+def setup_profile(adopt: bool) -> str:
+    """Which profile writes the instruction files: Docs-Git adopts, Architecture plans new projects."""
+    return DOCS_PROFILE if adopt else PLANNER_PROFILE
+
+
 def start_docs_setup(project: dict, *, adopt: bool, template_label: str = "", files=None) -> str | None:
-    """Start Docs-Git on the project folder; returns a job id, or None without the profile."""
-    if not docs_profile_available():
+    """Start the setup agent on the project folder; returns a job id, or None without the profile."""
+    profile = setup_profile(adopt)
+    if not profile_available(profile):
         return None
     prompt = _adopt_prompt(project["name"]) if adopt else _new_project_prompt(
         project["name"], template_label or "Blank project", list(files or []))
-    title = f"Docs-Git: {'adopt' if adopt else 'set up'} {project['name']}"
+    run = {"profile": DOCS_PROFILE} if adopt else _planner_run()
+    run["title"] = f"{AGENT_LABELS[profile]}: {'adopt' if adopt else 'set up'} {project['name']}"
     return _start_job("setup", lambda: {"summary": _run_ephemeral_turn(
-        prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=project["workspace_path"], title=title).strip()})
+        prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=project["workspace_path"], **run).strip()})
