@@ -17665,8 +17665,8 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .work-hub-column-filter .themed-select-trigger{height:30px;min-height:30px;border-radius:var(--radius-md);}
 .work-hub-column-filter input:focus,.work-hub-column-filter input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
 /* Select-mode bar: the Move and Delete glyphs sit optically centred. */
-.wh-col-actions-buttons [data-col-move] svg{transform:translateY(1px);}
-.wh-col-actions-buttons [data-col-delete-picked] svg{transform:translateY(.5px);}
+.wh-col-actions-buttons [data-col-move] svg{transform:translateY(.5px);}
+.wh-col-actions-buttons [data-col-delete-picked] svg{transform:none;}
 /* Work item inspector: room above and below the DESCRIPTION label. */
 .work-hub-inspector .wh-insp-section{margin-top:16px;gap:12px;}
 /* Desktop icon rail: 49px leaves exactly 6px either side of the 36px buttons
