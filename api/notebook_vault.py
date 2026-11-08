@@ -248,6 +248,15 @@ def _file_name(title: str) -> str:
     return name or "Untitled"
 
 
+# The names an untitled note's file gets (Untitled.md, Untitled 1.md, ...):
+# its title reads as empty, so the editor shows its placeholder instead.
+_UNTITLED_STEM = re.compile(r"Untitled(?: \d+)?")
+
+
+def _title_of(path: Path) -> str:
+    return "" if _UNTITLED_STEM.fullmatch(path.stem) else path.stem
+
+
 def _unique(folder: Path, stem: str, suffix: str = ".md", skip: Path | None = None) -> Path:
     candidate = folder / f"{stem}{suffix}"
     n = 1
@@ -531,6 +540,46 @@ def _context(conn: sqlite3.Connection, root: Path) -> dict[str, Any]:
     return {"projects": _project_dirs(conn, root), "folders": _main_folders(conn, root)}
 
 
+def _live_project_ids() -> set[str] | None:
+    """The workspace ids projects.json lists now, or None when it cannot be
+    read (missing, mid-write): then nothing is treated as deleted."""
+    from api import models
+
+    projects = models.load_projects()
+    if projects:
+        return {str(p.get("project_id")) for p in projects if isinstance(p, dict) and p.get("project_id")}
+    # load_projects() answers [] for a missing or unreadable file too: only an
+    # actual empty list on disk means every workspace is gone.
+    try:
+        rows = json.loads(models.PROJECTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return set() if rows == [] else None
+
+
+def _forget_deleted_projects(conn: sqlite3.Connection, root: Path) -> None:
+    """A workspace deleted elsewhere (the Chat page, a merge) takes its folder
+    with it: its place row is dropped and its folder removed when empty. A
+    folder that still holds anything stays, as a plain vault folder."""
+    live = _live_project_ids()
+    if live is None:
+        return
+    rows = conn.execute("SELECT key, relpath FROM vault_places WHERE vault=? AND kind='project'", (str(root),)).fetchall()
+    gone = [row for row in rows if row["key"] not in live]
+    if not gone:
+        return
+    with conn:
+        for row in gone:
+            conn.execute("DELETE FROM vault_places WHERE vault=? AND kind='project' AND key=?", (str(root), row["key"]))
+    for row in gone:
+        try:
+            path = _inside(root, row["relpath"])
+            if path != root and path.is_dir():
+                path.rmdir()  # only ever succeeds on an empty folder
+        except (OSError, NotebookError):
+            pass
+
+
 def _main_place(rel: str, ctx: dict[str, Any]) -> tuple[bool, str | None, str | None]:
     """(in the main view, workspace id, main folder id) for a vault path."""
     for project_id, folder in ctx["projects"].items():
@@ -593,7 +642,7 @@ def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, An
     if in_trash and not deleted_at:
         deleted_at = stat.st_mtime
     return {
-        "id": note_id, "title": path.stem, "preview": preview,
+        "id": note_id, "title": _title_of(path), "preview": preview,
         # The main Notes view's place for it, and the Obsidian view's folder.
         "in_main": in_main, "project_id": project_id, "folder_id": folder_id,
         "vault_folder_id": _folder_id(conn, vault, vault_rel) if vault_rel else None,
@@ -702,6 +751,7 @@ def bootstrap() -> dict[str, Any]:
     """The Obsidian view: every folder (two levels) and every note."""
     root = _root()
     with _LOCK, _connect() as conn:
+        _forget_deleted_projects(conn, root)
         return _vault_view(conn, root, _all_summaries(conn, root, _context(conn, root)))
 
 
@@ -710,6 +760,7 @@ def main_bootstrap() -> dict[str, Any]:
     notes that live in them (or in 00 Inbox, its General)."""
     root = _root()
     with _LOCK, _connect() as conn:
+        _forget_deleted_projects(conn, root)
         ctx = _context(conn, root)
         return _main_view(ctx, _all_summaries(conn, root, ctx))
 
@@ -719,6 +770,7 @@ def both_bootstraps() -> dict[str, Any]:
     the vault: the two views are the same notes, placed differently."""
     root = _root()
     with _LOCK, _connect() as conn:
+        _forget_deleted_projects(conn, root)
         ctx = _context(conn, root)
         notes = _all_summaries(conn, root, ctx)
         data = _main_view(ctx, notes)

@@ -167,6 +167,28 @@ def test_the_filter_field_highlights_with_the_theme_accent_when_focused(page):
     assert style["border"] == style["accent"], style
 
 
+def test_work_hub_fields_light_up_exactly_like_the_chat_filter(page):
+    """The Chat sidebar's "Filter conversations" box is the reference: accent
+    border plus a soft accent halo. The Work Hub search box and the column
+    filter field show the same ring when focused."""
+    def ring(focus, host):
+        page.focus(focus)
+        page.wait_for_timeout(350)
+        return page.evaluate("(h) => { const c = getComputedStyle(document.querySelector(h)); return [c.borderTopColor, c.boxShadow]; }", host)
+
+    page.evaluate("async () => { await switchPanel('chat'); }")
+    reference = ring("#sessionSearch", "#sessionSearch")
+    assert reference[1] != "none", reference
+    page.evaluate("async () => { await switchPanel('notes'); }")
+    page.wait_for_selector("#workHubSearch", timeout=10000)
+    assert ring("#workHubSearch", ".work-hub-search") == reference
+    _open_menu(page, "triage")
+    page.click(".work-hub-column-menu [data-col-action=filter]")
+    page.wait_for_selector("[data-board-filter-query='triage']", timeout=5000)
+    page.wait_for_timeout(400)
+    assert ring("[data-board-filter-query='triage']", "[data-board-filter-query='triage']") == reference
+
+
 def test_the_icon_rail_leaves_equal_whole_pixel_gaps_beside_its_buttons(page):
     gaps = page.evaluate("""() => { const r = document.querySelector('.rail'); const rr = r.getBoundingClientRect();
         const inner = rr.right - parseFloat(getComputedStyle(r).borderRightWidth);

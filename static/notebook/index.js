@@ -2249,12 +2249,21 @@
       prefetched = null;
     } else {
       render();
+      if (projectsChanged) { projectsChanged = false; refresh(); }
       if (wanted) await openNote(wanted);
       else if (S.note && !editorCtl) await mountEditor(S.note, S.note.content);
     }
   }
   async function unmount() { await flushSave(); }
   async function refresh() { await loadBootstrap(); render(); }
+  // A workspace created, renamed or deleted on another page (the Chat
+  // sidebar's project list signals it): the loaded workspaces are stale, so
+  // the next visit, or this one if Notes is showing, fetches them again.
+  let projectsChanged = false;
+  document.addEventListener('project-sessions-changed', () => {
+    if (!S.loaded) return;
+    if (isShowing()) refresh(); else projectsChanged = true;
+  });
   // Open the Notes page on a workspace's notes, and on one note when given.
   async function openFrom(noteId, projectId) {
     if (projectId) { S.scope = {kind: 'project', id: projectId}; S.expanded['project:' + projectId] = true; }

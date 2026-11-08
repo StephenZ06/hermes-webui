@@ -334,3 +334,50 @@ def test_bootstrap_walks_the_vault_once_and_rereads_only_changed_notes(vault, mo
     again = {n["title"]: n for n in notebook_vault.both_bootstraps()["vault"]["notes"]}
     assert reads == ["Inbox note.md"]
     assert again["Inbox note"]["preview"].startswith("Changed in Obsidian")
+
+
+def test_a_deleted_workspace_leaves_no_empty_folder_behind(vault, monkeypatch, tmp_path):
+    """Deleting a workspace on the Chat page takes its Notes folder with it:
+    once projects.json no longer lists it, its empty 01 Projects/<name>
+    folder is removed and no longer shown. A folder still holding notes is
+    kept, and nothing is removed while projects.json cannot be read."""
+    projects_file = tmp_path / "projects.json"
+    monkeypatch.setattr("api.models.PROJECTS_FILE", projects_file)
+    rows = [dict(w) for w in WORKSPACES]
+    monkeypatch.setattr("api.models.load_projects", lambda *a, **k: [dict(r) for r in rows])
+    projects_file.write_text(json.dumps(rows))
+    _connect(vault)
+    till = notebook_vault.create_note({"title": "Till spec", "view": "notes", "project_id": "p-triple"})
+    notebook_vault.create_note({"title": "Pricing", "view": "notes", "project_id": "p-saas"})
+    notebook_vault.trash_note(till["id"])
+    assert (vault / "01 Projects" / "Triple S").is_dir()
+
+    # projects.json unreadable (mid-write): fail closed, nothing is removed.
+    rows[:] = []
+    projects_file.write_text("")
+    names = [f["name"] for f in notebook_vault.both_bootstraps()["vault"]["folders"]]
+    assert "01 Projects / Triple S" in names and (vault / "01 Projects" / "Triple S").is_dir()
+
+    # Both workspaces deleted: the empty folder goes, the one with a note stays.
+    projects_file.write_text("[]")
+    data = notebook_vault.both_bootstraps()
+    names = [f["name"] for f in data["vault"]["folders"]]
+    assert "01 Projects / Triple S" not in names and not (vault / "01 Projects" / "Triple S").exists()
+    assert "01 Projects / SaaS - Temani" in names and (vault / "01 Projects" / "SaaS - Temani" / "Pricing.md").is_file()
+    assert data["projects"] == []
+
+
+def test_a_new_untitled_note_has_an_empty_title_not_the_word_untitled(vault):
+    """An untitled note is saved as Untitled.md (Untitled 1.md, ...) because a
+    file needs a name, but its title field stays empty so the editor shows
+    the "Untitled" placeholder instead of text to delete."""
+    _connect(vault)
+    first = notebook_vault.create_note({"title": "", "view": "notes"})
+    second = notebook_vault.create_note({"title": "", "view": "notes"})
+    assert (vault / "00 Inbox" / "Untitled.md").is_file() and (vault / "00 Inbox" / "Untitled 1.md").is_file()
+    assert first["title"] == "" and second["title"] == ""
+    assert {n["id"]: n["title"] for n in notebook_vault.main_bootstrap()["notes"]}[second["id"]] == ""
+    named = notebook_vault.update_note(first["id"], {"expected_revision": first["revision"], "title": "Groceries", "view": "notes"})
+    assert named["title"] == "Groceries" and named["path"] == "00 Inbox/Groceries.md"
+    kept = notebook_vault.create_note({"title": "Untitled ideas", "view": "notes"})
+    assert kept["title"] == "Untitled ideas", "a real title that starts with Untitled is kept"

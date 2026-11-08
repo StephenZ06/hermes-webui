@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Deleted workspaces leave Notes; Chat-style focus halo everywhere; untitled vault notes
+
+- A workspace deleted on the Chat page stayed on the Notes page for two reasons. (1) Notes caches its bootstrap across panel switches and never refetched; it now listens to the Chat sidebar's `project-sessions-changed` signal (the one Work Hub already used) and refetches on its next visit, or at once if it is showing. (2) With an Obsidian vault connected, the workspace's `01 Projects/<name>` folder and its `vault_places` row outlived the project, so the Obsidian view kept listing it after any reload. `notebook_vault._forget_deleted_projects` now runs in each bootstrap: it drops place rows for ids `load_projects()` no longer lists and `rmdir`s their folder only if empty (a folder still holding notes stays). It fails closed: an empty `load_projects()` answer is trusted only when `projects.json` really holds `[]`, never when it is missing or mid-write.
+- The live "Triple S" folder was empty; it is removed automatically the first time the deployed Notes page loads.
+- Focus: the reference is the Chat "Filter conversations" box (accent border plus `0 0 0 3px var(--accent-bg)`). The generic `:where()` field rule now carries that halo; borderless fields (composer, note title, fields inside framed boxes) are exempt and their box lights instead. Fields that had their own ring (Files filter outline, Notes search's stronger `--focus-ring` halo, clarify input, Business Office inputs, dashboard inline forms, selection chip rename) now use the same ring. Themed skins (Geist Contrast, Neon, RPG dashboard) keep their own focus styling.
+- Vault notes created without a title are saved as `Untitled.md` / `Untitled N.md`; their title now reads as empty so the editor shows the "Untitled" placeholder instead of text to delete.
+
 ## 2026-11-08: Work Hub filter row polish, themed focus everywhere, rail centring
 
 - Column filter row stutter: `toggleColumnFilter` measured the row before `select-theme.js`'s MutationObserver swapped the Priority/Sort selects for themed triggers, so the grow aimed at 75px and snapped to 69px. It now calls `enhanceAllThemedSelects(panel)` before measuring; the triggers are also 30px to match the filter field.

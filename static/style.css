@@ -17663,7 +17663,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
    the field's placeholder sits half a pixel lower than before. */
 .work-hub-column-filter input{padding-bottom:1px!important;line-height:27px;}
 .work-hub-column-filter .themed-select-trigger{height:30px;min-height:30px;border-radius:var(--radius-md);}
-.work-hub-column-filter input:focus,.work-hub-column-filter input:focus-visible{outline:none;border-color:var(--accent);}
+.work-hub-column-filter input:focus,.work-hub-column-filter input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
 /* Select-mode bar: the Move and Delete glyphs sit optically centred. */
 .wh-col-actions-buttons [data-col-move] svg{transform:translateY(1px);}
 .wh-col-actions-buttons [data-col-delete-picked] svg{transform:translateY(.5px);}
@@ -17673,16 +17673,22 @@ textarea#msg::-webkit-scrollbar{display:none;}
    (inside the 1px divider), so icons land on whole pixels and read centred. */
 @media (min-width:641px){.rail{width:49px;}}
 
-/* Focus: every text field shows the theme's highlight on its outline instead
+/* Focus: every text field lights up the way the Chat page's "Filter
+   conversations" box does: an accent border with a soft accent halo, instead
    of the browser's own ring (which on Windows takes the system accent colour).
    Zero specificity, so a field's own focus style still wins. */
-:where(input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden],[type=button],[type=submit],[type=reset],[type=image]),textarea,select):focus-visible{outline:none;border-color:var(--accent);}
-/* Borderless fields inside a framed box light the box instead. */
-.work-hub-search{transition:border-color .15s ease;}
-.work-hub-search:focus-within{border-color:var(--accent);}
-.work-hub-search:focus-within svg{color:var(--accent-text,var(--accent));}
-.goal-planner-dropzone:focus-within{border-color:var(--accent);}
-.dash-picker-search:focus-within{border-color:var(--accent);}
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden],[type=button],[type=submit],[type=reset],[type=image]),textarea,select):focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
+/* Borderless fields (the composer, a note's title, fields inside a framed
+   box) take no halo of their own: the box around them lights instead. */
+:where(textarea#msg,.nb-title,.nb-tag-input,.work-hub-search input,.goal-planner-dropzone textarea,.cmdk-input,.nb-search input,.pipe-search input,.dash-picker-search input,.office-biz-filter input):focus-visible{box-shadow:none;}
+.work-hub-search,.office-biz-filter,.dash-picker-search,.goal-planner-dropzone{transition:border-color .15s ease,box-shadow .15s ease;}
+.work-hub-search:focus-within,.office-biz-filter:focus-within,.dash-picker-search:focus-within,.goal-planner-dropzone:focus-within,.nb-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
+.work-hub-search:focus-within svg,.office-biz-filter:focus-within svg{color:var(--accent-text,var(--accent));}
+.files-search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
 .cmdk-input-row:focus-within{border-bottom-color:var(--accent);}
 .nb-tag-input:focus-visible{outline:1px solid var(--accent);outline-offset:3px;border-radius:6px;}
 @media (pointer:coarse){.nb-tags .nb-tag-input:focus-visible{outline:none;border-color:var(--accent);border-style:solid;}}
+/* Fields that had their own ring (an outline, a stronger or thinner halo)
+   take the same accent border and soft halo as every other field. Themed
+   skins (Geist Contrast, Neon, the RPG dashboard) keep their own. */
+.clarify-input:focus,.office-biz-input:focus-visible,.selection-chip-edit:focus,.dash-inline-form input:focus,.dash-inline-form select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}

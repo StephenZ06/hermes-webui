@@ -1705,3 +1705,21 @@ def test_the_title_placeholder_is_as_long_as_the_title(page):
     assert first[0] > want * 3, (first, want)  # a first visit cannot know it yet...
     assert abs(first[1] - want) <= 2, (first, want)  # ...so the bar shortens to the title
     assert abs(again[0] - want) <= 2 and abs(again[1] - want) <= 2, (again, want)  # then knows it
+
+
+def test_a_workspace_deleted_on_the_chat_page_leaves_the_notes_page(page):
+    """Notes keeps its loaded workspaces between visits; deleting one on the
+    Chat page must still take it off the Notes side panel."""
+    name = "Gone " + uuid.uuid4().hex[:6]
+    pid = _api("/api/projects/create", {"name": name})["project"]["project_id"]
+    try:
+        _open(page)
+        page.wait_for_function("(n) => document.getElementById('notebookSidebar').textContent.includes(n)", arg=name, timeout=15000)
+        page.evaluate("async () => { await switchPanel('chat'); }")
+        page.evaluate("async (pid) => { await api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: pid})}); await renderSessionList(); }", pid)
+        pid = None
+        page.evaluate("async () => { await switchPanel('notebook'); }")
+        page.wait_for_function("(n) => !document.getElementById('notebookSidebar').textContent.includes(n)", arg=name, timeout=10000)
+    finally:
+        if pid:
+            _api("/api/projects/delete", {"project_id": pid})
