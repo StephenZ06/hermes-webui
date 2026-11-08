@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Work Hub filter row polish, themed focus everywhere, rail centring
+
+- Column filter row stutter: `toggleColumnFilter` measured the row before `select-theme.js`'s MutationObserver swapped the Priority/Sort selects for themed triggers, so the grow aimed at 75px and snapped to 69px. It now calls `enhanceAllThemedSelects(panel)` before measuring; the triggers are also 30px to match the filter field.
+- Focus: a zero-specificity `:where(input…,textarea,select):focus-visible` rule replaces the browser's own ring (which on Windows uses the OS accent colour, orange for the user) with the theme accent border. Borderless fields inside framed boxes light the box instead (Work Hub search, goal planner dropzone, dashboard picker search, command palette row, notebook tag input). Audited with a Playwright pass that focuses every visible field on every panel and diffs outline/border/shadow on the field and three ancestors; remaining "NONE" rows are themed select triggers (keyboard-only `:focus-visible`, by design) and the composer (lit via `.composer-box:focus-within`, beyond the audit's depth). Fields inside dialogs and forms that only open on demand were checked by CSS reading, not by the browser pass.
+- Desktop icon rail is 49px wide so its 36px buttons get whole 6px gaps inside the 1px divider (was 5.5px, which snapped icons half a pixel right).
+- `tests/test_page_navigation_icons.py` fails locally because the untracked `icons/` source folder has no `Tasks.png`; unrelated to code.
+
 ## 2026-11-08: Work Hub column menu, deletes that stick, empty folders
 
 - Deleted work items came back: `migrate_sticky_boards()` ran on every `bootstrap()` and only skipped legacy notes still present as items, so any deleted imported item (and the whole post-reset Work Hub) was re-imported from `sticky_boards.json`. Imported note keys are now remembered in `work_hub_meta.legacy_imported_sources`; an import that finished before that key existed seeds it from the file without copying. The earlier reset entry's "migration marker kept so nothing re-imports" was wrong (that marker only guards `work_hub.json`).

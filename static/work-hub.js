@@ -465,6 +465,9 @@
     renderCanvas(scopedItems()); bind();
     const panel = columnEl(status) && columnEl(status).querySelector('.work-hub-column-filter');
     if (!panel || motionReduced()) return;
+    // Theme the Priority/Sort selects now, before measuring: the observer
+    // would otherwise swap them mid-grow and the row would snap at the end.
+    if (window.enhanceAllThemedSelects) window.enhanceAllThemedSelects(panel);
     const cs = getComputedStyle(panel);
     panel.style.overflow = 'hidden';
     const grow = panel.animate([fold, { height: `${panel.offsetHeight}px`, opacity: 1, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom }], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)' });

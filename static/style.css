@@ -17658,3 +17658,31 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .work-hub-column-menu-btn svg,.wh-pick,.wh-pick .work-hub-icon{transition:none;}
   .work-hub-column-actions.is-entering,.is-leaving-mode .work-hub-column-actions,.is-mode-entering .wh-pick,.is-mode-entering .wh-card-x,.work-hub-move-menu,.work-hub-column-menu,.work-hub-column .dm-wiggle{animation:none!important;}
 }
+
+/* Work Hub column filter: Priority and Sort match the 30px filter field, and
+   the field's placeholder sits half a pixel lower than before. */
+.work-hub-column-filter input{padding-bottom:1px!important;line-height:27px;}
+.work-hub-column-filter .themed-select-trigger{height:30px;min-height:30px;border-radius:var(--radius-md);}
+.work-hub-column-filter input:focus,.work-hub-column-filter input:focus-visible{outline:none;border-color:var(--accent);}
+/* Select-mode bar: the Move and Delete glyphs sit optically centred. */
+.wh-col-actions-buttons [data-col-move] svg{transform:translateY(1px);}
+.wh-col-actions-buttons [data-col-delete-picked] svg{transform:translateY(.5px);}
+/* Work item inspector: room above and below the DESCRIPTION label. */
+.work-hub-inspector .wh-insp-section{margin-top:16px;gap:12px;}
+/* Desktop icon rail: 49px leaves exactly 6px either side of the 36px buttons
+   (inside the 1px divider), so icons land on whole pixels and read centred. */
+@media (min-width:641px){.rail{width:49px;}}
+
+/* Focus: every text field shows the theme's highlight on its outline instead
+   of the browser's own ring (which on Windows takes the system accent colour).
+   Zero specificity, so a field's own focus style still wins. */
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden],[type=button],[type=submit],[type=reset],[type=image]),textarea,select):focus-visible{outline:none;border-color:var(--accent);}
+/* Borderless fields inside a framed box light the box instead. */
+.work-hub-search{transition:border-color .15s ease;}
+.work-hub-search:focus-within{border-color:var(--accent);}
+.work-hub-search:focus-within svg{color:var(--accent-text,var(--accent));}
+.goal-planner-dropzone:focus-within{border-color:var(--accent);}
+.dash-picker-search:focus-within{border-color:var(--accent);}
+.cmdk-input-row:focus-within{border-bottom-color:var(--accent);}
+.nb-tag-input:focus-visible{outline:1px solid var(--accent);outline-offset:3px;border-radius:6px;}
+@media (pointer:coarse){.nb-tags .nb-tag-input:focus-visible{outline:none;border-color:var(--accent);border-style:solid;}}

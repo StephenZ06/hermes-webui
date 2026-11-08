@@ -131,3 +131,46 @@ def test_a_folder_without_boards_opens_and_says_so(page, seeded):
     note = page.locator(f"#workHubFolderBoards-{seeded['empty']} .work-hub-board-empty")
     note.wait_for(state="visible", timeout=5000)
     assert note.inner_text() == "No board yet"
+
+
+def test_the_filter_row_grows_to_its_real_height_without_a_snap(page):
+    # The Priority/Sort selects are themed by a MutationObserver. If the row is
+    # measured before that swap, the grow animation aims at the wrong height
+    # and the row snaps when the animation ends.
+    page.evaluate("""() => { window.__fh = []; const t0 = performance.now(); const tick = () => {
+        const p = document.querySelector('.work-hub-column[data-status=triage] .work-hub-column-filter');
+        if (p) window.__fh.push(p.getBoundingClientRect().height);
+        if (performance.now() - t0 < 700) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }""")
+    _open_menu(page, "triage")
+    page.click(".work-hub-column-menu [data-col-action=filter]")
+    page.wait_for_timeout(900)
+    heights = page.evaluate("() => window.__fh")
+    final = heights[-1]
+    assert max(heights) <= final + 0.5, heights
+    sizes = page.evaluate("""() => { const p = document.querySelector('.work-hub-column[data-status=triage] .work-hub-column-filter');
+        return { input: p.querySelector('input').getBoundingClientRect().height,
+                 triggers: [...p.querySelectorAll('.themed-select-trigger')].map(t => t.getBoundingClientRect().height) }; }""")
+    assert sizes["triggers"] and all(abs(h - sizes["input"]) < 0.5 for h in sizes["triggers"]), sizes
+
+
+def test_the_filter_field_highlights_with_the_theme_accent_when_focused(page):
+    _open_menu(page, "triage")
+    page.click(".work-hub-column-menu [data-col-action=filter]")
+    page.wait_for_selector("[data-board-filter-query='triage']", timeout=5000)
+    page.focus("[data-board-filter-query='triage']")
+    page.wait_for_timeout(300)
+    style = page.evaluate("""() => { const e = document.activeElement, c = getComputedStyle(e);
+        const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; document.body.appendChild(probe);
+        const accent = getComputedStyle(probe).color; probe.remove();
+        return { outline: c.outlineStyle, border: c.borderTopColor, accent }; }""")
+    assert style["outline"] != "auto", style
+    assert style["border"] == style["accent"], style
+
+
+def test_the_icon_rail_leaves_equal_whole_pixel_gaps_beside_its_buttons(page):
+    gaps = page.evaluate("""() => { const r = document.querySelector('.rail'); const rr = r.getBoundingClientRect();
+        const inner = rr.right - parseFloat(getComputedStyle(r).borderRightWidth);
+        return [...r.querySelectorAll('.rail-btn')].filter(b => b.offsetParent).map(b => { const q = b.getBoundingClientRect(); return [q.left - rr.left, inner - q.right]; }); }""")
+    assert gaps
+    for left, right in gaps:
+        assert left == right and left == int(left), gaps
