@@ -6129,7 +6129,7 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
    higher than the row's centre, level with the labels' letters. */
 .nb-nav :is(.nb-scope-count,.nb-scope-hint,.nb-scope-chevron){translate:0 -1px;}
 .nb-tree-note button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.nb-tree-empty{margin:2px 0 6px;padding:2px 8px;color:var(--muted);font-size:11px;line-height:1.45;}
+.nb-tree-empty{margin:3px 0 5px;padding:2px 8px;color:var(--muted);font-size:11px;line-height:1.45;}
 .nb-tag-cloud{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;}
 .nb-tag{padding:2px 8px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:11px;cursor:pointer;}
 .nb-tag:hover,.nb-tag.active{border-color:transparent;background:var(--accent-bg);color:var(--accent-text);}
@@ -17605,3 +17605,56 @@ textarea#msg::-webkit-scrollbar{display:none;}
 /* Pictures that were still loading come in with a fade, not a cut. */
 .dash :is(.rpg-stage,.rpg-evo-art,.rpg-achs,.rpg-party) :is(video,img,[data-ld="bot"]),.dash .rpg-achs,.dash .rpg-party > *{transition:opacity .35s ease;}
 @media (prefers-reduced-motion:reduce){.dash-body.is-entering [data-enter],.dash [data-ld-on]{animation:none!important;}.dash .rpg-achs,.dash .rpg-party > *{transition:none;}}
+
+/* Work Hub column menu (chevron in a column header): Filter, Select, Delete.
+   Select and Delete make the column's cards wiggle; Select picks cards for the
+   bar at the column's foot (move or delete together). */
+.work-hub-column header{position:relative;}
+.work-hub-column-filter input{padding-bottom:2px!important;line-height:26px;}
+.work-hub-column-menu-btn svg{transition:transform .22s cubic-bezier(.22,1,.36,1);}
+.work-hub-column-menu-btn.is-open{background:var(--hover-bg);color:var(--text);}
+.work-hub-column-menu-btn.is-open svg{transform:rotate(180deg);}
+.work-hub-column-menu{left:auto;right:0;width:148px;transform-origin:top right;}
+.work-hub-column-menu button,.work-hub-move-menu button{display:flex;align-items:center;gap:8px;text-align:left;}
+.work-hub-column-menu button svg{flex:none;width:14px;height:14px;color:var(--muted);transition:color .15s ease;}
+.work-hub-column-menu button:hover:not(:disabled) svg{color:currentColor;}
+.work-hub-column-menu button.is-danger svg{color:currentColor;}
+.work-hub-column-menu button:disabled{opacity:.42;cursor:default;background:transparent;}
+.work-hub-move-menu{top:auto;bottom:calc(100% + 6px);transform-origin:bottom center;}
+.work-hub-move-menu .work-hub-status{flex:none;}
+.work-hub-move-menu.is-leaving,.work-hub-column-menu.is-leaving{animation:wh-pop-out .13s ease-in forwards;pointer-events:none;}
+.work-hub-column-actions{position:relative;flex:none;display:grid;gap:7px;margin-top:8px;padding:8px;border:1px solid var(--border2);border-radius:10px;background:var(--surface);}
+.work-hub-column-actions.is-entering{animation:wh-actions-in .28s cubic-bezier(.22,1,.36,1) both;}
+.is-leaving-mode .work-hub-column-actions{animation:wh-actions-out .18s ease-in forwards;}
+@keyframes wh-actions-in{from{opacity:0;transform:translateY(10px);}}
+@keyframes wh-actions-out{to{opacity:0;transform:translateY(10px);}}
+.wh-col-actions-row{display:flex;align-items:center;gap:4px;min-width:0;}
+.wh-col-actions-hint{flex:1;min-width:0;padding-left:2px;overflow:hidden;color:var(--muted);font-size:11px;white-space:nowrap;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
+.wh-col-link,.wh-col-done{flex:none;padding:4px 8px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:11px;line-height:1.2;cursor:pointer;transition:background .15s ease,color .15s ease;}
+.wh-col-link{color:var(--muted);}
+.wh-col-link:hover{color:var(--text);background:var(--hover-bg);}
+.wh-col-done{color:var(--accent-text,var(--accent));background:var(--accent-bg);font-weight:650;}
+.wh-col-done:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
+.wh-col-actions-buttons{gap:6px;}
+.wh-col-actions-buttons button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;height:28px;padding:0 8px;border:1px solid var(--border2);border-radius:7px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer;transition:background .15s ease,border-color .15s ease,opacity .2s ease,color .15s ease;}
+.wh-col-actions-buttons button svg{flex:none;width:13px;height:13px;}
+.wh-col-actions-buttons button:hover:not(:disabled){border-color:var(--accent);background:var(--accent-bg);}
+.wh-col-actions-buttons button.is-danger{color:var(--error,#e5484d);}
+.wh-col-actions-buttons button.is-danger:hover:not(:disabled){border-color:color-mix(in srgb,var(--error,#e5484d) 55%,transparent);background:color-mix(in srgb,var(--error,#e5484d) 12%,transparent);}
+.wh-col-actions-buttons button:disabled{opacity:.4;cursor:default;}
+.work-hub-board .work-hub-card.wh-pickable{position:relative;padding-right:32px;cursor:pointer;}
+.work-hub-board .work-hub-card.wh-deletable{cursor:pointer!important;}
+.work-hub-board .work-hub-card.wh-deletable:hover{background:color-mix(in srgb,var(--error,#e5484d) 8%,var(--card,var(--surface)));}
+.wh-pick{position:absolute;top:9px;right:9px;display:grid;place-items:center;width:16px;height:16px;box-sizing:border-box;border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-radius:50%;color:var(--accent-contrast,#fff);transition:background .18s ease,border-color .18s ease,transform .24s cubic-bezier(.34,1.56,.64,1);}
+.wh-pick .work-hub-icon{width:11px;height:11px;stroke-width:2.6;opacity:0;transform:scale(.4);transition:transform .24s cubic-bezier(.34,1.56,.64,1),opacity .15s ease;}
+.work-hub-board .work-hub-card.is-picked{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--card,var(--surface)));box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent);}
+.work-hub-card.is-picked .wh-pick{border-color:var(--accent);background:var(--accent);transform:scale(1.08);}
+.work-hub-card.is-picked .wh-pick .work-hub-icon{opacity:1;transform:scale(1);}
+.is-mode-entering .wh-pick,.is-mode-entering .wh-card-x{animation:wh-pick-in .26s cubic-bezier(.34,1.56,.64,1) both;}
+.is-leaving-mode .wh-pick,.is-leaving-mode .wh-card-x{animation:wh-pick-out .16s ease-in forwards;}
+@keyframes wh-pick-in{from{opacity:0;transform:scale(.3);}}
+@keyframes wh-pick-out{to{opacity:0;transform:scale(.3);}}
+@media (prefers-reduced-motion:reduce){
+  .work-hub-column-menu-btn svg,.wh-pick,.wh-pick .work-hub-icon{transition:none;}
+  .work-hub-column-actions.is-entering,.is-leaving-mode .work-hub-column-actions,.is-mode-entering .wh-pick,.is-mode-entering .wh-card-x,.work-hub-move-menu,.work-hub-column-menu,.work-hub-column .dm-wiggle{animation:none!important;}
+}

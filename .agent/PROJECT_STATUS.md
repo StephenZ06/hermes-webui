@@ -1,6 +1,14 @@
 # Project status — hermes-webui
 
 
+## 2026-11-08: Work Hub column menu, deletes that stick, empty folders
+
+- Deleted work items came back: `migrate_sticky_boards()` ran on every `bootstrap()` and only skipped legacy notes still present as items, so any deleted imported item (and the whole post-reset Work Hub) was re-imported from `sticky_boards.json`. Imported note keys are now remembered in `work_hub_meta.legacy_imported_sources`; an import that finished before that key existed seeds it from the file without copying. The earlier reset entry's "migration marker kept so nothing re-imports" was wrong (that marker only guards `work_hub.json`).
+- The last board of a project folder is now removed (folder left with no boards; its next item gets a fresh default board). Only the project-less board is still cleared instead of removed. `delete_board` no longer assumes a sibling exists.
+- Column header chevron opens Filter / Select / Delete. Select: cards wiggle, a tap picks, a foot bar moves (status menu) or deletes the picked ones, one request each carrying the last revision. Delete: a tap deletes that card (usual confirm). Lifecycle via the shared `createDeleteMode` (Done, Escape, click outside). Filter row grows/folds in.
+- Folders without boards open and say "No board yet" (same `.nb-tree-empty` line as Notes, now 1px lower so it centres on the folder line). Column filter placeholder 1px higher.
+
+
 ## 2026-11-08: Live data reset (user request); character frame preload
 
 - Reset on the live instance, backups first in `~/.hermes/webui-backups/reset-2026-11-08/` (SQLite `.backup` copies of dashboard/work_hub/notebook/notebook_vault/job_os and every agent `state.db`; `webui-files.tgz` = sessions, projects.json, ledger; `vault-notes.tgz` = the 12 deleted vault notes).

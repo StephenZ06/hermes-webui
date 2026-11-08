@@ -110,13 +110,29 @@ def test_board_cannot_cross_projects_and_delete_promotes_or_resets_the_last_boar
     promoted = next(row for row in work_hub.bootstrap()["boards"] if row["id"] == board["board"]["id"])
     assert promoted["default"] is True
     latest = work_hub.bootstrap()
-    reset = work_hub.delete_board(board["board"]["id"], latest["revision"])
+    removed = work_hub.delete_board(board["board"]["id"], latest["revision"])
+    assert removed["reset"] is False
+    assert work_hub.get_item(item["item"]["id"]) is None
+    # A project folder may be left with no boards at all; its next work item
+    # gets a fresh default board.
+    assert all(row["project_id"] != "alpha" for row in work_hub.bootstrap()["boards"])
+    again = work_hub.create_item({"title": "Next", "project_id": "alpha"}, work_hub.current_revision())
+    assert any(row["id"] == again["item"]["board_id"] and row["default"] for row in work_hub.bootstrap()["boards"])
+
+
+def test_the_last_board_without_a_project_is_cleared_not_removed(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [])
+    item = work_hub.create_item({"title": "Inbox task"}, None)
+    reset = work_hub.delete_board(item["item"]["board_id"], item["revision"])
     assert reset["reset"] is True
     assert work_hub.get_item(item["item"]["id"]) is None
-    assert any(row["id"] == board["board"]["id"] for row in work_hub.bootstrap()["boards"])
+    assert any(row["id"] == item["item"]["board_id"] for row in work_hub.bootstrap()["boards"])
 
 
-def test_default_board_can_be_renamed_and_reset_without_removing_its_board(monkeypatch, tmp_path):
+def test_default_board_can_be_renamed_and_then_deleted(monkeypatch, tmp_path):
     from api import work_hub
 
     monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
@@ -129,9 +145,9 @@ def test_default_board_can_be_renamed_and_reset_without_removing_its_board(monke
     assert renamed["board"]["name"] == "Release plan"
     data = work_hub.bootstrap()
     assert next(board for board in data["boards"] if board["id"] == board_id)["name"] == "Release plan"
-    reset = work_hub.delete_board(board_id, data["revision"])
-    assert reset["revision"] > data["revision"]
-    assert next(board for board in work_hub.bootstrap()["boards"] if board["id"] == board_id)["name"] == "Release plan"
+    removed = work_hub.delete_board(board_id, data["revision"])
+    assert removed["revision"] > data["revision"]
+    assert all(board["id"] != board_id for board in work_hub.bootstrap()["boards"])
 
 
 def test_stale_revision_does_not_mutate_item(monkeypatch, tmp_path):

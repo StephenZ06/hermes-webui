@@ -6,7 +6,7 @@
   let currentInspectorWidth = (() => { const raw = localStorage.getItem(INSPECTOR_WIDTH_KEY); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
-  const store = { items: [], folders: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', deleteMode: false, activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
+  const store = { items: [], folders: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', deleteMode: false, activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null, columnMode: null, columnPicked: new Set() };
   const workspaceExpandedBoards = new Set();
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
@@ -218,6 +218,7 @@
       const boardsList = document.createElement('div'); boardsList.id = `workHubFolderBoards-${project.project_id}`; boardsList.className = 'project-folder-sessions work-hub-project-boards' + (expanded ? ' expanded' : ''); boardsList.inert = !expanded;
       const boardsInner = document.createElement('div'); boardsInner.className = 'project-folder-sessions-inner work-hub-project-boards-inner';
       boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeScope === project.project_id && store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}" data-folder-id="${esc(project.project_id)}">${icon('board')}<span>${esc(board.name)}</span></button><button type="button" class="work-hub-board-rename" data-rename-board="${esc(board.id)}" aria-label="Rename ${esc(board.name)}" title="Rename ${esc(board.name)}">${icon('pencil')}</button><button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`; if (store.deleteMode) { decorateDeleteModeItem(row, { label: `Delete board ${board.name}`, index: boardsInner.children.length + 1, onDelete: () => deleteWorkHubBoard(board.id) }); row.querySelector('.dm-x').dataset.deleteBoardMode = board.id; } boardsInner.appendChild(row); });
+      if (!boards.length) boardsInner.insertAdjacentHTML('beforeend', '<p class="nb-tree-empty work-hub-board-empty">No board yet</p>');
       boardsList.appendChild(boardsInner); projectList.appendChild(boardsList);
     });
   }
@@ -283,7 +284,7 @@
   function showWorkHubProjectPicker(anchor, projects, emptyMessage) { if (!projects.length) { if (typeof showToast === 'function') showToast(emptyMessage); return Promise.resolve(null); } document.querySelectorAll('.work-hub-project-picker').forEach(picker => picker.remove()); return new Promise(resolve => { const host = el('workHubProjectCreate')?.parentElement || anchor?.parentElement; if (!host) return resolve(null); const picker = document.createElement('div'); picker.className = 'project-picker work-hub-project-picker'; let closed = false; const finish = projectId => { if (closed) return; closed = true; dismissPopover(picker); document.removeEventListener('click', close); resolve(projectId); }; const close = event => { if (!picker.contains(event.target) && !anchor?.contains(event.target)) finish(null); }; projects.forEach(project => { const item = document.createElement('div'); item.className = 'project-picker-item'; const dot = document.createElement('span'); dot.className = 'color-dot'; dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + (project.color || 'var(--muted)') + ';flex-shrink:0;'; const name = document.createElement('span'); name.textContent = project.name || 'Untitled project'; item.append(dot, name); item.onclick = () => finish(project.project_id); picker.appendChild(item); }); host.appendChild(picker); setTimeout(() => document.addEventListener('click', close), 0); }); }
   async function createWorkHubBoard(anchor) { const projectId = await showWorkHubBoardProjectPicker(anchor); if (!projectId) return; const name = await showPromptDialog({ title: 'New Board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = result.board.id; store.expandedProjects[projectId] = true; await loadWorkHubPanel(); notifyWorkHubChanged(); const newBoard = document.querySelector(`[data-board-id="${CSS.escape(result.board.id)}"]`); markArrival(newBoard && newBoard.closest('.work-hub-board-row')); } catch (error) { store.stale = true; render(); } }
   async function renameWorkHubBoard(boardId) { const board = store.boards.find(row => row.id === boardId); if (!board) return; const name = await showPromptDialog({ title: 'Rename board', message: 'Choose a new board name.', placeholder: 'Board name', value: board.name || '', selectAll: true, confirmLabel: 'Rename' }); if (!name || !name.trim() || name.trim() === board.name) return; try { await request('/api/work_hub/boards/rename', { method: 'POST', body: JSON.stringify({ board_id: boardId, board: { name: name.trim() }, expected_revision: store.revision }) }); await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board rename failed: ${error.message || error}`); } }
-  async function deleteWorkHubBoard(boardId) { const board = store.boards.find(entry => entry.id === boardId); const message = board?.default ? 'This clears every work item from the main board. The board itself stays as an empty board.' : 'This permanently removes the board and every work item on it.'; if (!await showConfirmDialog({ title: 'Delete board', message, confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); const boardRow = document.querySelector(`[data-board-id="${CSS.escape(boardId)}"]`); if (!board?.default || store.boards.filter(entry => entry.project_id === board.project_id).length > 1) await animateRemoval(boardRow && boardRow.closest('.work-hub-board-row')); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); notifyWorkHubChanged(); if (store.deleteMode && !workHubHasDeletables()) exitProjectDeleteMode(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board delete failed: ${error.message || error}`); } }
+  async function deleteWorkHubBoard(boardId) { const board = store.boards.find(entry => entry.id === boardId); const keepsBoard = !!board && !board.project_id && store.boards.filter(entry => !entry.project_id).length <= 1; const message = keepsBoard ? 'This clears every work item from the main board. The board itself stays as an empty board.' : 'This permanently removes the board and every work item on it.'; if (!await showConfirmDialog({ title: 'Delete board', message, confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); const boardRow = document.querySelector(`[data-board-id="${CSS.escape(boardId)}"]`); if (!keepsBoard) await animateRemoval(boardRow && boardRow.closest('.work-hub-board-row')); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); notifyWorkHubChanged(); if (store.deleteMode && !workHubHasDeletables()) exitProjectDeleteMode(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board delete failed: ${error.message || error}`); } }
   function workHubColumnItems(items, statusId) {
     const filter = store.boardFilters[statusId] || {};
     const rows = items.filter(item => item.status === statusId && (!filter.priority || item.priority === filter.priority) && (!filter.query || item.title.toLowerCase().includes(filter.query)));
@@ -298,7 +299,7 @@
   }
   function fillWorkHubCards(cards, columnItems) {
     cards.textContent = '';
-    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : '') + (item.id === store.selectedItemId ? ' is-selected' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${store.questIds && store.questIds.has(item.id) ? '<span class="work-hub-quest-mark" title="On your Dashboard quests" aria-label="Quest">⚔</span>' : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+    columnItems.forEach((item, index) => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : '') + (item.id === store.selectedItemId ? ' is-selected' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${store.questIds && store.questIds.has(item.id) ? '<span class="work-hub-quest-mark" title="On your Dashboard quests" aria-label="Quest">⚔</span>' : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; decorateModeCard(card, item, index); cards.appendChild(card); });
   }
   // Typing in a column filter updates that column's cards in place. Replacing
   // the input would drop focus, and the iOS keyboard with it.
@@ -310,8 +311,228 @@
     const oldBadge = column.querySelector('.work-hub-column-badge'); if (oldBadge) oldBadge.remove();
     if (count) count.insertAdjacentHTML('afterend', workingColumnBadge(columnItems));
     fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
-    document.querySelectorAll('[data-item-id]').forEach(button => { if (button.closest('.work-hub-cards') === column.querySelector('.work-hub-cards')) button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); }; });
+    document.querySelectorAll('[data-item-id]').forEach(button => { if (button.closest('.work-hub-cards') === column.querySelector('.work-hub-cards')) button.onclick = () => activateCard(button); });
     const board = column.closest('.work-hub-board'); if (board && board._bindCard) column.querySelectorAll('.work-hub-card').forEach(board._bindCard);
+  }
+  // ── Column menu: Filter, Select, Delete ─────────────────────────────────
+  // The chevron in a column's header opens a small menu. Select and Delete put
+  // that column's cards into a wiggling mode (store.columnMode): in Select a
+  // tap picks a card and the bar at the column's foot moves or deletes the
+  // picked ones together; in Delete a tap on a card deletes it (after the
+  // usual confirm). Done, Escape or a click outside the column ends the mode
+  // (the shared createDeleteMode lifecycle from ui.js).
+  const motionReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const columnEl = status => document.querySelector(`#workHubCanvas .work-hub-column[data-status="${CSS.escape(status)}"]`);
+  const statusLabel = status => (store.statuses.find(row => row.id === status) || {}).label || String(status || '').replace('_', ' ');
+  function cardModeOf(card) {
+    const column = card && card.closest('.work-hub-column');
+    return column && store.columnMode && store.columnMode.status === column.dataset.status ? store.columnMode.kind : null;
+  }
+  function decorateModeCard(card, item, index) {
+    const kind = store.columnMode && store.columnMode.status === item.status ? store.columnMode.kind : null;
+    if (!kind) return;
+    card.draggable = false;
+    card.classList.add('dm-wiggle', kind === 'select' ? 'wh-pickable' : 'wh-deletable');
+    card.style.animationDelay = `${-((index * 97) % 300)}ms`;
+    if (kind === 'select') {
+      const picked = store.columnPicked.has(item.id);
+      card.classList.toggle('is-picked', picked);
+      card.setAttribute('aria-pressed', String(picked));
+      card.insertAdjacentHTML('beforeend', `<span class="wh-pick" aria-hidden="true">${icon('check')}</span>`);
+    } else {
+      card.classList.add('dm-item');
+      card.setAttribute('aria-label', `Delete ${item.title || 'work item'}`);
+      card.insertAdjacentHTML('beforeend', '<span class="dm-x wh-card-x" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></span>');
+    }
+  }
+  function activateCard(card) {
+    const kind = cardModeOf(card);
+    if (kind === 'select') return togglePicked(card);
+    if (kind === 'delete') return deleteItem(card.dataset.itemId);
+    store.selectedItemId = card.dataset.itemId; renderInspector();
+  }
+  function columnActionsHtml(status) {
+    const mode = store.columnMode;
+    if (!mode || mode.status !== status) return '';
+    const entering = mode.fresh ? ' is-entering' : '';
+    if (mode.kind === 'delete') {
+      return `<div class="work-hub-column-actions${entering}" data-kind="delete"><div class="wh-col-actions-row"><span class="wh-col-actions-hint">Tap to delete</span><button type="button" class="wh-col-done" data-col-done>Done</button></div></div>`;
+    }
+    return `<div class="work-hub-column-actions${entering}" data-kind="select"><div class="wh-col-actions-row"><span class="wh-col-actions-hint" data-col-count aria-live="polite"></span><button type="button" class="wh-col-link" data-col-all></button><button type="button" class="wh-col-done" data-col-done>Done</button></div><div class="wh-col-actions-row wh-col-actions-buttons"><button type="button" data-col-move>${icon('move')}<span>Move</span></button><button type="button" class="is-danger" data-col-delete-picked>${icon('trash')}<span>Delete</span></button></div></div>`;
+  }
+  function columnIdsInMode() {
+    return store.columnMode ? workHubColumnItems(scopedItems(), store.columnMode.status).map(item => item.id) : [];
+  }
+  function syncColumnActions() {
+    const mode = store.columnMode; if (!mode || mode.kind !== 'select') return;
+    const column = columnEl(mode.status); if (!column) return;
+    const ids = columnIdsInMode();
+    [...store.columnPicked].forEach(id => { if (!ids.includes(id)) store.columnPicked.delete(id); });
+    const picked = store.columnPicked.size;
+    const count = column.querySelector('[data-col-count]'); if (count) count.textContent = picked ? `${picked} selected` : 'Pick cards';
+    const all = column.querySelector('[data-col-all]'); if (all) all.textContent = picked && picked === ids.length ? 'None' : 'All';
+    column.querySelectorAll('[data-col-move], [data-col-delete-picked]').forEach(button => { button.disabled = !picked; });
+  }
+  function togglePicked(card) {
+    const id = card.dataset.itemId;
+    const picked = !store.columnPicked.has(id);
+    if (picked) store.columnPicked.add(id); else store.columnPicked.delete(id);
+    card.classList.toggle('is-picked', picked);
+    card.setAttribute('aria-pressed', String(picked));
+    syncColumnActions();
+  }
+  let columnModeRef = null;
+  const columnModeLifecycle = () => columnModeRef || (columnModeRef = createDeleteMode({
+    isInside: target => !!(store.columnMode && (target.closest(`.work-hub-column[data-status="${CSS.escape(store.columnMode.status)}"]`) || target.closest('.work-hub-column-menu, .work-hub-move-menu'))),
+    onChange: active => { if (!active) leaveColumnMode(); },
+  }));
+  function enterColumnMode(status, kind) {
+    if (!workHubColumnItems(scopedItems(), status).length) { if (typeof showToast === 'function') showToast('There are no work items in this column.'); return; }
+    if (store.columnMode) leaveColumnMode(true);
+    store.columnMode = { status, kind, fresh: !motionReduced() };
+    store.columnPicked = new Set();
+    columnModeLifecycle().enter();
+    renderCanvas(scopedItems()); bind();
+    store.columnMode.fresh = false;
+  }
+  // Leaving plays the bar and checks out first; `now` skips that (another
+  // mode is starting, or the cards are already being redrawn).
+  function leaveColumnMode(now = false) {
+    const mode = store.columnMode; if (!mode) return;
+    const finish = () => {
+      if (store.columnMode !== mode) return;
+      store.columnMode = null; store.columnPicked = new Set();
+      if (columnModeRef && columnModeRef.active) columnModeRef.exit();
+      document.querySelectorAll('.work-hub-move-menu').forEach(menu => dismissPopover(menu));
+      if (!now) { renderCanvas(scopedItems()); bind(); }
+    };
+    const column = columnEl(mode.status);
+    if (now || !column || motionReduced()) return finish();
+    column.classList.add('is-leaving-mode');
+    setTimeout(finish, 180);
+  }
+  function closeColumnMenu(menu) {
+    if (!menu) return;
+    if (menu._anchor) { menu._anchor.setAttribute('aria-expanded', 'false'); menu._anchor.classList.remove('is-open'); }
+    if (menu._cleanup) menu._cleanup();
+    dismissPopover(menu);
+  }
+  // A small menu that closes on a click elsewhere or Escape.
+  function attachMenu(menu, host, anchor) {
+    menu._anchor = anchor;
+    host.appendChild(menu);
+    if (anchor) { anchor.setAttribute('aria-expanded', 'true'); anchor.classList.add('is-open'); }
+    const onClick = event => { if (!menu.contains(event.target) && !(anchor && anchor.contains(event.target))) closeColumnMenu(menu); };
+    const onKey = event => { if (event.key === 'Escape') { event.stopPropagation(); closeColumnMenu(menu); if (anchor) anchor.focus({ preventScroll: true }); } };
+    const timer = setTimeout(() => document.addEventListener('click', onClick, true), 0);
+    document.addEventListener('keydown', onKey, true);
+    menu._cleanup = () => { clearTimeout(timer); document.removeEventListener('click', onClick, true); document.removeEventListener('keydown', onKey, true); menu._cleanup = null; };
+    const first = menu.querySelector('button:not([disabled])'); if (first && anchor && anchor.matches(':focus-visible')) first.focus({ preventScroll: true });
+  }
+  function openColumnMenu(button) {
+    const open = document.querySelector('.work-hub-column-menu:not(.is-leaving)');
+    if (open) { const same = open._anchor === button; closeColumnMenu(open); if (same) return; }
+    const status = button.dataset.columnMenu;
+    const empty = !workHubColumnItems(scopedItems(), status).length;
+    const menu = document.createElement('div');
+    menu.className = 'work-hub-create-menu work-hub-column-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `<button type="button" role="menuitem" data-col-action="filter">${icon('filter')}<span>${store.boardFilterOpen === status ? 'Hide filter' : 'Filter'}</span></button><button type="button" role="menuitem" data-col-action="select"${empty ? ' disabled' : ''}>${icon('select')}<span>Select</span></button><span class="work-hub-create-menu-sep" aria-hidden="true"></span><button type="button" role="menuitem" class="is-danger" data-col-action="delete"${empty ? ' disabled' : ''}>${icon('trash')}<span>Delete</span></button>`;
+    menu.querySelectorAll('[data-col-action]').forEach(item => item.onclick = event => {
+      event.stopPropagation();
+      closeColumnMenu(menu);
+      const action = item.dataset.colAction;
+      if (action === 'filter') toggleColumnFilter(status);
+      else enterColumnMode(status, action);
+    });
+    attachMenu(menu, button.closest('header'), button);
+  }
+  // The filter row opens and closes by growing from (and folding into) the
+  // header instead of popping in.
+  function toggleColumnFilter(status) {
+    const column = columnEl(status);
+    const shown = column && column.querySelector('.work-hub-column-filter');
+    const fold = { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' };
+    if (store.boardFilterOpen === status) {
+      const close = () => { if (store.boardFilterOpen === status) store.boardFilterOpen = null; renderCanvas(scopedItems()); bind(); };
+      if (!shown || motionReduced()) return close();
+      const cs = getComputedStyle(shown);
+      shown.style.overflow = 'hidden';
+      shown.animate([{ height: `${shown.offsetHeight}px`, opacity: 1, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom }, fold], { duration: 180, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }).finished.then(close, close);
+      return;
+    }
+    store.boardFilterOpen = status;
+    renderCanvas(scopedItems()); bind();
+    const panel = columnEl(status) && columnEl(status).querySelector('.work-hub-column-filter');
+    if (!panel || motionReduced()) return;
+    const cs = getComputedStyle(panel);
+    panel.style.overflow = 'hidden';
+    const grow = panel.animate([fold, { height: `${panel.offsetHeight}px`, opacity: 1, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom }], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)' });
+    const settle = () => { panel.style.overflow = ''; };
+    grow.finished.then(settle, settle);
+  }
+  function openMoveMenu(button) {
+    const open = document.querySelector('.work-hub-move-menu:not(.is-leaving)');
+    if (open) { const same = open._anchor === button; closeColumnMenu(open); if (same) return; }
+    const mode = store.columnMode; if (!mode) return;
+    const menu = document.createElement('div');
+    menu.className = 'work-hub-create-menu work-hub-move-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = store.statuses.filter(row => row.id !== mode.status).map(row => `<button type="button" role="menuitem" data-move-to="${esc(row.id)}"><span class="work-hub-status status-${esc(row.id)}" aria-hidden="true"></span><span>${esc(row.label)}</span></button>`).join('');
+    menu.querySelectorAll('[data-move-to]').forEach(item => item.onclick = event => { event.stopPropagation(); closeColumnMenu(menu); applyToPicked('move', item.dataset.moveTo); });
+    attachMenu(menu, button.closest('.work-hub-column-actions'), button);
+  }
+  function bindColumnActions() {
+    const mode = store.columnMode; if (!mode) return;
+    const column = columnEl(mode.status); if (!column) return;
+    const done = column.querySelector('[data-col-done]'); if (done) done.onclick = event => { event.stopPropagation(); leaveColumnMode(); };
+    const all = column.querySelector('[data-col-all]');
+    if (all) all.onclick = event => {
+      event.stopPropagation();
+      const ids = columnIdsInMode();
+      const pickAll = store.columnPicked.size !== ids.length;
+      store.columnPicked = new Set(pickAll ? ids : []);
+      column.querySelectorAll('.work-hub-card[data-item-id]').forEach(card => { const picked = store.columnPicked.has(card.dataset.itemId); card.classList.toggle('is-picked', picked); card.setAttribute('aria-pressed', String(picked)); });
+      syncColumnActions();
+    };
+    const move = column.querySelector('[data-col-move]'); if (move) move.onclick = event => { event.stopPropagation(); openMoveMenu(move); };
+    const remove = column.querySelector('[data-col-delete-picked]'); if (remove) remove.onclick = event => { event.stopPropagation(); applyToPicked('delete'); };
+    syncColumnActions();
+  }
+  // Moves or deletes every picked card, one request at a time (each carries
+  // the revision the last one returned). The cards fold away while the
+  // requests run; anything the server refused comes back with the reload.
+  async function applyToPicked(action, target) {
+    const mode = store.columnMode; if (!mode) return;
+    const ids = [...store.columnPicked].filter(id => store.items.some(row => row.id === id));
+    if (!ids.length) return;
+    const noun = `${ids.length} work item${ids.length === 1 ? '' : 's'}`;
+    if (action === 'delete' && !await showConfirmDialog({ title: `Delete ${noun}`, message: `This permanently removes ${ids.length === 1 ? 'this work item' : `these ${noun}`}. This cannot be undone.`, confirmLabel: 'Delete', danger: true })) return;
+    const cards = ids.map(id => document.querySelector(`#workHubCanvas .work-hub-card[data-item-id="${CSS.escape(id)}"]`)).filter(Boolean);
+    const done = []; const failed = [];
+    const send = async () => {
+      for (const id of ids) {
+        try {
+          const body = action === 'delete' ? { item_id: id } : { item_id: id, status: target };
+          const result = await withCurrentRevision(() => request(action === 'delete' ? '/api/work_hub/items/delete' : '/api/work_hub/items/move', { method: 'POST', body: JSON.stringify({ ...body, expected_revision: store.revision }) }));
+          store.revision = result.revision;
+          if (action === 'delete') store.items = store.items.filter(row => row.id !== id);
+          else { const row = store.items.find(entry => entry.id === id); if (row) Object.assign(row, result.item || { status: target }); }
+          done.push(id);
+        } catch (error) { failed.push(error && error.message ? error.message : String(error)); }
+      }
+    };
+    await Promise.all([send(), ...cards.map(card => animateRemoval(card))]);
+    leaveColumnMode(true);
+    if (action === 'delete' && done.includes(store.selectedItemId)) store.selectedItemId = null;
+    if (done.length) notifyWorkHubChanged();
+    if (failed.length) await loadWorkHubPanel(); else render();
+    if (action === 'move') done.forEach(id => markArrival(document.querySelector(`#workHubCanvas .work-hub-card[data-item-id="${CSS.escape(id)}"]`)));
+    if (typeof showToast === 'function') {
+      const did = `${done.length} work item${done.length === 1 ? '' : 's'}`;
+      if (failed.length) showToast(`${failed.length} could not be ${action === 'delete' ? 'deleted' : 'moved'}: ${failed[0]}`, 5000, 'error');
+      else showToast(action === 'delete' ? `Deleted ${did}` : `Moved ${did} to ${statusLabel(target)}`);
+    }
   }
   // The columns run to the bottom of the page with the same gap below them as
   // beside them. A horizontal scrollbar sits inside that gap instead of adding
@@ -359,7 +580,8 @@
       const sorts = [['', 'Sort'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['updated', 'Recently updated'], ['title', 'Title A–Z']];
       const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="text" enterkeyhint="search" autocomplete="off" placeholder="Filter items" aria-label="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}" aria-label="Filter by priority"><option value="">Priority</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select><select data-board-filter-sort="${esc(status.id)}" aria-label="Sort items">${sorts.map(sortOption).join('')}</select></div>` : '';
       const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id;
-      column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small>${workingColumnBadge(columnItems)}<button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
+      column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small>${workingColumnBadge(columnItems)}<button class="work-hub-board-filter work-hub-column-menu-btn" type="button" data-column-menu="${esc(status.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(status.label)} options">${icon('chevron-down')}</button></header>${filterPanel}<div class="work-hub-cards"></div>${columnActionsHtml(status.id)}`;
+      if (store.columnMode && store.columnMode.status === status.id) { column.classList.add('is-in-mode', `is-${store.columnMode.kind}-mode`); if (store.columnMode.fresh) column.classList.add('is-mode-entering'); }
       fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
       board.appendChild(column);
     });
@@ -553,11 +775,12 @@
     const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu:not(.is-leaving)'); if (old) return dismissPopover(old); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><span class="work-hub-create-menu-sep" aria-hidden="true"></span><button type="button" class="is-danger" data-delete-project>Delete</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { dismissPopover(menu); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { dismissPopover(menu); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { dismissPopover(menu); enterProjectDeleteMode(); }; };
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
-    document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
-    document.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(button => button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); });
+    document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; if (store.columnMode) leaveColumnMode(true); render(); });
+    document.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(button => button.onclick = () => activateCard(button));
     const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); bind(); };
     const create = el('workHubCreate'); if (create) create.onclick = createItem;
-    document.querySelectorAll('[data-board-filter]').forEach(button => button.onclick = () => { store.boardFilterOpen = store.boardFilterOpen === button.dataset.boardFilter ? null : button.dataset.boardFilter; renderCanvas(scopedItems()); bind(); });
+    document.querySelectorAll('[data-column-menu]').forEach(button => button.onclick = event => { event.stopPropagation(); openColumnMenu(button); });
+    bindColumnActions();
     document.querySelectorAll('[data-board-filter-query]').forEach(input => input.oninput = () => { const status = input.dataset.boardFilterQuery; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), query: input.value.toLowerCase() }; refreshWorkHubColumn(status); });
     document.querySelectorAll('[data-board-filter-sort]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterSort; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), sort: select.value }; renderCanvas(scopedItems()); bind(); });
     document.querySelectorAll('[data-board-filter-priority]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterPriority; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), priority: select.value }; renderCanvas(scopedItems()); bind(); });
@@ -693,7 +916,7 @@
     };
     const bindTouchCard = card => {
       card.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
+        if (e.touches.length !== 1 || cardModeOf(card)) return;
         const t = e.touches[0];
         const itemId = card.dataset.itemId;
         drag = { card, itemId, startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, active: false, column: null, raf: 0,
@@ -738,7 +961,9 @@
     try {
       const result = await request('/api/work_hub/items/delete', { method: 'POST', body: JSON.stringify({ item_id: itemId, expected_revision: store.revision }) });
       await animateRemoval(document.querySelector(`#workHubCanvas [data-item-id="${CSS.escape(itemId)}"]`));
-      store.items = store.items.filter(i => i.id !== itemId); store.revision = result.revision; store.selectedItemId = null; notifyWorkHubChanged(); render();
+      store.items = store.items.filter(i => i.id !== itemId); store.revision = result.revision; store.selectedItemId = null;
+      if (store.columnMode && !scopedItems().some(row => row.status === store.columnMode.status)) leaveColumnMode(true);
+      notifyWorkHubChanged(); render();
       if (typeof showToast === 'function') showToast('Work item deleted');
     } catch (error) { store.stale = true; render(); }
   }

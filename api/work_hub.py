@@ -560,7 +560,10 @@ def delete_board(board_id: str, expected_revision: int) -> dict[str, Any]:
                 conn.execute("DELETE FROM workflow_steps WHERE item_id IN (SELECT id FROM work_items WHERE board_id = ?)", (board_id,))
                 conn.execute("DELETE FROM work_items WHERE board_id = ?", (board_id,))
                 conn.execute("DELETE FROM workflow_runs WHERE id NOT IN (SELECT DISTINCT workflow_id FROM workflow_steps)")
-                reset = len(boards) <= 1
+                # A project folder can be left with no boards (its next work
+                # item gets a fresh default board).  The board without a
+                # project is where unfiled items live, so it is only cleared.
+                reset = len(boards) <= 1 and row["project_id"] is None
                 if reset:
                     content["default"] = True
                     conn.execute(
@@ -568,8 +571,8 @@ def delete_board(board_id: str, expected_revision: int) -> dict[str, Any]:
                         (_encode_json(content), time.time(), board_id),
                     )
                 else:
-                    if content.get("default"):
-                        replacement = next(sibling for sibling in boards if sibling["id"] != board_id)
+                    replacement = next((sibling for sibling in boards if sibling["id"] != board_id), None)
+                    if content.get("default") and replacement is not None:
                         replacement_content = _decode_json(replacement["content"], {})
                         replacement_content["default"] = True
                         conn.execute(
@@ -1512,6 +1515,16 @@ def _legacy_status(column_id: object) -> str:
     return {"general": "backlog", "in-progress": "in_progress", "completed": "done"}.get(value, "triage")
 
 
+_LEGACY_IMPORTED_KEY = "legacy_imported_sources"
+
+
+def _legacy_sub_id(subitem: object, note_id: str, offset: int) -> str:
+    return _clean_text(
+        subitem.get("id") if isinstance(subitem, dict) else f"{note_id}:sub:{offset}",
+        field="Note", maximum=128,
+    )
+
+
 def migrate_sticky_boards() -> dict[str, Any]:
     """Copy legacy notes into Work Hub once, retaining the source identity.
 
@@ -1528,10 +1541,18 @@ def migrate_sticky_boards() -> dict[str, Any]:
                 previous_migration_status = migration.get("status")
                 warnings: list[str] = []
 
+                # Every note ever imported is remembered, so one deleted from
+                # Work Hub is not imported again on the next load.  An import
+                # that finished before this list existed already copied the
+                # whole file, so its notes count as imported without copying.
+                remembered = _get_meta(conn, _LEGACY_IMPORTED_KEY)
+                seed_only = remembered is None and previous_migration_status == "complete" and str(source) in (migration.get("sources") or [])
+                imported_keys = {tuple(key) for key in remembered or [] if isinstance(key, list) and len(key) == 2}
+                remembered_keys = set(imported_keys)
                 known_sources = {
                     (str(row.get("legacy_source", {}).get("board_id") or ""), str(row.get("legacy_source", {}).get("note_id") or ""))
                     for row in load_state()["work_items"] if isinstance(row.get("legacy_source"), dict)
-                }
+                } | imported_keys
                 created = 0
                 now = time.time()
                 try:
@@ -1567,6 +1588,11 @@ def migrate_sticky_boards() -> dict[str, Any]:
                                 continue
                             note_id = _clean_text(note.get("id"), field="Note", maximum=128)
                             source_key = (board_id, note_id)
+                            if seed_only and note_id:
+                                imported_keys.add(source_key)
+                                for offset, subitem in enumerate(note.get("subItems") or []):
+                                    imported_keys.add((board_id, _legacy_sub_id(subitem, note_id, offset)))
+                                continue
                             if not note_id or source_key in known_sources:
                                 continue
                             title = _legacy_note_text(note)
@@ -1589,15 +1615,13 @@ def migrate_sticky_boards() -> dict[str, Any]:
                             )
                             _record_activity(conn, parent_id, "migrated", {"board_id": board_id, "note_id": note_id})
                             known_sources.add(source_key)
+                            imported_keys.add(source_key)
                             created += 1
                             for offset, subitem in enumerate(note.get("subItems") or []):
                                 sub_title = _legacy_note_text(subitem)
                                 if not sub_title:
                                     continue
-                                sub_source_id = _clean_text(
-                                    subitem.get("id") if isinstance(subitem, dict) else f"{note_id}:sub:{offset}",
-                                    field="Note", maximum=128,
-                                )
+                                sub_source_id = _legacy_sub_id(subitem, note_id, offset)
                                 sub_key = (board_id, sub_source_id)
                                 if sub_key in known_sources:
                                     continue
@@ -1617,6 +1641,7 @@ def migrate_sticky_boards() -> dict[str, Any]:
                                 )
                                 _record_activity(conn, child_id, "migrated", {"board_id": board_id, "note_id": sub_source_id})
                                 known_sources.add(sub_key)
+                                imported_keys.add(sub_key)
                                 created += 1
 
                 added_warning = False
@@ -1627,6 +1652,8 @@ def migrate_sticky_boards() -> dict[str, Any]:
                 migration["status"] = "complete"
                 migration["sources"] = [str(source)]
                 _set_meta(conn, "migration", migration)
+                if remembered is None or remembered_keys != imported_keys:
+                    _set_meta(conn, _LEGACY_IMPORTED_KEY, sorted([list(key) for key in imported_keys]))
                 if created or added_warning or previous_migration_status != "complete":
                     revision = _bump_revision(conn)
                 else:

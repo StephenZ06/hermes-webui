@@ -182,7 +182,9 @@ def test_a_card_can_still_be_held_and_dragged_after_filtering_its_column(phone, 
     time.sleep(0.8)
     sel = f".work-hub-card[data-item-id='{seeded['item']}']"
     status = page.evaluate(f"() => document.querySelector(\"{sel}\").closest('.work-hub-column').dataset.status")
-    page.evaluate(f"() => document.querySelector('[data-board-filter=\"{status}\"]').click()")
+    page.evaluate(f"() => document.querySelector('[data-column-menu=\"{status}\"]').click()")
+    time.sleep(0.3)
+    page.evaluate("() => document.querySelector('.work-hub-column-menu [data-col-action=filter]').click()")
     time.sleep(0.4)
     # Typing redraws just this column's cards in place.
     page.evaluate(f"""() => {{ const input = document.querySelector('[data-board-filter-query="{status}"]');

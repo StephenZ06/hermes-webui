@@ -164,3 +164,37 @@ def test_legacy_board_folder_upgrade_preserves_each_legacy_project(monkeypatch, 
     assert set(folders) == {"Imported project project-a", "Imported project project-b"}
     assert boards["project-a"]["folder_id"] == folders["Imported project project-a"]
     assert boards["project-b"]["folder_id"] == folders["Imported project project-b"]
+
+
+def test_a_deleted_imported_item_is_not_imported_again(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "project-a", "name": "A"}])
+    (tmp_path / "sticky_boards.json").write_text(json.dumps({"boards": [FIXTURE_BOARD]}), encoding="utf-8")
+
+    work_hub.bootstrap()
+    items = work_hub.load_state()["work_items"]
+    for item in items:
+        work_hub.delete_item(item["id"], work_hub.current_revision())
+
+    work_hub.bootstrap()
+
+    assert work_hub.load_state()["work_items"] == []
+
+
+def test_items_deleted_after_an_earlier_import_stay_deleted(monkeypatch, tmp_path):
+    """An import that finished before imports were remembered does not rerun."""
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "project-a", "name": "A"}])
+    source = tmp_path / "sticky_boards.json"
+    source.write_text(json.dumps({"boards": [FIXTURE_BOARD]}), encoding="utf-8")
+    work_hub.current_revision()
+    with work_hub._connect() as conn:
+        with conn:
+            work_hub._set_meta(conn, "migration", {"status": "complete", "sources": [str(source)], "warnings": []})
+
+    assert work_hub.migrate_sticky_boards()["created"] == 0
+    assert work_hub.load_state()["work_items"] == []
