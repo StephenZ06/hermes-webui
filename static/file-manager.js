@@ -17,6 +17,10 @@
     dragWired: false,
     requestId: 0,
     mounted: false,
+    // Delete mode: rows wiggle, a tap picks one, the bar under the list deletes the picked ones.
+    deleteMode: false,
+    modeFresh: false,
+    picked: new Set(),
   };
 
   const phoneWidth = window.matchMedia('(max-width:680px)');
@@ -27,7 +31,7 @@
     folder: icon('<path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/>'),
     file: icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>'),
     plus: icon('<path d="M12 5v14M5 12h14"/>'),
-    upload: icon('<path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>'),
+    check: icon('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
     back: icon('<path d="m15 18-6-6 6-6"/>'),
     download: icon('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
     save: icon('<path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/>'),
@@ -127,7 +131,7 @@
     if (layout && layout.dataset.spaces === placement) return layout;
     state.root.innerHTML = `<div class="file-manager-layout" data-spaces="${placement}">
       ${placement === 'page' ? '<div class="files-spaces-slot"></div>' : ''}
-      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter" aria-label="Filter files"></label></div><div class="files-list" role="list"></div></section>
+      <section class="files-browser" aria-label="File browser"><header class="files-toolbar"><button type="button" class="files-icon-btn files-up" data-action="up" aria-label="Parent folder">${icons.back}</button><div class="files-title"></div><div class="files-toolbar-actions"></div></header><nav class="files-path" aria-label="Folder path"><div class="files-breadcrumb"></div></nav><div class="files-list-toolbar"><label class="files-search"><span>${icons.search}</span><input type="search" placeholder="Filter" aria-label="Filter files"></label></div><div class="files-list" role="list"></div><div class="files-select-slot"></div></section>
       <aside class="files-inspector" aria-label="File inspector"><div class="files-inspector-stage"><div class="files-inspector-content"></div></div></aside>
     </div>`;
     layout = state.root.firstElementChild;
@@ -156,12 +160,15 @@
     const crumbs = state.path === '.' ? [] : state.path.split('/');
     const crumbMarkup = [`<button type="button" class="files-crumb" data-path=".">Workspace</button>`]
       .concat(crumbs.map((part, index) => `<span class="files-crumb-separator">/</span><button type="button" class="files-crumb" data-path="${esc(crumbs.slice(0, index + 1).join('/'))}">${esc(part)}</button>`)).join('');
-    const listRows = visibleEntries.length ? visibleEntries.map((entry) => {
+    const picking = state.deleteMode && !readOnly;
+    const listRows = visibleEntries.length ? visibleEntries.map((entry, index) => {
       const selected = state.selected === entry.path;
       const isDir = entry.type === 'dir' || entry.is_dir;
-      return `<button type="button" class="files-row${selected ? ' is-selected' : ''}" data-file-path="${esc(entry.path)}" data-file-type="${esc(entry.type || '')}"${readOnly ? '' : ' draggable="true"'}>
+      const picked = picking && state.picked.has(entry.path);
+      const mode = picking ? ` dm-wiggle files-pickable${picked ? ' is-picked' : ''}" aria-pressed="${picked}" style="animation-delay:${-((index * 97) % 300)}ms` : '';
+      return `<button type="button" class="files-row${selected && !picking ? ' is-selected' : ''}${mode}" data-file-path="${esc(entry.path)}" data-file-type="${esc(entry.type || '')}"${readOnly || picking ? '' : ' draggable="true"'}>
         <span class="files-row-icon">${isDir ? icons.folder : icons.file}</span><span class="files-row-name">${esc(entry.name)}</span>
-        <span class="files-row-meta">${isDir ? 'Folder' : prettySize(entry.size)}</span>
+        <span class="files-row-meta">${isDir ? 'Folder' : prettySize(entry.size)}</span>${picking ? `<span class="files-pick" aria-hidden="true">${icons.check}</span>` : ''}
       </button>`;
     }).join('') : `<div class="files-empty-list">${state.filter ? 'No matching files' : 'This folder is empty'}</div>`;
     const previewMarkup = !state.preview
@@ -207,10 +214,17 @@
     layout.querySelector('.files-up').disabled = state.path === '.';
     showTitle(layout.querySelector('.files-title'), state.path === '.' ? (workspace ? workspace.name : 'Files') : crumbs[crumbs.length - 1], workspace);
     showPath(layout.querySelector('.files-path'), crumbMarkup);
-    write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action" data-action="upload" aria-label="Upload">${icons.upload}</button>`);
+    write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action files-action-danger${picking ? ' is-active' : ''}" data-action="delete-mode" data-delete-mode-keep aria-label="${picking ? 'Done deleting' : 'Delete files'}" aria-pressed="${picking}">${icons.trash}</button>`);
     const list = layout.querySelector('.files-list');
     list.classList.toggle('is-loading', state.loading);
+    layout.querySelector('.files-browser').classList.toggle('is-picking', picking);
+    layout.querySelector('.files-browser').classList.toggle('is-mode-entering', picking && state.modeFresh);
     write(list, listRows);
+    write(layout.querySelector('.files-select-slot'), picking ? `<div class="files-select-bar${state.modeFresh ? ' is-entering' : ''}" role="toolbar" aria-label="Delete files">
+      <div class="files-select-row"><span class="files-select-count" aria-live="polite"></span><button type="button" class="files-select-link" data-action="pick-all"></button>
+      <button type="button" class="files-select-done" data-action="delete-mode">Done</button></div>
+      <button type="button" class="files-select-delete" data-action="delete-picked">${icons.trash}<span>Delete</span></button></div>` : '');
+    if (picking) syncPicked();
     const inspector = layout.querySelector('.files-inspector-content');
     if (write(inspector, previewMarkup) && !state.opening) restart(inspector, 'is-swapping');
   }
@@ -250,6 +264,7 @@
   function onClick(event) {
     const target = event.target.closest('[data-workspace-id],[data-path],[data-file-path],[data-action]');
     if (!target) return;
+    if (state.deleteMode && target.dataset.filePath) { togglePicked(target); return; }
     if (target.dataset.workspaceId) openWorkspace(target.dataset.workspaceId);
     else if (target.dataset.path) openPath(target.dataset.path);
     else if (target.dataset.filePath) openEntry(target.dataset.filePath, target.dataset.fileType);
@@ -266,6 +281,91 @@
   }
   function canMoveTo(source, folder) {
     return folder !== null && folder !== source && parentPath(source) !== folder && !folder.startsWith(`${source}/`);
+  }
+  // ── Delete mode (the shared createDeleteMode lifecycle in ui.js: Done, Escape or a click outside ends it) ──
+  let modeRef = null;
+  const modeLifecycle = () => modeRef || (modeRef = window.createDeleteMode({
+    isInside: (target) => !!target.closest('.files-browser'),
+    onChange: (active) => { if (!active) leaveDeleteMode(); },
+  }));
+  function visiblePaths() {
+    return [...(state.root ? state.root.querySelectorAll('.files-list .files-row[data-file-path]') : [])].map((row) => row.dataset.filePath);
+  }
+  function syncPicked() {
+    const paths = visiblePaths();
+    [...state.picked].forEach((path) => { if (!paths.includes(path)) state.picked.delete(path); });
+    const bar = state.root && state.root.querySelector('.files-select-bar');
+    if (!bar) return;
+    const n = state.picked.size;
+    bar.querySelector('.files-select-count').textContent = n ? `${n} selected` : 'Pick files and folders';
+    bar.querySelector('.files-select-link').textContent = n && n === paths.length ? 'None' : 'All';
+    bar.querySelector('.files-select-link').hidden = !paths.length;
+    bar.querySelector('.files-select-delete').disabled = !n;
+  }
+  function togglePicked(row) {
+    const path = row.dataset.filePath;
+    const on = !state.picked.has(path);
+    if (on) state.picked.add(path); else state.picked.delete(path);
+    row.classList.toggle('is-picked', on);
+    row.setAttribute('aria-pressed', String(on));
+    syncPicked();
+  }
+  function enterDeleteMode() {
+    const workspace = currentWorkspace();
+    if (!workspace || workspace.read_only) return;
+    if (!state.entries.length) { notify('This folder is empty.'); return; }
+    state.deleteMode = true; state.picked = new Set(); state.modeFresh = !calm.matches;
+    modeLifecycle().enter();
+    render();
+    state.modeFresh = false;
+  }
+  // Leaving plays the bar and the check circles out first; `now` skips that (the list is about to change anyway).
+  function leaveDeleteMode(now = false) {
+    if (!state.deleteMode) return;
+    const finish = () => {
+      if (!state.deleteMode) return;
+      state.deleteMode = false; state.picked = new Set();
+      if (modeRef && modeRef.active) modeRef.exit();
+      const browser = state.root && state.root.querySelector('.files-browser');
+      if (browser) browser.classList.remove('is-leaving-mode');
+      render();
+    };
+    const browser = state.root && state.root.querySelector('.files-browser');
+    if (now || !browser || calm.matches) { finish(); return; }
+    browser.classList.add('is-leaving-mode');
+    setTimeout(finish, 180);
+  }
+  async function deletePicked() {
+    const workspace = currentWorkspace();
+    const paths = [...state.picked];
+    if (!workspace || !paths.length) return;
+    const rows = paths.map((path) => state.entries.find((entry) => entry.path === path) || { path, name: path.split('/').pop() });
+    const folders = rows.filter((entry) => entry.type === 'dir' || entry.is_dir).length;
+    const names = rows.slice(0, 4).map((entry) => `“${entry.name}”`).join(', ') + (rows.length > 4 ? ` and ${rows.length - 4} more` : '');
+    const agreed = await window.showConfirmDialog({
+      title: rows.length === 1 ? `Delete ${folders ? 'folder' : 'file'}?` : `Delete ${rows.length} items?`,
+      message: `${names} will be permanently deleted.${folders ? ' Folders are deleted with everything inside them.' : ''}`,
+      confirmLabel: 'Delete', danger: true, focusCancel: true,
+    });
+    if (!agreed || !state.deleteMode) return;
+    const failed = [];
+    const gone = [];
+    for (const entry of rows) {
+      const isDir = entry.type === 'dir' || !!entry.is_dir;
+      try { await post('/delete', { workspace_id: workspace.id, path: entry.path, recursive: isDir }); gone.push(entry.path); }
+      catch (error) { failed.push(`${entry.name}: ${error.message || 'failed'}`); }
+    }
+    if (typeof window.animateRemoval === 'function') {
+      await Promise.all(gone.map((path) => window.animateRemoval(state.root.querySelector(`.files-row[data-file-path="${CSS.escape(path)}"]`))));
+    }
+    // An open file that was deleted, or sat in a deleted folder, closes.
+    if (state.preview && gone.some((path) => state.preview.path === path || state.preview.path.startsWith(`${path}/`))) {
+      state.preview = null; state.selected = null; setMobileSurface('browser');
+    }
+    leaveDeleteMode(true);
+    await loadDirectory();
+    if (gone.length) notify(gone.length === 1 ? 'Deleted 1 item' : `Deleted ${gone.length} items`, 'success');
+    if (failed.length) notify(`Could not delete ${failed.join('; ')}`, 'error');
   }
   function onDragStart(event) {
     const row = event.target.closest && event.target.closest('.files-row[draggable="true"]');
@@ -356,10 +456,12 @@
   }
   async function openWorkspace(workspaceId) {
     if (!workspaceId || workspaceId === state.workspaceId) return;
+    leaveDeleteMode(true);
     state.workspaceId = workspaceId; state.path = '.'; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory('in');
   }
   const depth = (path) => (path === '.' ? 0 : path.split('/').length);
   async function openPath(path) {
+    leaveDeleteMode(true);
     const next = path || '.', motion = depth(next) < depth(state.path) ? 'back' : 'forward';
     state.path = next; state.selected = null; state.preview = null; setMobileSurface('browser'); await loadDirectory(motion);
   }
@@ -420,7 +522,9 @@
         const path = state.path === '.' ? String(name).trim() : `${state.path}/${String(name).trim()}`;
         await post(action === 'new-file' ? '/create' : '/create-dir', { workspace_id: workspace.id, path }); await loadDirectory(); notify(`${label} created`, 'success'); return;
       }
-      if (action === 'upload') { const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => uploadFiles([...input.files], state.path).catch((error) => notify(error.message || 'Upload failed', 'error')); input.click(); return; }
+      if (action === 'delete-mode') { if (state.deleteMode) leaveDeleteMode(); else enterDeleteMode(); return; }
+      if (action === 'pick-all') { const paths = visiblePaths(); const all = state.picked.size === paths.length; state.picked = new Set(all ? [] : paths); state.root.querySelectorAll('.files-list .files-row[data-file-path]').forEach((row) => { row.classList.toggle('is-picked', !all); row.setAttribute('aria-pressed', String(!all)); }); syncPicked(); return; }
+      if (action === 'delete-picked') { await deletePicked(); return; }
       if (!state.preview) return;
       if (action === 'save') { const editor = state.root.querySelector('.files-editor'); await post('/save', { workspace_id: workspace.id, path: state.preview.path, content: editor ? editor.value : '' }); state.preview.content = editor ? editor.value : state.preview.content; notify('Changes saved', 'success'); return; }
       if (action === 'rename') { const name = await window.showPromptDialog({ title: 'Rename file', message: 'Choose a new name.', value: state.preview.path.split('/').pop(), selectAll: true, confirmLabel: 'Rename' }); if (!name || !String(name).trim()) return; const response = await post('/rename', { workspace_id: workspace.id, path: state.preview.path, new_name: String(name).trim() }); state.preview.path = response.path; state.selected = response.path; await loadDirectory(); await openEntry(response.path, 'file'); return; }
@@ -483,6 +587,6 @@
     state.root.dataset.surface = 'browser';
     loadWorkspaces().catch((error) => { render(); notify(error.message, 'error'); });
   }
-  function unmount() { clearInterval(statusTimer); state.mounted = false; state.requestId += 1; state.loading = false; state.opening = null; }
+  function unmount() { leaveDeleteMode(true); clearInterval(statusTimer); state.mounted = false; state.requestId += 1; state.loading = false; state.opening = null; }
   window.HermesFileManager = { mount, unmount };
 }());

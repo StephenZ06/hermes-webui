@@ -17732,3 +17732,45 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .ps-rec-why-examples li::marker{color:var(--accent);}
 @keyframes ps-why-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 @media (prefers-reduced-motion: reduce){.ps-option-key.has-art,.ps-rec-why{transition:none;animation:none;}}
+/* Files: the top bar's delete button (red outline and icon) turns on delete
+   mode. Rows wiggle, a tap picks one (red check), and the bar under the list
+   deletes the picked ones. Same lifecycle as the other pages' delete modes. */
+.files-toolbar-actions .files-action-danger{color:var(--error,#e5484d);border-color:color-mix(in srgb,var(--error,#e5484d) 60%,transparent);}
+.files-toolbar-actions .files-action-danger:hover{color:var(--error,#e5484d);border-color:var(--error,#e5484d);background:color-mix(in srgb,var(--error,#e5484d) 10%,transparent);}
+.files-toolbar-actions .files-action-danger.is-active{border-color:var(--error,#e5484d);background:color-mix(in srgb,var(--error,#e5484d) 16%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--error,#e5484d) 14%,transparent);}
+.files-toolbar-actions .files-action-danger svg{transition:transform .2s cubic-bezier(.34,1.56,.64,1);}
+.files-toolbar-actions .files-action-danger.is-active svg{transform:rotate(-8deg) scale(1.06);}
+.files-row.files-pickable{position:relative;grid-template-columns:22px minmax(0,1fr) minmax(52px,auto) 18px;transform-origin:50% 50%;}
+.files-row.files-pickable:hover{background:color-mix(in srgb,var(--error,#e5484d) 6%,transparent);}
+.files-row.files-pickable.is-picked{border-color:color-mix(in srgb,var(--error,#e5484d) 60%,transparent);background:color-mix(in srgb,var(--error,#e5484d) 10%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--error,#e5484d) 22%,transparent);}
+.files-pick{display:grid;place-items:center;width:16px;height:16px;box-sizing:border-box;border:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-radius:50%;color:#fff;transition:background .18s ease,border-color .18s ease,transform .24s cubic-bezier(.34,1.56,.64,1);}
+.files-pick svg{width:11px;height:11px;stroke-width:2.8;opacity:0;transform:scale(.4);transition:transform .24s cubic-bezier(.34,1.56,.64,1),opacity .15s ease;}
+.files-row.is-picked .files-pick{border-color:var(--error,#e5484d);background:var(--error,#e5484d);transform:scale(1.08);}
+.files-row.is-picked .files-pick svg{opacity:1;transform:scale(1);}
+.files-browser.is-mode-entering .files-pick{animation:files-pick-in .26s cubic-bezier(.34,1.56,.64,1) both;}
+.files-browser.is-leaving-mode .files-pick{animation:files-pick-out .16s ease-in forwards;}
+.files-browser.is-leaving-mode .files-row.dm-wiggle{animation:none;transition:transform .18s ease;}
+@keyframes files-pick-in{from{opacity:0;transform:scale(.3);}}
+@keyframes files-pick-out{to{opacity:0;transform:scale(.3);}}
+.files-select-slot:empty{display:none;}
+.files-select-slot{flex-shrink:0;padding:0 8px 8px;}
+.files-select-bar{display:grid;gap:7px;padding:8px;border:1px solid var(--border2);border-radius:10px;background:var(--surface);}
+.files-select-bar.is-entering{animation:files-bar-in .28s cubic-bezier(.22,1,.36,1) both;}
+.files-browser.is-leaving-mode .files-select-bar{animation:files-bar-out .18s ease-in forwards;}
+@keyframes files-bar-in{from{opacity:0;transform:translateY(10px);}}
+@keyframes files-bar-out{to{opacity:0;transform:translateY(10px);}}
+.files-select-row{display:flex;align-items:center;gap:4px;min-width:0;}
+.files-select-count{flex:1;min-width:0;padding-left:2px;overflow:hidden;color:var(--muted);font-size:12px;white-space:nowrap;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
+.files-select-link,.files-select-done{flex:none;padding:5px 9px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12px;line-height:1.2;cursor:pointer;transition:background .15s ease,color .15s ease;}
+.files-select-link{color:var(--muted);}
+.files-select-link:hover{color:var(--text);background:var(--hover-bg);}
+.files-select-done{color:var(--accent-text,var(--accent));background:var(--accent-bg);font-weight:650;}
+.files-select-done:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
+.files-select-delete{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:30px;padding:0 10px;border:1px solid color-mix(in srgb,var(--error,#e5484d) 60%,transparent);border-radius:7px;background:transparent;color:var(--error,#e5484d);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease,opacity .2s ease;}
+.files-select-delete svg{width:13px;height:13px;}
+.files-select-delete:hover:not(:disabled){border-color:var(--error,#e5484d);background:color-mix(in srgb,var(--error,#e5484d) 12%,transparent);}
+.files-select-delete:disabled{opacity:.4;cursor:default;}
+@media (prefers-reduced-motion:reduce){
+  .files-pick,.files-pick svg,.files-toolbar-actions .files-action-danger svg{transition:none;}
+  .files-browser .dm-wiggle,.files-select-bar.is-entering,.files-browser.is-leaving-mode .files-select-bar,.files-browser.is-mode-entering .files-pick,.files-browser.is-leaving-mode .files-pick{animation:none!important;}
+}

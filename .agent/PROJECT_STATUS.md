@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-09: Wizard on GPT-6.1 Sol end to end; Files delete mode; dashboard XP reset point
+
+- Wizard: every agent step (brief review, questions, writing or adopting the instruction files) runs under `architecture` pinned to `gpt-6.1-sol` / `openai-codex` (`PLANNER_MODEL`; verified in the live Codex model list). Adopt no longer uses Docs-Git; no "Docs-Git" text is left in the wizard. Details step: exactly three choices with a one-line detail, key 4 is an in-place typed answer (placeholder = planner's `other`, clears on focus); keycap art for keys 1-4 in `static/wizard/key-N.png` (downscaled from the untracked `icons/wizard/`). The reason is 2-4 sentences plus 2-3 examples. Every starter document ends with a "Related documents" list of relative links; the setup prompts install the stack's dependencies with its own package manager, run install and test once, and record the commands. Setup timeout 30 min, job TTL 1 h.
+- Files: the middle panel's top-bar Upload button is now a red delete button. Delete mode (shared `createDeleteMode`): rows wiggle, taps pick, the two-row bar under the list deletes the picked ones (folders with `recursive`), with confirm, removal animation and partial-failure toast. Upload stays available by dropping files on the list. Navigating or switching space ends the mode.
+- Dashboard: `reset_progress()` empties xp_events/achievements/redemptions and sets `ledger_floor`; the Work Hub/Jobs/Sales syncs skip events dated before it. Applied once on the live instance (backup first) so the two kept jobs stop re-earning XP.
+- Browser tests built on `test_chat_optical_alignment_browser._open` force the zeus-2 skin, where the Files top bar sits under the fixed titlebar; Files tests use `test_file_manager_browser._open` instead.
+
 ## 2026-11-08: Create-project wizard polish; new projects planned by Architecture on Codex Sol
 
 - Stepper: finished steps use `--success` (green tick). The current and finished circles carry `padding-bottom:1px` in a border-box, lifting their number/tick by 0.5px. The provider wizard (`openProviderWizard`) shares `.ps-stepper`, so it gets the same look.
