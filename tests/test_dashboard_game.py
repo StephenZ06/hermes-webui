@@ -368,3 +368,19 @@ def test_the_party_reuses_its_profile_rows_and_refreshes_them_in_the_background(
         threading.Event().wait(.05)
     assert dashboard_game.party()[0]["model"] == "m2"
     assert len(builds) == 2
+
+
+def test_a_reset_point_keeps_old_finished_work_from_earning_xp_again(game):
+    dashboard_game, work_hub = game
+    old = _item(work_hub, "Before the reset", priority="high")
+    _finish(work_hub, old)
+    assert dashboard_game.character()["total_xp"] == 50
+
+    dashboard_game.reset_progress()
+    # The sync runs on every read; finished work from before the reset must not come back.
+    assert dashboard_game.character()["total_xp"] == 0
+    assert dashboard_game.character()["total_xp"] == 0
+
+    new = _item(work_hub, "After the reset", priority="high")
+    _finish(work_hub, new)
+    assert dashboard_game.character()["total_xp"] == 50

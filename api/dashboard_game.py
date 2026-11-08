@@ -154,6 +154,10 @@ CREATE TABLE IF NOT EXISTS skills (
     kind TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ledger_floor (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS learning (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -719,12 +723,33 @@ def shop() -> dict[str, Any]:
 
 # ── XP ledger ───────────────────────────────────────────────────────────────
 
+# Sources the sync re-reads from other stores on every visit. Their finished
+# work from before a reset point is history, not new XP.
+_SYNCED_SOURCES = frozenset({"work_hub", "jobs", "sales"})
+
+
 def _insert(conn: sqlite3.Connection, key: str, source: str, title: str, xp: int, at: float,
             *, category: str | None = None, project_id: str | None = None, detail: dict | None = None) -> None:
+    if source in _SYNCED_SOURCES:
+        floor = conn.execute("SELECT at FROM ledger_floor WHERE id = 1").fetchone()
+        if floor is not None and float(at) < floor["at"]:
+            return
     conn.execute(
         "INSERT OR IGNORE INTO xp_events(key, source, category, project_id, title, xp, at, detail) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
         (key, source, category, project_id, title[:240], int(xp), float(at), json.dumps(detail or {})),
     )
+
+
+def reset_progress(now: float | None = None) -> dict[str, Any]:
+    """Start the character over: empty the XP ledger, achievements and gold
+    spent, and set a reset point so work finished before it (Work Hub items,
+    jobs, sales, which the sync re-reads every visit) never earns XP again.
+    Habits, rewards, skills and learning entries themselves are kept."""
+    now = time.time() if now is None else float(now)
+    with _LOCK, _connect() as conn:
+        conn.execute("INSERT INTO ledger_floor(id, at) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET at = excluded.at", (now,))
+        cleared = {table: conn.execute(f"DELETE FROM {table}").rowcount for table in ("xp_events", "achievements", "redemptions")}
+    return {"reset_at": now, "cleared": cleared}
 
 
 def _sync_work_hub(conn: sqlite3.Connection) -> None:
