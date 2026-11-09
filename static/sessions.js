@@ -10113,7 +10113,9 @@ async function _openProjectStarterWizard(profile){
   const plannerAgent=!!planner.available;
   const P=planner.label,PM=planner.model||'GPT-6.1 Sol';
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
-    analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false};
+    analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false,
+    look:null,startBuilding:false,
+    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false}};
   const folderCache=new Map();
 
   return new Promise(resolve=>{
@@ -10150,13 +10152,29 @@ async function _openProjectStarterWizard(profile){
     const footer=_psEl('footer','project-starter-actions ps-actions');
     const prev=_psEl('button','project-starter-cancel ps-prev','Back');prev.type='button';
     const spacer=_psEl('span','ps-spacer');
+    const extra=_psEl('button','project-starter-cancel ps-extra','');extra.type='button';extra.hidden=true;
     const next=_psEl('button','project-starter-submit ps-next','Next');next.type='button';
-    footer.append(prev,spacer,next);
-    dialog.append(header,stepper,body,footer);overlay.append(dialog);document.body.append(overlay);
+    footer.append(prev,spacer,extra,next);
+    // The builder layout: the step on the left, a live build summary on the
+    // right (folded into a bar under the step on narrow screens).
+    dialog.classList.add('ps-builder');
+    const main=_psEl('div','ps-main');
+    const build=_psEl('details','ps-build');
+    const buildBar=_psEl('summary','ps-build-bar');
+    const buildBody=_psEl('div','ps-build-body');
+    build.append(buildBar,buildBody);
+    main.append(body,build);
+    const wideQuery=window.matchMedia?window.matchMedia('(min-width: 900px)'):null;
+    const syncBuildOpen=()=>{if(wideQuery&&wideQuery.matches)build.open=true;};
+    syncBuildOpen();
+    if(wideQuery&&wideQuery.addEventListener) wideQuery.addEventListener('change',syncBuildOpen);
+    buildBar.addEventListener('click',(event)=>{if(wideQuery&&wideQuery.matches)event.preventDefault();});
+    dialog.append(header,stepper,main,footer);overlay.append(dialog);document.body.append(overlay);
     const stopFollowingHeight=_psFollowContentHeight(dialog,body);
 
     let done=false,pollTimer=null;
     const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);signinFlow=null;stopFollowingHeight();document.removeEventListener('keydown',onKey,true);
+      if(wideQuery&&wideQuery.removeEventListener) wideQuery.removeEventListener('change',syncBuildOpen);
       overlay.classList.add('is-leaving');
       const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
@@ -10170,19 +10188,21 @@ async function _openProjectStarterWizard(profile){
 
     const stepsFor=()=>st.mode==='adopt'
       ?[{n:1,label:'Start'},{n:2,label:'Project folder'},{n:6,label:P}]
-      :[{n:1,label:'Start'},{n:2,label:'Location'},{n:3,label:'Template'},{n:4,label:'Brief'},{n:5,label:'Details'},{n:6,label:'Create'}];
+      :[{n:1,label:'Start'},{n:2,label:'Location'},{n:3,label:'Template'},{n:4,label:'Brief'},{n:5,label:'Details'},
+        ...(isVisual()?[{n:7,label:'Look & feel'}]:[]),{n:8,label:'Toolkit'},{n:9,also:6,label:'Create'}];
     const paintStepper=()=>{
       stepper.innerHTML='';
       const steps=stepsFor();
-      const current=steps.findIndex(s=>s.n===st.step);
+      const current=steps.findIndex(s=>s.n===st.step||s.also===st.step);
       steps.forEach((s,i)=>{
         const li=_psEl('li','ps-step'+(i<current?' is-done':'')+(i===current?' is-current':''));
         const dot=_psEl('span','ps-step-dot');dot.innerHTML=i<current?_psIcon('check',12):String(i+1);
         li.append(dot,_psEl('span','ps-step-label',s.label));stepper.append(li);
       });
     };
-    const setNav=({prevLabel='Back',showPrev=true,nextLabel='Next',canNext=false,hideNext=false}={})=>{
+    const setNav=({prevLabel='Back',showPrev=true,nextLabel='Next',canNext=false,hideNext=false,extraLabel=''}={})=>{
       prev.hidden=!showPrev;prev.textContent=prevLabel;
+      extra.hidden=!extraLabel;extra.textContent=extraLabel;extra.disabled=st.busy;
       next.hidden=hideNext;next.textContent=nextLabel;next.disabled=!canNext||st.busy;
       footer.hidden=!showPrev&&hideNext;
     };
@@ -10202,7 +10222,9 @@ async function _openProjectStarterWizard(profile){
       body.classList.remove('ps-enter-fwd','ps-enter-back');void body.offsetWidth;
       body.classList.add(direction>=0?'ps-enter-fwd':'ps-enter-back');
       paintStepper();
-      ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate})[st.step]();
+      setNav({});
+      ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate,7:renderLook,8:renderToolkit,9:renderReview})[st.step]();
+      paintBuild();
       _psWatchArt(body);
       _psGlideHeight(dialog,h0);
     };
@@ -10336,7 +10358,7 @@ async function _openProjectStarterWizard(profile){
         card.innerHTML='<span class="ps-template-icon ps-art-wrap">'+(_PS_ART[tpl.key]?_psArt(tpl.key,34):_psIcon(tpl.key,20))+'</span>';
         const text=_psEl('span','ps-template-text');text.append(_psEl('span','ps-template-label',tpl.label),_psEl('span','ps-template-desc',tpl.description));
         card.append(text);
-        card.onclick=()=>{st.template=tpl.key;st.templateChosen=true;grid.querySelectorAll('.ps-template').forEach(n=>{n.classList.toggle('is-selected',n===card);n.setAttribute('aria-pressed',n===card?'true':'false');});paintPreview();setNav({canNext:true});};
+        card.onclick=()=>{if(st.template!==tpl.key)st.look=null;st.template=tpl.key;st.templateChosen=true;paintStepper();paintBuild();grid.querySelectorAll('.ps-template').forEach(n=>{n.classList.toggle('is-selected',n===card);n.setAttribute('aria-pressed',n===card?'true':'false');});paintPreview();setNav({canNext:true});};
         grid.append(card);
       });
       wrap.append(grid,preview);paintPreview();
@@ -10386,7 +10408,7 @@ async function _openProjectStarterWizard(profile){
         else if(st.analysisError){
           review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
           const retry=_psEl('button','ps-link','Try again');retry.type='button';retry.onclick=()=>analyze();
-          const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
+          const skip=_psEl('button','ps-link','Skip and continue');skip.type='button';skip.onclick=()=>afterDetails();
           review.append(retry,skip);
           if(/credential|sign in|auth|access_token|api key/i.test(st.analysisError)){
             const fix=_psEl('button','ps-link','Set up '+P);fix.type='button';
@@ -10402,8 +10424,7 @@ async function _openProjectStarterWizard(profile){
           review.append(_psEl('span',null,st.analysis.summary||P+' has everything it needs.'));
         }
         const canNext=!!st.brief.trim()&&!st.busy;
-        if(st.analysis&&st.analysis.complete) setNav({canNext,nextLabel:'Create project'});
-        else setNav({canNext,nextLabel:'Next'});
+        setNav({canNext,nextLabel:'Next'});
       }
       paintReview();
       setTimeout(()=>brief.focus(),30);
@@ -10432,7 +10453,7 @@ async function _openProjectStarterWizard(profile){
         const r=await openProviderWizard(planner.profile,{title:'Set up '+P});
         if(r&&!done) analyze();
       };
-      const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
+      const skip=_psEl('button','ps-link','Skip and continue');skip.type='button';skip.onclick=()=>afterDetails();
       actions.append(profiles,skip);
       review.append(actions,flow);
     }
@@ -10468,7 +10489,7 @@ async function _openProjectStarterWizard(profile){
       setTimeout(poll,every);
     }
     async function analyze(){
-      if(!plannerAgent){go(6,1);return;}
+      if(!plannerAgent){afterDetails();return;}
       st.busy=true;st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
       try{
         const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
@@ -10550,6 +10571,248 @@ async function _openProjectStarterWizard(profile){
       setTimeout(()=>{const sel=opts.querySelector('.ps-option.is-selected:not(.ps-option-typed)')||(typedOn?other:opts.querySelector('.ps-option'));if(sel)sel.focus();},30);
     }
 
+    // ── Builder steps (Website, Web app, iOS, Android get Look & feel) ──
+    const _PS_VISUAL={web:'web',website:'web',ios:'ios',android:'android'};
+    const _PS_FRAMEWORKS={web:['react','vue','svelte','vanilla'],ios:['swiftui','react-native','flutter'],android:['compose','react-native','flutter']};
+    const _PS_DEFAULT_FW={web:'react',website:'vanilla',ios:'swiftui',android:'compose'};
+    const _PS_STYLES=[['minimal','Minimal','Quiet layouts, lots of space.'],['elegant','Elegant','Refined type, calm and premium.'],
+      ['playful','Playful','Rounded, colourful, friendly.'],['bold','Bold','Big type, strong contrast.'],
+      ['technical','Technical','Precise, data-dense, monospace accents.'],['editorial','Editorial','Magazine-style reading and imagery.']];
+    const _PS_MOTIONS=[['none','None','Nothing moves.'],['subtle','Subtle','Gentle fades and slides.'],['expressive','Expressive','Animated hero, playful transitions.']];
+    const _psLabel=(k)=>({'react-native':'React Native',swiftui:'SwiftUI',vanilla:'HTML/CSS/JS',compose:'Compose','text-effect':'Text effects',npm:'npm','copy-paste':'Copy-paste'})[k]||String(k||'').replace(/-/g,' ').replace(/^./,c=>c.toUpperCase());
+    const isVisual=()=>!!_PS_VISUAL[st.template];
+    const fwChoices=()=>_PS_FRAMEWORKS[_PS_VISUAL[st.template]]||[];
+    const afterDetails=()=>go(isVisual()?7:8,1);
+    function ensureLook(){
+      if(st.look&&st.look.template===st.template) return st.look;
+      const rec=st.analysis&&st.analysis.look;
+      const fw=rec&&fwChoices().includes(rec.framework)?rec.framework:_PS_DEFAULT_FW[st.template];
+      st.look={template:st.template,style:rec?rec.style:'',motion:rec?rec.motion:'',framework:fw,
+        tailwind:_PS_VISUAL[st.template]==='web'&&!!(rec&&rec.tailwind),why:rec&&rec.why||''};
+      return st.look;
+    }
+
+    // Step 7 — Look & feel, preselected from the brief
+    function renderLook(){
+      const look=ensureLook();const rec=st.analysis&&st.analysis.look;
+      sub.textContent='How the '+(templates.find(t=>t.key===st.template)||{label:'project'}).label+' should look and move.';
+      const wrap=section('Choose the look and feel:');
+      if(rec){
+        const banner=_psEl('div','ps-look-rec');
+        banner.innerHTML='<img src="static/wizard/star.png" width="18" height="18" alt="" decoding="async" draggable="false">';
+        const text=_psEl('div','ps-look-rec-text');
+        text.append(_psEl('strong',null,'Recommended: '+_psLabel(rec.style)+' · '+_psLabel(rec.motion)));
+        if(rec.why) text.append(_psEl('span',null,rec.why));
+        banner.append(text);wrap.append(banner);
+      }
+      wrap.append(_psEl('p','ps-look-label','Style'));
+      const grid=_psEl('div','ps-look-grid');grid.setAttribute('role','radiogroup');grid.setAttribute('aria-label','Style');
+      _PS_STYLES.forEach(([key,label,desc],i)=>{
+        const card=_psEl('button','ps-look-card'+(look.style===key?' is-selected':''));card.type='button';card.dataset.style=key;
+        card.setAttribute('role','radio');card.setAttribute('aria-checked',String(look.style===key));card.style.setProperty('--i',i);
+        const sample=_psEl('span','ps-look-sample');sample.dataset.style=key;sample.setAttribute('aria-hidden','true');
+        sample.append(_psEl('span','ps-look-sample-head','Aa'),_psEl('span','ps-look-sample-line'),_psEl('span','ps-look-sample-line is-short'));
+        const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',label),_psEl('span','ps-look-desc',desc));
+        card.append(sample,text);
+        if(rec&&rec.style===key) card.append(_psRecStar());
+        card.onclick=()=>{look.style=key;renderLook.paint();};
+        grid.append(card);
+      });
+      wrap.append(grid);
+      wrap.append(_psEl('p','ps-look-label','Motion'));
+      const motions=_psEl('div','ps-motion-grid');motions.setAttribute('role','radiogroup');motions.setAttribute('aria-label','Motion');
+      _PS_MOTIONS.forEach(([key,label,desc])=>{
+        const card=_psEl('button','ps-motion-card'+(look.motion===key?' is-selected':''));card.type='button';card.dataset.motion=key;
+        card.setAttribute('role','radio');card.setAttribute('aria-checked',String(look.motion===key));
+        const demo=_psEl('span','ps-motion-demo');demo.dataset.motion=key;demo.setAttribute('aria-hidden','true');demo.append(_psEl('span'));
+        const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',label),_psEl('span','ps-look-desc',desc));
+        card.append(demo,text);
+        if(rec&&rec.motion===key) card.append(_psRecStar());
+        card.onclick=()=>{look.motion=key;renderLook.paint();};
+        motions.append(card);
+      });
+      wrap.append(motions);
+      wrap.append(_psEl('p','ps-look-label','Built with'));
+      const stack=_psEl('div','ps-stack-row');
+      fwChoices().forEach(fw=>{
+        const chip=_psEl('button','ps-chip-toggle'+(look.framework===fw?' is-on':''),_psLabel(fw));chip.type='button';chip.dataset.framework=fw;
+        chip.setAttribute('aria-pressed',String(look.framework===fw));
+        chip.onclick=()=>{look.framework=fw;if(fw!=='react'&&fw!=='vue'&&fw!=='svelte'&&fw!=='vanilla')look.tailwind=false;renderLook.paint();};
+        stack.append(chip);
+      });
+      if(_PS_VISUAL[st.template]==='web'){
+        const tw=_psEl('button','ps-chip-toggle ps-chip-tw'+(look.tailwind?' is-on':''),'Tailwind CSS');tw.type='button';tw.dataset.tailwind='1';
+        tw.setAttribute('aria-pressed',String(!!look.tailwind));
+        tw.onclick=()=>{look.tailwind=!look.tailwind;renderLook.paint();};
+        stack.append(_psEl('span','ps-stack-sep'),tw);
+      }
+      wrap.append(stack);
+      renderLook.paint=()=>{
+        grid.querySelectorAll('.ps-look-card').forEach(c=>{const on=c.dataset.style===look.style;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
+        motions.querySelectorAll('.ps-motion-card').forEach(c=>{const on=c.dataset.motion===look.motion;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
+        stack.querySelectorAll('[data-framework]').forEach(c=>{const on=c.dataset.framework===look.framework;c.classList.toggle('is-on',on);c.setAttribute('aria-pressed',String(on));});
+        const tw=stack.querySelector('[data-tailwind]');if(tw){tw.classList.toggle('is-on',!!look.tailwind);tw.setAttribute('aria-pressed',String(!!look.tailwind));}
+        setNav({canNext:!!(look.style&&look.motion)});
+        paintBuild();
+      };
+      renderLook.paint();
+    }
+    function _psRecStar(){const star=document.createElement('img');star.className='ps-option-star';star.src='static/wizard/star.png';star.alt='Recommended';star.width=18;star.height=18;star.decoding='async';star.draggable=false;return star;}
+
+    // Step 8 — Toolkit: suggested skills (and components for visual projects)
+    async function renderToolkit(){
+      sub.textContent='Recommended picks are ticked. Untick anything you do not want.';
+      const wrap=section('Pick your toolkit:');
+      const holder=_psEl('div','ps-kit');wrap.append(holder);
+      const look=isVisual()?ensureLook():null;
+      const key=JSON.stringify([st.template,st.brief.trim(),look&&look.style,look&&look.motion,look&&look.framework,look&&look.tailwind]);
+      setNav({canNext:false});
+      if(st.kit.key!==key||!st.kit.data){
+        holder.innerHTML='<div class="ps-kit-loading"><span class="ps-pulse"></span><span>Finding skills and components that fit…</span></div>';
+        let data;
+        try{data=await api('/api/projects/starter/toolkit',{method:'POST',body:JSON.stringify({template:st.template,brief:st.brief.trim(),
+          style:look&&look.style,motion:look&&look.motion,framework:look&&look.framework,tailwind:!!(look&&look.tailwind)})});}
+        catch(error){if(done||st.step!==8)return;holder.innerHTML='';holder.append(_psEl('p','ps-kit-empty','Could not load suggestions: '+(error.message||error)));setNav({canNext:true,nextLabel:'Skip'});return;}
+        if(done||st.step!==8) return;
+        const firstForTemplate=st.kit.template!==st.template;
+        st.kit.data=data;st.kit.key=key;st.kit.template=st.template;
+        // Recommended picks are ticked the first time; later visits keep the user's choice.
+        if(firstForTemplate){st.kit.skills=new Set();st.kit.comps=new Set();st.kit.seenSkills=new Set();st.kit.seenComps=new Set();st.kit.allSkills=false;}
+        data.skills.forEach(s=>{if(s.recommended&&!st.kit.seenSkills.has(s.name)){st.kit.skills.add(s.name);}st.kit.seenSkills.add(s.name);});
+        Object.values(data.components||{}).forEach(list=>list.forEach(c=>{const id=c.library+'/'+c.slug;if(c.recommended&&!st.kit.seenComps.has(id))st.kit.comps.add(id);st.kit.seenComps.add(id);}));
+        // Picks that no longer fit the new style or stack are dropped.
+        const fits=new Set(Object.values(data.components||{}).flat().map(c=>c.library+'/'+c.slug));
+        [...st.kit.comps].forEach(id=>{if(!fits.has(id))st.kit.comps.delete(id);});
+      }
+      paintKit(holder);
+      setNav({canNext:true});
+      paintBuild();
+    }
+    function _psCheck(on){return '<span class="ps-kit-check'+(on?' is-on':'')+'" aria-hidden="true">'+_psIcon('check',12)+'</span>';}
+    function paintKit(holder){
+      const data=st.kit.data;holder.innerHTML='';
+      const skillHead=_psEl('div','ps-kit-head');skillHead.append(_psEl('h4',null,'Skills'),_psEl('span','ps-kit-count',st.kit.skills.size+' chosen'));
+      holder.append(skillHead);
+      if(!data.skills.length) holder.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
+      const shown=st.kit.allSkills?data.skills:data.skills.filter((s,i)=>i<6||st.kit.skills.has(s.name));
+      const sgrid=_psEl('div','ps-kit-grid');
+      shown.forEach((s,i)=>{
+        const on=st.kit.skills.has(s.name);
+        const card=_psEl('button','ps-kit-card ps-kit-skill'+(on?' is-selected':''));card.type='button';card.dataset.skill=s.name;
+        card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',i);
+        card.innerHTML=_psCheck(on);
+        const text=_psEl('span','ps-kit-text');
+        const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,s.name));
+        if(s.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
+        text.append(top);
+        if(s.category) text.append(_psEl('span','ps-kit-meta',_psLabel(s.category)));
+        if(s.description) text.append(_psEl('span','ps-kit-desc',s.description));
+        card.append(text);
+        card.onclick=()=>{if(st.kit.skills.has(s.name))st.kit.skills.delete(s.name);else st.kit.skills.add(s.name);paintKit(holder);paintBuild();};
+        sgrid.append(card);
+      });
+      holder.append(sgrid);
+      if(data.skills.length>shown.length||st.kit.allSkills&&data.skills.length>6){
+        const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
+        more.onclick=()=>{st.kit.allSkills=!st.kit.allSkills;paintKit(holder);};holder.append(more);
+      }
+      if(!data.visual) return;
+      const compHead=_psEl('div','ps-kit-head');compHead.append(_psEl('h4',null,'Components'),_psEl('span','ps-kit-count',st.kit.comps.size+' chosen'));
+      holder.append(compHead);
+      const roles=Object.keys(data.components||{});
+      if(!data.libraries){holder.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));return;}
+      if(!roles.length){holder.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));return;}
+      let n=0;
+      roles.forEach(role=>{
+        holder.append(_psEl('p','ps-kit-role',_psLabel(role)));
+        const grid=_psEl('div','ps-kit-grid ps-kit-comps');
+        data.components[role].forEach(c=>{
+          const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
+          const card=_psEl('button','ps-kit-card ps-kit-comp'+(on?' is-selected':''));card.type='button';card.dataset.comp=id;
+          card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',n++);
+          const thumb=_psEl('span','ps-kit-thumb');
+          if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
+            if(c.loop){const still=img.src,loop='api/libraries/preview?path='+encodeURIComponent(c.loop);
+              const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+              card.addEventListener('mouseenter',()=>{if(!reduce())img.src=loop;});card.addEventListener('mouseleave',()=>{img.src=still;});
+              card.addEventListener('focus',()=>{if(!reduce())img.src=loop;});card.addEventListener('blur',()=>{img.src=still;});}}
+          else thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));
+          thumb.insertAdjacentHTML('beforeend',_psCheck(on));
+          const text=_psEl('span','ps-kit-text');
+          const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
+          if(c.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
+          text.append(top,_psEl('span','ps-kit-meta',c.library_name+' · '+_psLabel(c.kind)));
+          const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
+          text.append(chips);card.append(thumb,text);
+          card.onclick=()=>{if(st.kit.comps.has(id))st.kit.comps.delete(id);else st.kit.comps.add(id);paintKit(holder);paintBuild();};
+          grid.append(card);
+        });
+        holder.append(grid);
+      });
+    }
+    function chosenComponents(){
+      const data=st.kit.data;if(!data||!data.visual) return [];
+      return Object.values(data.components||{}).flat().filter(c=>st.kit.comps.has(c.library+'/'+c.slug));
+    }
+    function chosenSkills(){return st.kit.data?st.kit.data.skills.filter(s=>st.kit.skills.has(s.name)):[];}
+    function toolkitPayload(){
+      const look=isVisual()&&st.look?{style:st.look.style,motion:st.look.motion,framework:st.look.framework,tailwind:!!st.look.tailwind,why:st.look.why||''}:null;
+      return {look,skills:chosenSkills().map(s=>s.name),components:chosenComponents().map(c=>({library:c.library,slug:c.slug}))};
+    }
+    function filesToCreate(){
+      const tpl=templates.find(t=>t.key===st.template);const files=[...(tpl&&tpl.files||[])];
+      chosenComponents().filter(c=>c.kind==='copy-paste').forEach(c=>{const f='vendor/ui/'+c.library+'/';if(!files.includes(f))files.push(f);});
+      return files;
+    }
+
+    // Step 9 — Review & create
+    function renderReview(){
+      sub.textContent='Check everything, then create it. Start building sends Hermes straight to work on version 1.';
+      const wrap=section('Review and create:');
+      const grid=_psEl('div','ps-review-grid');
+      const card=(title,rows)=>{const c=_psEl('div','ps-review-card');c.append(_psEl('h4',null,title));
+        const list=_psEl('ul');rows.forEach(r=>list.append(_psEl('li',null,r)));if(!rows.length)list.append(_psEl('li','is-empty','None'));c.append(list);return c;};
+      const tpl=templates.find(t=>t.key===st.template)||{label:'Blank Project'};
+      const where=st.workspace?(st.workspace.name||st.workspace.path)+(st.parent?' / '+st.parent:'')+' / '+st.name.trim():st.name.trim();
+      grid.append(card('Project',[st.name.trim(),tpl.label,where]));
+      if(isVisual()&&st.look){const l=st.look;grid.append(card('Look and feel',[_psLabel(l.style)+' · '+_psLabel(l.motion),_psLabel(l.framework)+(l.tailwind?' + Tailwind CSS':'')]));}
+      grid.append(card('Skills',chosenSkills().map(s=>s.name)));
+      if(isVisual()) grid.append(card('Components',chosenComponents().map(c=>c.name+' · '+c.library_name)));
+      wrap.append(grid);
+      const files=_psEl('div','ps-files');files.append(_psEl('p','ps-files-title','Files created in '+st.name.trim()));
+      const list=_psEl('ul','ps-files-list');
+      filesToCreate().forEach((f,i)=>{const li=_psEl('li','ps-file');li.style.setProperty('--i',i);li.innerHTML=_psIcon('file',14);li.append(_psEl('span',null,f));list.append(li);});
+      files.append(list);wrap.append(files);
+      setNav({canNext:true,nextLabel:'Create & start building',extraLabel:'Create project'});
+    }
+
+    // The live build summary beside every step.
+    function paintBuild(){
+      const adopt=st.mode==='adopt';
+      const tpl=templates.find(t=>t.key===st.template);
+      const rows=[];
+      rows.push(['Project',st.name.trim()||(adopt&&st.workspace?st.workspace.name||st.workspace.path:'')]);
+      if(!adopt){
+        rows.push(['Template',tpl?tpl.label:'']);
+        if(isVisual()){const l=st.look;rows.push(['Look',l&&l.style?_psLabel(l.style)+(l.motion?' · '+_psLabel(l.motion):''):'']);
+          rows.push(['Built with',l&&l.framework?_psLabel(l.framework)+(l.tailwind?' + Tailwind':''):'']);}
+        rows.push(['Skills',st.kit.data?String(st.kit.skills.size):'']);
+        if(isVisual()) rows.push(['Components',st.kit.data?String(chosenComponents().length):'']);
+        if(tpl) rows.push(['Files',String(filesToCreate().length)]);
+      }
+      buildBody.innerHTML='';
+      buildBody.append(_psEl('p','ps-build-title','Build summary'));
+      if(tpl&&_PS_ART[tpl.key]){const art=_psEl('div','ps-build-art ps-art-wrap');art.innerHTML=_psArt(tpl.key,40);buildBody.append(art);}
+      const dl=_psEl('dl','ps-build-list');
+      rows.forEach(([k,v])=>{const row=_psEl('div','ps-build-row'+(v?'':' is-empty'));row.append(_psEl('dt',null,k),_psEl('dd',null,v||'—'));dl.append(row);});
+      buildBody.append(dl);
+      const bits=rows.filter(([k,v])=>v&&k!=='Project').map(([k,v])=>/^\d+$/.test(v)?v+' '+k.toLowerCase():v);
+      buildBar.textContent='';
+      buildBar.append(_psEl('span','ps-build-bar-title','Build summary'),_psEl('span','ps-build-bar-text',bits.join(' · ')||'Nothing chosen yet'));
+      buildBar.insertAdjacentHTML('beforeend','<svg class="ps-build-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>');
+      _psWatchArt(buildBody);
+    }
+
     // Step 6 — create, then follow the setup agent (Architecture, new or adopted)
     async function renderCreate(){
       const adopt=st.mode==='adopt';
@@ -10568,6 +10831,7 @@ async function _openProjectStarterWizard(profile){
       // The whole step is laid out up front (second task waiting, buttons
       // disabled) so the dialog settles once instead of growing in stages.
       const docs=task(adopt?P+' installs dependencies and adapts the instruction files':P+' installs dependencies and writes the linked instruction files',true);
+      const build_=!adopt&&st.startBuilding?task('Open the project chat and start building version 1',true):{run(){},skip(){}};
       const actions=_psEl('div','ps-done-actions');
       const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';chat.disabled=true;
       const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.disabled=true;
@@ -10577,7 +10841,7 @@ async function _openProjectStarterWizard(profile){
       try{
         const endpoint=adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
         const payload={workspace_path:st.workspace.path,parent:st.parent,profile,color:PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length]};
-        if(!adopt) Object.assign(payload,{name:st.name.trim(),template:st.template||'blank',brief:st.brief.trim(),answers});
+        if(!adopt) Object.assign(payload,{name:st.name.trim(),template:st.template||'blank',brief:st.brief.trim(),answers,toolkit:toolkitPayload()});
         response=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
         first.ok(response.project&&response.project.workspace_path);
       }catch(error){
@@ -10591,25 +10855,35 @@ async function _openProjectStarterWizard(profile){
       finishedProject=response.project;
       _onProjectStarterCreated(response.project);
       chat.disabled=false;closeBtn.disabled=false;
-      chat.onclick=()=>{finish(response);_startProjectChat(response.project);};
+      // Create & start building: once the setup agent is done, open the project
+      // chat and send the version-1 message. If setup fails, nothing is sent
+      // until the user presses Send anyway.
+      const kickoff=!adopt&&st.startBuilding&&response.kickoff||'';
+      const launch=()=>{if(done)return;finish(response);_startProjectChat(response.project,{kickoff});};
+      if(kickoff){chat.textContent='Start building now';build_.run();}
+      chat.onclick=launch;
       closeBtn.onclick=()=>finish(response);
       if(response.docs_job) docs.run();
-      if(!response.docs_job){docs.skip(agentReady?agent+' did not start.':'The '+agent+' profile is not set up.');return;}
+      if(!response.docs_job){docs.skip(agentReady?agent+' did not start.':'The '+agent+' profile is not set up.');if(kickoff)setTimeout(launch,700);return;}
       const summary=_psEl('div','ps-summary');summary.hidden=true;wrap.insertBefore(summary,actions);
       _followProjectDocsJob(response.docs_job,response.project,{
         agent,
         isOpen:()=>!done,
-        ok:(text)=>{docs.ok();if(text){summary.hidden=false;summary.textContent=text;}},
-        fail:(text)=>docs.fail(text),
+        ok:(text)=>{docs.ok();if(text){summary.hidden=false;summary.textContent=text;}if(kickoff)setTimeout(launch,900);},
+        fail:(text)=>{docs.fail(text);if(kickoff){build_.skip('Waiting for you: setup did not finish.');chat.textContent='Send anyway';}},
       });
     }
     let finishedProject=null;
 
+    const backToDetails=()=>{if(st.questions.length){st.q=st.questions.length-1;go(5,-1);}else go(4,-1);};
     const onPrev=()=>{
       if(st.step===2) go(1,-1);
       else if(st.step===3) go(2,-1);
       else if(st.step===4) go(3,-1);
       else if(st.step===5){ if(st.q>0){st.q-=1;render(-1);} else go(4,-1); }
+      else if(st.step===7) backToDetails();
+      else if(st.step===8){ if(isVisual()) go(7,-1); else backToDetails(); }
+      else if(st.step===9) go(8,-1);
     };
     prev.onclick=onPrev;
     next.onclick=()=>{
@@ -10617,9 +10891,13 @@ async function _openProjectStarterWizard(profile){
       if(st.step===1) go(2,1);
       else if(st.step===2) go(st.mode==='adopt'?6:3,1);
       else if(st.step===3) go(4,1);
-      else if(st.step===4){ if(st.analysis&&st.analysis.complete) go(6,1); else if(st.analysis&&st.questions.length) go(5,1); else analyze(); }
-      else if(st.step===5){ if(st.q<st.questions.length-1){st.q+=1;render(1);} else go(6,1); }
+      else if(st.step===4){ if(st.analysis&&st.analysis.complete) afterDetails(); else if(st.analysis&&st.questions.length) go(5,1); else analyze(); }
+      else if(st.step===5){ if(st.q<st.questions.length-1){st.q+=1;render(1);} else afterDetails(); }
+      else if(st.step===7) go(8,1);
+      else if(st.step===8) go(9,1);
+      else if(st.step===9){ st.startBuilding=true;go(6,1); }
     };
+    extra.onclick=()=>{ if(extra.disabled) return; if(st.step===9){ st.startBuilding=false;go(6,1); } };
     render(1);
   });
 }
@@ -10659,13 +10937,19 @@ function _followProjectDocsJob(jobId,project,view){
   poll();
 }
 
-async function _startProjectChat(project){
+async function _startProjectChat(project,{kickoff=''}={}){
   try{
     await newSession(false,{project_id:project.project_id});
     if(typeof renderSessionListFromCache==='function') renderSessionListFromCache();
     void renderSessionList({deferWhileInteracting:false});
     if(typeof closeMobileSidebar==='function') closeMobileSidebar();
-  }catch(error){ showToast('New conversation failed: '+(error.message||error)); }
+  }catch(error){ showToast('New conversation failed: '+(error.message||error)); return; }
+  // Create & start building: the version-1 message goes out as the first turn.
+  const box=kickoff&&document.getElementById('msg');
+  if(!box) return;
+  box.value=kickoff;
+  box.dispatchEvent(new Event('input',{bubbles:true}));
+  try{ await send(); }catch(error){ showToast('Could not send the build message: '+(error.message||error)); }
 }
 
 async function _createStarterProject({session=null,profile=undefined}={}){
