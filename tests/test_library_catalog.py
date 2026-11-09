@@ -106,3 +106,46 @@ def test_slugs_are_lowercase_dashed_and_checked():
     for bad in ("", "...", "-" * 3):
         with pytest.raises(ValueError):
             lc.slugify(bad)
+
+
+def _lib(slug, frameworks, tailwind, comps, kind="npm"):
+    return {"slug": slug, "name": slug, "kind": kind, "frameworks": frameworks, "tailwind": tailwind,
+            "install": f"npm i {slug}", "source": f"https://x/{slug}", "needs_details": False,
+            "components": [dict(slug=c[0], name=c[0], role=c[1], style=c[2], motion=c[3], platform=c[4],
+                                needs_details=False, preview=None, loop=None) for c in comps]}
+
+
+LIBS = [
+    _lib("calm", ["react"], False, [("fade", "text-effect", ["minimal", "elegant"], "subtle", ["web"]),
+                                     ("glitch", "text-effect", ["technical"], "expressive", ["web"])]),
+    _lib("tw", ["react"], True, [("aurora", "background", ["minimal"], "subtle", ["web"])]),
+    _lib("vue-kit", ["vue"], False, [("fade-vue", "text-effect", ["minimal"], "subtle", ["web"])]),
+    _lib("mobile", ["react-native"], False, [("sheet", "transitions", ["minimal"], "subtle", ["react-native"])]),
+]
+
+
+def test_framework_platform_and_tailwind_are_hard_filters():
+    out = lc.match_components(LIBS, platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    names = [c["slug"] for items in out.values() for c in items]
+    assert "fade-vue" not in names and "sheet" not in names and "aurora" not in names
+    with_tw = lc.match_components(LIBS, platform="web", framework="react", tailwind=True, style="minimal", motion="subtle")
+    assert [c["slug"] for c in with_tw["background"]] == ["aurora"]
+
+
+def test_style_then_motion_ranks_and_only_the_top_per_role_is_recommended():
+    out = lc.match_components(LIBS, platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    assert [c["slug"] for c in out["text-effect"]] == ["fade", "glitch"]
+    assert [c["recommended"] for c in out["text-effect"]] == [True, False]
+    tech = lc.match_components(LIBS, platform="web", framework="react", tailwind=False, style="technical", motion="expressive")
+    assert tech["text-effect"][0]["slug"] == "glitch"
+
+
+def test_mobile_projects_only_see_their_platform():
+    out = lc.match_components(LIBS, platform="react-native", framework="react-native", tailwind=False, style="minimal", motion="subtle")
+    assert list(out) == ["transitions"] and out["transitions"][0]["slug"] == "sheet"
+
+
+def test_untagged_components_are_never_suggested():
+    libs = [_lib("raw", ["react"], False, [("x", "", [], "", [])])]
+    libs[0]["components"][0]["needs_details"] = True
+    assert lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal", motion="subtle") == {}

@@ -162,3 +162,37 @@ def update_component(root: Path, slug: str, component_slug: str, fields: dict) -
     comp = normalize_component(meta)
     path.write_text(_dump({k: comp[k] for k in comp if k != "needs_details"}), encoding="utf-8")
     return comp
+
+
+def _score(comp: dict, style: str, motion: str) -> int:
+    score = 0
+    if style in comp["style"]:
+        score += 10 - comp["style"].index(style)  # primary style tag counts most
+    if motion and comp["motion"] == motion:
+        score += 3
+    elif motion and comp["motion"] and abs(MOTIONS.index(comp["motion"]) - MOTIONS.index(motion)) == 1:
+        score += 1
+    return score
+
+
+def match_components(libraries, *, platform, framework, tailwind, style, motion) -> dict:
+    by_role: dict[str, list[dict]] = {}
+    for lib in libraries:
+        if framework not in lib.get("frameworks", []):
+            continue
+        if lib.get("tailwind") and not tailwind:
+            continue
+        for comp in lib.get("components", []):
+            if comp.get("needs_details") or platform not in comp.get("platform", []):
+                continue
+            item = dict(comp, library=lib["slug"], library_name=lib.get("name") or lib["slug"],
+                        kind=lib.get("kind", ""), install=lib.get("install", ""), source=lib.get("source", ""),
+                        score=_score(comp, style, motion), recommended=False)
+            by_role.setdefault(comp["role"], []).append(item)
+    out = {}
+    for role in ROLES:
+        items = sorted(by_role.get(role, []), key=lambda c: (-c["score"], c["library"], c["slug"]))
+        if items:
+            items[0]["recommended"] = items[0]["score"] > 0
+            out[role] = items
+    return out
