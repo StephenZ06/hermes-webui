@@ -1094,6 +1094,41 @@
     state();
   }
 
+  // The note's first line: its letters sit FIRST_LINE_GAP px below the
+  // divider whatever kind of line it is. A heading's line box is much taller
+  // than its letters, so the editor is pulled up by what that line leaves
+  // above them. The amount depends on the font's own metrics (SF Mono on a Mac
+  // puts the letters higher in the line than the fallback fonts do), so it is
+  // measured rather than fixed: a fixed pull tuned on one font hid the top of
+  // the heading under the note's header on another. The CSS values in
+  // style.css (--nb-first) stay as the fallback before the first measurement.
+  const FIRST_LINE_GAP = 10;
+  let firstLineCanvas = null;
+  function alignFirstLine(host) {
+    const editorEl = host && host.querySelector('.nb-editor-mount .bn-editor');
+    if (!editorEl) return;
+    const line = editorEl.querySelector(':scope > .bn-block-group > .bn-block-outer:first-child .bn-inline-content');
+    let box = null;
+    if (line && line.textContent) {
+      const range = document.createRange(); range.selectNodeContents(line);
+      box = range.getClientRects()[0] || null;
+    }
+    if (!box || !box.height) { editorEl.style.removeProperty('--nb-first'); return; }
+    const style = getComputedStyle(line);
+    firstLineCanvas = firstLineCanvas || document.createElement('canvas');
+    const ctx = firstLineCanvas.getContext('2d');
+    ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const m = ctx.measureText('H');
+    const ascent = m.fontBoundingBoxAscent, descent = m.fontBoundingBoxDescent;
+    if (!(ascent > 0) || !(m.actualBoundingBoxAscent > 0)) return;
+    // The text box spans the font's ascent and descent; scale for any transform on the way in.
+    const baseline = box.top + ascent * (box.height / (ascent + descent));
+    const lettersBelowEditorTop = baseline - m.actualBoundingBoxAscent - editorEl.getBoundingClientRect().top;
+    const pull = Math.round((FIRST_LINE_GAP - lettersBelowEditorTop) * 2) / 2;
+    const current = parseFloat(getComputedStyle(editorEl).marginTop) || 0;
+    if (Math.abs(pull - current) >= 0.5) editorEl.style.setProperty('--nb-first', pull + 'px');
+  }
+
   // Images and clips are inserted asynchronously by BlockNote. Mark the outer
   // card while either resource is decoding so a blank rectangle never appears
   // to be a broken note. The observer lives with this editor instance and is
@@ -1639,6 +1674,7 @@
       placeholder: "Write, or type '/' for commands",
       uploadFile,
       onChange: () => {
+        if (editorNoteId === note.id) requestAnimationFrame(() => alignFirstLine(host));
         if (settling || editorNoteId !== note.id) return;
         if (baseline !== null) {
           // Re-rendering the parsed note is not an edit: only a real change is.
@@ -1652,11 +1688,17 @@
     mountBlockGrip(host, note);
     mountImageOutline(host, note);
     installMediaLoadStates(host);
+    const realign = () => { if (editorNoteId === note.id) alignFirstLine(host); };
+    requestAnimationFrame(realign);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(realign);
+    // A line changed to a heading grows over 0.2s (BlockNote animates font-size): measure the settled size.
+    mountPoint.addEventListener('transitionend', (event) => { if (event.propertyName === 'font-size') realign(); });
     if (fromMarkdown) {
       try {
         const blocks = withMediaBlocks(withImageWidths(await readMarkdown(note.markdown || '')));
         if (editorNoteId === note.id && Array.isArray(blocks) && blocks.length) editorCtl.replaceAll(blocks);
         baseline = editorMarkdown();
+        requestAnimationFrame(realign);
       } catch (error) {
         toast('This note could not be read as Markdown');
       }

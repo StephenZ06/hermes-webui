@@ -10,12 +10,14 @@
 // replaces content under an editor the user is typing in.
 import { BlockNoteEditor, filterSuggestionItems } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
-import { SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import { FormattingToolbarController, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
 export const BLOCKNOTE_VERSION = "0.55.0";
+
+const TOOLBAR_BELOW = { useFloatingOptions: { placement: "bottom-start" } };
 
 // Slash-menu items that change what kind of line it is. BlockNote applies
 // them to the current line only when it is empty; on a line with text it
@@ -94,10 +96,15 @@ export function mountNoteEditor(host, options = {}) {
           theme,
           editable,
           slashMenu: false,
+          formattingToolbar: false,
           onChange: () => { if (typeof options.onChange === "function") options.onChange(); },
           className: "hermes-note-editor",
         },
         createElement(SuggestionMenuController, { triggerCharacter: "/", getItems }),
+        // The format toolbar opens below the selection: the space above it is
+        // where the browser's own edit menu (Cut/Copy/Paste) appears on iPad.
+        // It still flips above when there is no room below.
+        createElement(FormattingToolbarController, { floatingUIOptions: TOOLBAR_BELOW }),
       ),
     );
   };

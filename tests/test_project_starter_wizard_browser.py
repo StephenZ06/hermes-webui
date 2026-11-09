@@ -105,7 +105,8 @@ def test_a_brief_file_dropped_on_the_dashed_zone_fills_the_brief(real_2x):
       dt.items.add(new File(['PNG'], 'shot.png', {type: 'image/png'}));
       z.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true})); }""")
     page.wait_for_timeout(100)
-    assert "Only .md or .txt" in page.inner_text(".ps-dropzone")
+    assert ".png files are not supported" in page.inner_text("#toast")
+    assert "Using brief.md" in page.inner_text(".ps-dropzone")
     assert "habit tracker" in page.input_value(".ps-brief")
     # The planner named in the subtitle is the Architecture profile.
     assert "Architecture" in page.inner_text(".project-starter-header")
@@ -222,7 +223,7 @@ def test_data_ml_artwork_is_scaled_down_to_match_its_neighbours(real_2x):
     sizes = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ps-template .ps-art')].map(i =>
       [i.src.split('/').pop(), i.getBoundingClientRect().width]))""")
     assert sizes["data.webp"] < sizes["web.webp"] - 4, sizes
-    assert len({w for k, w in sizes.items() if k != "data.webp"}) == 1
+    assert len({w for k, w in sizes.items() if k not in ("data.webp", "blank.webp")}) == 1
 
 
 def test_recommended_choice_wears_a_star_in_its_top_right_corner(real_2x):
@@ -235,3 +236,45 @@ def test_recommended_choice_wears_a_star_in_its_top_right_corner(real_2x):
         src: new URL(s.src).pathname, stars: document.querySelectorAll('.ps-option-star').length}; }""")
     assert star["src"] == "/static/wizard/star.png" and star["ok"] and star["stars"] == 1, star
     assert star["w"] == 18 and abs(star["top"] - star["right"]) <= 0.5, star
+
+
+def test_blank_project_art_is_smaller_and_the_top_row_art_sits_two_pixels_lower(real_2x):
+    page = real_2x
+    _to_template_step(page)
+    art = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ps-template .ps-art')].map(i => {
+      const r = i.getBoundingClientRect(), c = i.closest('.ps-template').getBoundingClientRect();
+      return [i.src.split('/').pop().replace('.webp', ''), {w: r.width, mid: r.top + r.height / 2 - c.top}]; }))""")
+    # CLI is not in the top row; its artwork keeps the old place.
+    assert art["blank"]["w"] < art["web"]["w"] - 3, art
+    assert art["web"]["w"] == art["ios"]["w"] == art["cli"]["w"], art
+    for key in ("blank", "web", "ios"):
+        assert abs(art[key]["mid"] - art["cli"]["mid"] - 2) <= 0.01, art
+
+
+def test_files_dropped_outside_a_drop_zone_never_reach_the_chat_and_say_why(real_2x):
+    page = real_2x
+    _to_template_step(page)
+    page.evaluate("() => { window.__attached = 0; const real = window.addFiles; window.addFiles = (...a) => { window.__attached++; return real && real(...a); }; }")
+    page.evaluate("""() => { const card = document.querySelector('.ps-template'), dt = new DataTransfer();
+      dt.items.add(new File(['PNG'], 'shot.png', {type: 'image/png'}));
+      card.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true, cancelable: true}));
+      card.dispatchEvent(new DragEvent('dragover', {dataTransfer: dt, bubbles: true, cancelable: true}));
+      card.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true})); }""")
+    page.wait_for_timeout(150)
+    assert page.evaluate("() => window.__attached") == 0
+    assert not page.evaluate("() => document.getElementById('composerWrap').classList.contains('drag-over')")
+    assert "can't be used on this step" in page.inner_text("#toast")
+
+
+def test_brief_drop_zone_fills_the_step_with_even_gaps(real_2x):
+    page = real_2x
+    _to_template_step(page)
+    page.click(".ps-template >> nth=1")
+    page.click(".ps-next")
+    page.wait_for_selector(".ps-dropzone")
+    page.wait_for_timeout(350)
+    gaps = page.evaluate("""() => { const q = s => document.querySelector(s).getBoundingClientRect();
+      const b = q('.ps-brief'), d = q('.ps-dropzone'), f = q('.ps-actions');
+      return {above: d.top - b.bottom, below: f.top - d.bottom, h: d.height}; }""")
+    assert gaps["h"] > 120, gaps
+    assert abs(gaps["above"] - gaps["below"]) <= 0.5, gaps

@@ -94,3 +94,12 @@ def test_escape_ends_delete_mode_without_deleting(files_page):
     page.route("**/api/file-manager/read*", lambda route: route.fulfill(json={"path": "a.md", "content": "hi", "size": 2, "lines": 1}))
     page.click(".files-row[data-file-path='a.md']")
     page.wait_for_selector(".files-inspector-name")
+
+
+def test_the_filter_has_as_much_room_above_it_as_on_its_sides(files_page):
+    page, _ = files_page
+    room = page.evaluate("""() => { const f = document.querySelector('.files-search').getBoundingClientRect();
+      const path = document.querySelector('.files-path').getBoundingClientRect();
+      const col = document.querySelector('.files-list-toolbar').getBoundingClientRect();
+      return {above: f.top - path.bottom, left: f.left - col.left, right: col.right - f.right}; }""")
+    assert room["above"] == room["left"] == room["right"] == 14, room

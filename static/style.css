@@ -2436,6 +2436,11 @@
   .rail-btn:hover{color:var(--text);background:var(--hover-bg);}
   .rail-btn.active{color:var(--accent-text);background:var(--accent-bg);}
 .rail-btn.active::before{content:'';position:absolute;left:-6px;top:50%;transform:translateY(-50%);width:3px;height:16px;background:var(--accent);border-radius:0 2px 2px 0;}
+  /* Icon-only rails: the rounded hover/active square sits 1px further right
+     while the icon inside (and the active edge marker, placed at -7px below
+     to make up for the shift) stays where it was. */
+  .rail .rail-btn,.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{translate:1px 0;}
+  .rail .rail-btn>:not([class*="badge"]),.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab>:not([class*="badge"]){translate:-1px 0;}
   /* Custom tooltip — replaces native title="" for faster, more polished display.
      Native browser tooltips have a ~1.5s hover delay that reads as "no tooltip
      exists" (#1775). Our custom tooltip appears at ~150ms hover, dismisses
@@ -2475,7 +2480,7 @@
    removes the pseudo-element entirely. Solution: scope the legacy
    `.nav-tab:hover::after` data-label tooltip to `.sidebar-nav` (mobile) only
    (see line ~681). The rail rule is no longer needed. */
-  .rail .nav-tab.active::before{content:'';position:absolute;left:-6px;top:50%;bottom:auto;transform:translateY(-50%);width:3px;height:16px;background:var(--accent);border-radius:0 2px 2px 0;}
+  .rail .nav-tab.active::before{content:'';position:absolute;left:-7px;top:50%;bottom:auto;transform:translateY(-50%);width:3px;height:16px;background:var(--accent);border-radius:0 2px 2px 0;}
   .dashboard-link{position:relative;}
   .dashboard-link-visible,.nav-action-visible{display:flex!important;}
   .dashboard-external-badge{position:absolute;right:5px;top:5px;width:9px;height:9px;border-radius:2px;border:1px solid var(--accent);background:var(--sidebar);box-shadow:0 0 0 2px var(--sidebar);opacity:.95;}
@@ -17548,10 +17553,11 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .files-workspace-dot.is-offline{background:var(--error,#e5534b);box-shadow:0 0 0 1px color-mix(in srgb,var(--error,#e5534b) 25%,transparent);}
 /* The path row ends on a faint divider and the filter, the full width of the
    column, sits under it. "Workspace" has as much room under it, down to the filter,
-   as above it from the top bar (17.5px of ink-to-edge each way); the filter has 7px
-   from the divider and 7px down to the first row. */
+   as above it from the top bar (17.5px of ink-to-edge each way); the filter has as
+   much room above it, down from the divider, as on its left and right (14px), and
+   7px down to the first row, whose own padding makes up the rest. */
 .files-path{padding-bottom:6px;border-bottom:1px solid var(--border-subtle);}
-.files-list-toolbar{padding-top:7px;padding-bottom:0;border-bottom:0;}
+.files-list-toolbar{padding-top:14px;padding-bottom:0;border-bottom:0;}
 .files-list{padding-top:7px;}
 .files-search{max-width:none;}
 .files-search input{padding-bottom:1px;}
@@ -17798,3 +17804,59 @@ textarea#msg::-webkit-scrollbar{display:none;}
 /* Notes: no long-press callout (link/image/selection sheet) on touch Safari. */
 #mainNotebook,#panelNotebook{-webkit-touch-callout:none;}
 .nb-title-easing{will-change:opacity,filter,transform;}
+/* Brief step: the dashed drop zone fills the step down to the footer divider,
+   leaving the same gap below it as between the brief and the zone. */
+.ps-body:has(> .ps-section-brief){display:flex;flex-direction:column;}
+.ps-section-brief{flex:1 0 auto;}
+.ps-section-brief > .ps-dropzone{flex:1 0 auto;}
+.ps-wizard:has(.ps-section-brief) .ps-actions{margin-top:10px;}
+/* Template step: the solid Blank Project page reads heavier than its outlined
+   neighbours, so it is drawn smaller; the four top-row artworks sit 2px lower
+   in their cards. */
+.ps-template .ps-art-blank{transform:translateY(2px) scale(.86);}
+.ps-template :is(.ps-art-web,.ps-art-ios,.ps-art-android){transform:translateY(2px);}
+/* Notes format bar: icons sit 1px lower in their buttons; the colour button's
+   "A" and the box around it sit 1px higher. */
+.hermes-note-editor .bn-formatting-toolbar svg{translate:0 1px;}
+.hermes-note-editor .bn-formatting-toolbar .bn-color-icon{translate:0 -1px;}
+/* Office business cards: every card ends as far from its content as it
+   starts (cards in a row no longer stretch to the tallest one, and a list's
+   last row drops its bottom padding); the empty-state line sits midway
+   between the divider and the card's bottom edge. */
+.office-biz-cards{align-items:start;}
+.office-biz-card .office-biz-providers > li:last-child{min-height:0;padding-bottom:0;}
+.office-biz-card > .office-biz-empty{padding:27px 0 8px;}
+.office-biz-card-body > .office-biz-empty:last-child{padding-bottom:0;}
+/* Settings: as much space under each card's divider as above it. */
+.office-biz-settings .office-biz-card-body{padding-top:12px;}
+/* Settings inputs: the typed value (and placeholder) 1px higher in the box;
+   the Add schedule label half a pixel higher. */
+.office-biz-limits .office-biz-input,.office-biz-schedule-form .office-biz-input:is([name="query"],[name="every_minutes"]){padding-top:4px;padding-bottom:6px;}
+.office-biz-schedule-form .office-integration-action{padding-bottom:1px;}
+/* Floors: the same even card edges as the other Business tabs. */
+.office-biz-floors{align-items:start;}
+.office-biz-floors .office-integration-card{min-height:0;}
+.office-biz-floors .office-biz-providers > li:last-child{min-height:0;padding-bottom:0;}
+/* Skills page "+": choose New skill, Import skill or New category, then a
+   short form in the same dialog. */
+.skill-add-dialog{width:min(440px,100%);}
+.skill-add-choices{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
+.skill-add-choice{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--text) 2%,transparent);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s;}
+.skill-add-choice:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));background:color-mix(in srgb,var(--accent) 6%,transparent);}
+.skill-add-choice:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.skill-add-choice-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;border-radius:9px;background:var(--accent-bg);color:var(--accent-text);}
+.skill-add-choice-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.skill-add-choice-text strong{font-size:13px;font-weight:700;}
+.skill-add-choice-text small{font-size:12px;color:var(--muted);}
+.skill-add-form{display:flex;flex-direction:column;gap:12px;margin-top:4px;}
+.skill-add-field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);}
+.skill-add-field em{font-style:normal;opacity:.75;}
+.skill-add-field input,.skill-add-field select{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border2);border-radius:9px;background:var(--input-bg,var(--bg));color:var(--text);font:inherit;font-size:13px;outline:none;}
+.skill-add-field input:focus,.skill-add-field select:focus{border-color:var(--accent);}
+.skill-add-hint{margin:0;font-size:12px;line-height:1.5;color:var(--muted);}
+.skill-add-status{font-size:12px;line-height:1.5;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;}
+.skill-add-status:empty{display:none;}
+.skill-add-status.is-error{color:var(--error);}
+.skill-add-status.is-busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;vertical-align:-1px;border-radius:50%;border:2px solid color-mix(in srgb,var(--text) 18%,transparent);border-top-color:var(--accent);animation:ps-art-spin .8s linear infinite;}
+.skill-add-form .app-dialog-actions{margin-top:4px;}
+@media (prefers-reduced-motion:reduce){.skill-add-status.is-busy::before{animation:none;}}

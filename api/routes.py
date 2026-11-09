@@ -16003,8 +16003,13 @@ def _route_get_api_crons_delivery_options(handler, parsed):
 def _route_get_api_skills(handler, parsed):
     qs = parse_qs(parsed.query)
     category = qs.get("category", [None])[0]
-    data = _skills_list_from_dir(_active_skills_dir(), category=category)
-    return j(handler, {"skills": data.get("skills", [])})
+    skills_dir = _active_skills_dir()
+    data = _skills_list_from_dir(skills_dir, category=category)
+    # Categories include empty folders made from the Skills page (a DESCRIPTION.md and no skills yet).
+    from api.skill_import import local_categories
+
+    categories = sorted(set(data.get("categories", [])) | set(local_categories(skills_dir)))
+    return j(handler, {"skills": data.get("skills", []), "categories": categories})
 
 
 def _route_get_api_skills_usage(handler, parsed):
@@ -19320,6 +19325,44 @@ def _route_post_api_skills_save(handler, parsed, body, diag):
     return _handle_skill_save(handler, body)
 
 
+def _route_post_api_skills_category(handler, parsed, body, diag):
+    from api.skill_import import create_category, normalize_category
+
+    body = body if isinstance(body, dict) else {}
+    try:
+        name = normalize_category(body.get("name"))
+        if not name:
+            return bad(handler, "Name the category.")
+        create_category(_active_skills_dir(), name, str(body.get("description") or ""))
+    except FileExistsError as exc:
+        return bad(handler, str(exc), 409)
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    return j(handler, {"ok": True, "name": name})
+
+
+def _route_post_api_skills_import(handler, parsed, body, diag):
+    from api.skill_import import install_skill, normalize_category, skill_source_from_link
+
+    body = body if isinstance(body, dict) else {}
+    try:
+        source = skill_source_from_link(body.get("url"))
+        category = normalize_category(body.get("category"))
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    result = install_skill(source, category)
+    _SKILLS_STATS_CACHE.clear()
+    result["source"] = source
+    if result["ok"]:
+        return j(handler, result)
+    if result["status"] == "exists":
+        result["error"] = "That skill is already installed."
+        return j(handler, result, 409)
+    last = [line for line in result.get("output", "").splitlines() if line.strip()][-3:]
+    result["error"] = "The install failed." + (" " + " ".join(last) if last else "")
+    return j(handler, result, 502)
+
+
 def _route_post_api_skills_delete(handler, parsed, body, diag):
     return _handle_skill_delete(handler, body)
 
@@ -21036,6 +21079,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/commands/exec"), _route_post_api_commands_exec),
         (Exact("/api/skills/save"), _route_post_api_skills_save),
         (Exact("/api/skills/delete"), _route_post_api_skills_delete),
+        (Exact("/api/skills/category"), _route_post_api_skills_category),
+        (Exact("/api/skills/import"), _route_post_api_skills_import),
         (Exact("/api/skills/toggle"), _route_post_api_skills_toggle),
         (Exact("/api/memory/write"), _route_post_api_memory_write),
         (Exact("/api/memory/entry/delete"), _route_post_api_memory_entry_delete),

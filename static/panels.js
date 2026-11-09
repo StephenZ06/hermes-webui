@@ -28,6 +28,7 @@ let _kanbanSuppressCardClickUntil = 0;
 let _kanbanEventSource = null;
 let _kanbanEventSourceFailures = 0;
 let _skillsData = null; // cached skills list
+let _skillCategories = []; // category folders, including empty ones
 let _agentDefsData = null; // cached persona (agent definition) list
 let _currentAgentDefDetail = null; // full persona object
 let _agentDefMode = 'empty'; // 'empty' | 'read' | 'create' | 'edit'
@@ -6426,6 +6427,7 @@ async function loadSkills() {
   try {
     const data = await api('/api/skills');
     _skillsData = data.skills || [];
+    _skillCategories = Array.isArray(data.categories) ? data.categories : [...new Set(_skillsData.map(s => s.category).filter(Boolean))].sort();
     // Prune collapsed state to only keep categories present in fresh data,
     // avoiding stale keys when categories are renamed or removed server-side.
     const liveCats = new Set(_skillsData.map(s => s.category || '(general)'));
@@ -6465,9 +6467,11 @@ function renderSkills(skills) {
     if (!cats[cat]) cats[cat] = [];
     cats[cat].push(s);
   }
+  // A category made from the "+" menu shows before it has any skills (not while searching).
+  if (!query) for (const c of _skillCategories) if (!cats[c]) cats[c] = [];
   const box = $('skillsList');
   box.innerHTML = '';
-  if (!filtered.length) { box.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(t('skills_no_match'))}</div>`; return; }
+  if (!Object.keys(cats).length) { box.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(t('skills_no_match'))}</div>`; return; }
   for (const [cat, items] of Object.entries(cats).sort()) {
     const collapsed = _collapsedCats.has(cat);
     const sec = document.createElement('div');
@@ -6796,6 +6800,154 @@ function openSkillCreate() {
   _closeMobileSidebarAfterPanelSelection();
 }
 
+// Where a skill is kept: a select of the category folders (and "No category").
+// A category that only the skill being edited names is kept as an option.
+function _skillCategorySelect(id, selected) {
+  const cats = [...new Set([..._skillCategories, ...(selected ? [selected] : [])])].sort();
+  const opts = [`<option value="">No category</option>`, ...cats.map(c => `<option value="${esc(c)}"${c === selected ? ' selected' : ''}>${esc(c)}</option>`)];
+  return `<select id="${id}" class="skill-category-select">${opts.join('')}</select>`;
+}
+
+async function _ensureSkillCategories() {
+  if (_skillsData) return;
+  try {
+    const data = await api('/api/skills');
+    _skillsData = data.skills || [];
+    _skillCategories = Array.isArray(data.categories) ? data.categories : [];
+  } catch (_) {}
+}
+
+// The Skills page "+" button: choose what to add.
+let _skillAddOverlay = null;
+function _closeSkillAddMenu() {
+  const overlay = _skillAddOverlay; _skillAddOverlay = null;
+  if (!overlay) return;
+  document.removeEventListener('keydown', overlay._onKey, true);
+  overlay.remove();
+  if (overlay._opener && overlay._opener.isConnected) overlay._opener.focus();
+}
+
+async function openSkillAddMenu() {
+  if (typeof switchPanel === 'function' && _currentPanel !== 'skills') switchPanel('skills');
+  _closeSkillAddMenu();
+  await _ensureSkillCategories();
+  const overlay = document.createElement('div');
+  overlay.className = 'app-dialog-overlay skill-add-overlay';
+  overlay.style.display = 'flex';
+  overlay._opener = document.activeElement;
+  overlay.innerHTML = `<div class="app-dialog skill-add-dialog" role="dialog" aria-modal="true" aria-labelledby="skillAddTitle">
+    <div class="app-dialog-header"><div class="app-dialog-title" id="skillAddTitle"></div>
+      <button class="app-dialog-close" type="button" data-skill-add="close" aria-label="Close dialog"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="skill-add-body"></div></div>`;
+  document.body.appendChild(overlay);
+  _skillAddOverlay = overlay;
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) _closeSkillAddMenu(); });
+  overlay.querySelector('[data-skill-add=close]').onclick = _closeSkillAddMenu;
+  overlay._onKey = (e) => { if (e.key === 'Escape' && !overlay._busy) { e.preventDefault(); e.stopPropagation(); _closeSkillAddMenu(); } };
+  document.addEventListener('keydown', overlay._onKey, true);
+  _renderSkillAddChoices(overlay);
+}
+
+const _SKILL_ADD_ICONS = {
+  create: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>',
+  import: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>',
+  category: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 12v5M9.5 14.5h5"/></svg>',
+};
+
+function _renderSkillAddChoices(overlay) {
+  overlay.querySelector('#skillAddTitle').textContent = 'Add to Skills';
+  const body = overlay.querySelector('.skill-add-body');
+  const choices = [
+    ['create', 'New skill', 'Write a SKILL.md yourself.'],
+    ['import', 'Import skill', 'Install one from a GitHub link.'],
+    ['category', 'New category', 'A folder to keep skills in.'],
+  ];
+  body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon">${_SKILL_ADD_ICONS[key]}</span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
+  body.querySelectorAll('.skill-add-choice').forEach(btn => btn.onclick = () => {
+    const key = btn.dataset.choice;
+    if (key === 'create') { _closeSkillAddMenu(); openSkillCreate(); return; }
+    if (key === 'import') _renderSkillImport(overlay);
+    else _renderSkillNewCategory(overlay);
+  });
+  const first = body.querySelector('.skill-add-choice'); if (first) first.focus();
+}
+
+function _skillAddForm(overlay, title, fieldsHtml, submitLabel, onSubmit) {
+  overlay.querySelector('#skillAddTitle').textContent = title;
+  const body = overlay.querySelector('.skill-add-body');
+  body.innerHTML = `<form class="skill-add-form">${fieldsHtml}<div class="skill-add-status" role="status" aria-live="polite"></div>
+    <div class="app-dialog-actions"><button type="button" class="app-dialog-btn" data-skill-add="back">Back</button><button type="submit" class="app-dialog-btn confirm">${submitLabel}</button></div></form>`;
+  const form = body.querySelector('form');
+  const status = body.querySelector('.skill-add-status');
+  const submit = form.querySelector('[type=submit]');
+  form.querySelector('[data-skill-add=back]').onclick = () => { if (!overlay._busy) _renderSkillAddChoices(overlay); };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (overlay._busy) return;
+    overlay._busy = true; submit.disabled = true; status.className = 'skill-add-status';
+    try { await onSubmit(form, status); }
+    finally { overlay._busy = false; if (submit.isConnected) submit.disabled = false; }
+  };
+  const field = form.querySelector('input'); if (field) field.focus();
+  return form;
+}
+
+async function _afterSkillAdded(name) {
+  _skillsData = null;
+  _cronSkillsCache = null;
+  if (typeof window !== 'undefined' && typeof window.invalidateSlashSkillCaches === 'function') window.invalidateSlashSkillCaches();
+  await loadSkills();
+  if (name) {
+    let target = null;
+    document.querySelectorAll('.skill-item').forEach(el => { if (el.dataset.skillName === name) target = el; });
+    await openSkill(name, target);
+  }
+}
+
+function _renderSkillImport(overlay) {
+  _skillAddForm(overlay, 'Import skill', `
+    <label class="skill-add-field"><span>GitHub link</span><input type="url" name="url" required placeholder="https://github.com/owner/repo/tree/main/skills/name" autocomplete="off" spellcheck="false"></label>
+    <label class="skill-add-field"><span>Keep it in</span>${_skillCategorySelect('skillImportCategory', '')}</label>
+    <p class="skill-add-hint">Link to the skill's folder or its SKILL.md. Hermes downloads it, scans it, then installs it for this profile.</p>`,
+  'Install', async (form, status) => {
+    const before = new Set((_skillsData || []).map(s => s.name));
+    status.textContent = 'Installing…'; status.classList.add('is-busy');
+    let res;
+    try {
+      res = await api('/api/skills/import', {method: 'POST', body: JSON.stringify({url: form.url.value, category: form.querySelector('select').value}), timeoutMs: 260000, retries: 0});
+    } catch (err) {
+      status.classList.remove('is-busy'); status.classList.add('is-error');
+      status.textContent = (err && err.message) || 'The install failed.';
+      return;
+    }
+    status.classList.remove('is-busy');
+    showToast('Skill imported');
+    _closeSkillAddMenu();
+    await _afterSkillAdded(null);
+    const added = (_skillsData || []).find(s => !before.has(s.name));
+    if (added) await _afterSkillAdded(added.name);
+  });
+}
+
+function _renderSkillNewCategory(overlay) {
+  _skillAddForm(overlay, 'New category', `
+    <label class="skill-add-field"><span>Name</span><input type="text" name="name" required maxlength="48" placeholder="e.g. research" autocomplete="off" spellcheck="false"></label>
+    <label class="skill-add-field"><span>What goes in it <em>(optional)</em></span><input type="text" name="description" maxlength="300" placeholder="Skills for finding and checking sources" autocomplete="off"></label>`,
+  'Create', async (form, status) => {
+    try {
+      const res = await api('/api/skills/category', {method: 'POST', body: JSON.stringify({name: form.name.value, description: form.description.value}), retries: 0});
+      showToast('Category created');
+      if (res && res.name && !_skillCategories.includes(res.name)) _skillCategories = [..._skillCategories, res.name].sort();
+      _closeSkillAddMenu();
+      _skillsData = null;
+      await loadSkills();
+    } catch (err) {
+      status.classList.add('is-error');
+      status.textContent = (err && err.message) || 'The category could not be created.';
+    }
+  });
+}
+
 function _renderSkillForm({ name, category, content, isEdit }) {
   const title = $('skillDetailTitle');
   const body = $('skillDetailBody');
@@ -6814,7 +6966,7 @@ function _renderSkillForm({ name, category, content, isEdit }) {
         </div>
         <div class="detail-form-row">
           <label for="skillFormCategory">${esc(t('skill_category') || 'Category')}</label>
-          <input type="text" id="skillFormCategory" value="${esc(category || '')}" placeholder="${esc(t('skill_category_placeholder') || 'Optional, e.g. devops')}" autocomplete="off">
+          ${_skillCategorySelect('skillFormCategory', category || '')}
         </div>
         <div class="detail-form-row">
           <label for="skillFormContent">${esc(t('skill_content') || 'SKILL.md content')}</label>

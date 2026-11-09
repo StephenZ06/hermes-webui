@@ -1785,3 +1785,60 @@ def test_a_renamed_note_eases_into_its_new_side_panel_label(page):
     page.wait_for_function(f"() => document.querySelector(\"{row}\")?.textContent === 'Second name'", timeout=10000)
     eased = page.evaluate("() => window.__eased")
     assert any(e["text"] == "Second name" and "blur" in e["frames"] for e in eased), eased
+
+
+_CAP_TOP_JS = """() => {
+  const line = document.querySelector('.hermes-note-editor .bn-block-outer .bn-inline-content');
+  const range = document.createRange(); range.selectNodeContents(line);
+  const box = range.getClientRects()[0], s = getComputedStyle(line);
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+  const m = ctx.measureText('H');
+  const base = box.top + m.fontBoundingBoxAscent * (box.height / (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent));
+  const edge = document.querySelector('.nb-editor-head').getBoundingClientRect().bottom;  // the divider
+  return {gap: base - m.actualBoundingBoxAscent - edge, lineTop: box.top - edge};
+}"""
+
+
+@pytest.mark.parametrize("font", ["", "Ubuntu Mono", "DejaVu Sans Mono"])
+def test_a_heading_first_line_sits_where_a_paragraph_does_whatever_the_font(page, font):
+    # The pull that tucks a heading's tall line box up under the divider is measured from the
+    # font in use: a fixed amount tuned on one font hid the heading under the note header on another.
+    _open(page)
+    if font:
+        page.add_style_tag(content=f".hermes-note-editor [data-content-type=heading] .bn-inline-content{{font-family:'{font}',monospace !important;}}")
+    _new_note(page, f"First line {uuid.uuid4().hex[:6]}")
+    _type_body(page, "Plain first line")
+    page.wait_for_timeout(400)
+    paragraph = page.evaluate(_CAP_TOP_JS)
+    for level, prefix in ((1, "# "), (2, "## "), (3, "### ")):
+        page.keyboard.press("Home")
+        page.keyboard.type(prefix)
+        page.wait_for_timeout(600)
+        heading = page.evaluate(_CAP_TOP_JS)
+        assert abs(heading["gap"] - paragraph["gap"]) <= 0.75, (level, heading, paragraph)
+        page.keyboard.press("Control+z")
+        page.keyboard.press("Control+z")
+        page.wait_for_timeout(400)
+
+
+def test_format_toolbar_opens_below_the_selection_with_nudged_icons(page):
+    _open(page)
+    _new_note(page, f"Toolbar {uuid.uuid4().hex[:6]}")
+    _type_body(page, "first line of text")
+    page.keyboard.press("Enter")
+    page.keyboard.type("second line")
+    page.dblclick(".hermes-note-editor .bn-inline-content >> nth=0")
+    page.wait_for_selector(".bn-formatting-toolbar")
+    page.wait_for_timeout(300)
+    got = page.evaluate("""() => {
+      const sel = window.getSelection().getRangeAt(0).getBoundingClientRect();
+      const bar = document.querySelector('.bn-formatting-toolbar').getBoundingClientRect();
+      const offset = (btn, inner) => { const r = btn.getBoundingClientRect(), q = inner.getBoundingClientRect(); return (q.top + q.height / 2) - (r.top + r.height / 2); };
+      const bold = document.querySelector('.bn-formatting-toolbar [data-test=bold]');
+      const colors = document.querySelector('.bn-formatting-toolbar [data-test=colors]');
+      return {selBottom: sel.bottom, barTop: bar.top, bold: offset(bold, bold.querySelector('svg')),
+              colors: offset(colors, colors.querySelector('.bn-color-icon'))};
+    }""")
+    assert got["barTop"] >= got["selBottom"], got
+    assert abs(got["bold"] - 1) <= 0.01 and abs(got["colors"] + 1) <= 0.01, got

@@ -157,3 +157,36 @@ def test_other_tabs_are_cards_with_art(page, tab, titles):
     page.wait_for_function("""() => [...document.querySelectorAll('.office-biz-card img')].every(i => i.complete && i.naturalWidth > 0)""")
     assert [title for title, _ in cards] == titles
     assert page.locator("[data-biz-input=filter]").count() == 0
+
+
+_CARD_EDGES = """() => [...document.querySelectorAll('.office-integration-card')].filter(c => c.offsetParent).map(c => {
+  const cr = c.getBoundingClientRect(); let b = -1;
+  c.querySelectorAll('*').forEach(k => { if (!k.children.length && k.offsetParent) b = Math.max(b, k.getBoundingClientRect().bottom); });
+  const pad = parseFloat(getComputedStyle(c).paddingTop) + parseFloat(getComputedStyle(c).borderTopWidth);
+  return {name: (c.querySelector('h2') || {}).textContent, bottom: +(cr.bottom - b).toFixed(1), pad}; })"""
+
+
+@pytest.mark.parametrize("tab", ["floors", "approvals", "activity", "settings"])
+def test_every_card_ends_as_close_to_its_content_as_it_starts(page, tab):
+    page.click(f"[data-tab={tab}]")
+    page.wait_for_timeout(500)
+    cards = page.evaluate(_CARD_EDGES)
+    assert cards
+    for card in cards:
+        assert abs(card["bottom"] - card["pad"]) <= 1, card
+
+
+def test_settings_dividers_and_empty_approvals_line_are_even(page):
+    page.click("[data-tab=settings]")
+    page.wait_for_timeout(500)
+    body = page.evaluate("() => { const s = getComputedStyle(document.querySelector('.office-biz-settings .office-biz-card-body')); return [s.marginTop, s.paddingTop]; }")
+    assert body == ["14px", "12px"], body
+    nudge = page.evaluate("() => [...document.querySelectorAll('.office-biz-limits input, .office-biz-schedule-form input[name=query], .office-biz-schedule-form input[name=every_minutes]')].map(i => { const s = getComputedStyle(i); return parseFloat(s.paddingBottom) - parseFloat(s.paddingTop); })")
+    assert nudge and all(n == 2 for n in nudge), nudge
+    page.click("[data-tab=approvals]")
+    page.wait_for_timeout(500)
+    if page.locator(".office-biz-card > .office-biz-empty").count():
+        gaps = page.evaluate("""() => { const e = document.querySelector('.office-biz-card > .office-biz-empty'), c = e.closest('.office-biz-card');
+          const r = document.createRange(); r.selectNodeContents(e); const t = r.getBoundingClientRect(), box = e.getBoundingClientRect(), cr = c.getBoundingClientRect();
+          return {above: t.top - box.top, below: cr.bottom - t.bottom}; }""")
+        assert abs(gaps["above"] - gaps["below"]) <= 1.5, gaps

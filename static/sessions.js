@@ -10015,6 +10015,7 @@ const _PROJECT_STARTER_ICONS={
 };
 // Full-colour artwork for the start choices and templates (icons/new-workspace,
 // optically normalised to the same visual size in static/project-starter/).
+function _psToast(msg){if(typeof showToast==='function')showToast(msg,null,'error');}
 const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,data:1,research:1,new:1,existing:1};
 function _psArt(name,size){
   return '<img class="ps-art ps-art-'+name+'" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
@@ -10107,6 +10108,22 @@ async function _openProjectStarterWizard(profile){
   return new Promise(resolve=>{
     const opener=document.activeElement;
     const overlay=_psEl('div','project-starter-overlay');overlay.setAttribute('role','presentation');
+    // Files dragged onto the wizard never reach the page-wide composer drop
+    // (which would attach them to the chat behind it). A drop zone inside a
+    // step handles its own drops; a drop anywhere else is refused with a toast.
+    const _psDragFiles=(event)=>!!(event.dataTransfer&&[...(event.dataTransfer.types||[])].includes('Files'));
+    ['dragenter','dragover','dragleave'].forEach(type=>overlay.addEventListener(type,(event)=>{
+      if(!_psDragFiles(event))return;
+      event.stopPropagation();
+      if(type==='dragover'&&!event.defaultPrevented){event.preventDefault();event.dataTransfer.dropEffect='none';}
+    }));
+    overlay.addEventListener('drop',(event)=>{
+      if(!_psDragFiles(event))return;
+      event.stopPropagation();
+      if(event.defaultPrevented)return;
+      event.preventDefault();
+      _psToast("Files can't be used on this step. Drop a .md or .txt brief on the Brief step.");
+    });
     const dialog=_psEl('section','project-starter-dialog ps-wizard');
     dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','projectStarterTitle');
     const header=_psEl('header','project-starter-header');
@@ -10318,13 +10335,13 @@ async function _openProjectStarterWizard(profile){
     // Step 4 — brief (typed, attached or dropped) + planner review
     function renderBrief(){
       sub.textContent=plannerAgent?P+' reviews the brief on '+PM+' and only asks about what is missing.':'The brief seeds every document Hermes creates.';
-      const wrap=section("Describe what you're building:");
+      const wrap=section("Describe what you're building:");wrap.classList.add('ps-section-brief');
       const brief=_psEl('textarea','ps-brief');brief.rows=7;brief.maxLength=100000;brief.value=st.brief;
       brief.placeholder='What are you building, who is it for, and what does done look like? Mention the stack if you already know it.';
       // Dashed drop zone under the brief: attach with the button or drop a
       // .md/.txt file anywhere on it (or on the brief itself).
       const fileRow=_psEl('div','project-starter-file-row ps-dropzone');
-      const upload=_psEl('input');upload.type='file';upload.accept='.md,.txt,text/markdown,text/plain';upload.hidden=true;
+      const upload=_psEl('input');upload.type='file';upload.accept='.md,.markdown,.txt';upload.hidden=true;
       const uploadButton=_psEl('button',null,'Attach brief file');uploadButton.type='button';
       const fileStatus=_psEl('span','project-starter-file-status',st.fileName?'Using '+st.fileName:'or drop a .md or .txt file here · up to 100 KB');
       fileRow.append(uploadButton,upload,fileStatus);
@@ -10336,8 +10353,12 @@ async function _openProjectStarterWizard(profile){
       uploadButton.onclick=()=>upload.click();
       const useFile=async(file)=>{
         if(!file) return;
-        if(!/\.(md|markdown|txt)$/i.test(file.name||'')&&!/^text\/(plain|markdown)$/.test(file.type||'')){fileStatus.textContent='Only .md or .txt files can be used as a brief.';return;}
-        if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}
+        if(!/\.(md|markdown|txt)$/i.test(file.name||'')){
+          const ext=((file.name||'').match(/\.([a-z0-9]+)$/i)||[])[1];
+          _psToast((ext?'.'+ext.toLowerCase()+' files are':'That file is')+' not supported. Use a .md or .txt file for the brief.');
+          return;
+        }
+        if(file.size>100000){_psToast('That file is too large. A brief can be up to 100 KB.');return;}
         try{brief.value=(await file.text()).slice(0,100000);st.brief=brief.value;st.fileName=file.name;fileStatus.textContent='Using '+file.name;suggest();invalidate();}catch(_){fileStatus.textContent='Could not read that file.';}
       };
       upload.onchange=()=>{const file=upload.files&&upload.files[0];upload.value='';useFile(file);};
