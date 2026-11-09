@@ -1,6 +1,14 @@
 # Project status — hermes-webui
 
 
+## 2026-11-09 (later): snowballstemmer, wizard polish, Notes empty lines, Files delete mark
+
+- Agent: hermes-agent's `tools/tool_search_catalog.py` imports `snowballstemmer` unconditionally but pyproject only declares it for Python >= 3.14, so the container's 3.12 `/app/venv` lacked it and every tool round failed ("Architecture could not set up ..."). Installed live into `/app/venv`; `docker_init.bash` now checks it on every start (outside the `.deps_installed` guard). The user-state hook `$HERMES_HOME/post-update.d/30-ensure-agent-deps.sh` used to check only `$repo/venv`; it now heals `$repo/venv`, `$repo/.venv` and `/app/venv`.
+- Wizard: prompt has equal 14px above/below; Data/ML art scaled 0.84; per-icon centred spinner until each artwork decodes (`_psWatchArt`); recommended Details choice carries `static/wizard/star.png` at top/right 8px instead of the pill.
+- Notes: vault notes round-trip empty paragraphs (`markEmptyLines`/`unmarkEmptyLines` around `parseMarkdown`; leading empties written as leading blank lines). Leading/trailing spaces inside a line are still dropped by the Markdown parser. Spellcheck/autocorrect off on the page; `-webkit-touch-callout:none` (the iPadOS text-selection edit menu itself cannot be suppressed from a web page). Renamed titles ease into the side panel.
+- Files: delete buttons use `work-hub-delete-mark.png` as a mask.
+- Skills page categories: deferred by the user.
+
 ## 2026-11-09: Wizard on GPT-6.1 Sol end to end; Files delete mode; dashboard XP reset point
 
 - Wizard: every agent step (brief review, questions, writing or adopting the instruction files) runs under `architecture` pinned to `gpt-6.1-sol` / `openai-codex` (`PLANNER_MODEL`; verified in the live Codex model list). Adopt no longer uses Docs-Git; no "Docs-Git" text is left in the wizard. Details step: exactly three choices with a one-line detail, key 4 is an in-place typed answer (placeholder = planner's `other`, clears on focus); keycap art for keys 1-4 in `static/wizard/key-N.png` (downscaled from the untracked `icons/wizard/`). The reason is 2-4 sentences plus 2-3 examples. Every starter document ends with a "Related documents" list of relative links; the setup prompts install the stack's dependencies with its own package manager, run install and test once, and record the commands. Setup timeout 30 min, job TTL 1 h.
