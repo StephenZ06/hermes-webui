@@ -16000,6 +16000,82 @@ def _route_get_api_crons_delivery_options(handler, parsed):
 
 
 # ── Skills API (GET) ──
+# ── Libraries (project builder catalog) ──
+def _libraries_root() -> Path:
+    from api.library_catalog import libraries_root
+    from api.profiles import get_active_hermes_home
+    return libraries_root(get_active_hermes_home())
+
+
+def _route_get_api_libraries(handler, parsed):
+    from api import library_catalog as lc
+    vocab = {"styles": lc.STYLES, "motions": lc.MOTIONS, "roles": lc.ROLES, "platforms": lc.PLATFORMS,
+             "frameworks": lc.FRAMEWORKS, "kinds": lc.KINDS}
+    return j(handler, {"libraries": lc.list_libraries(_libraries_root()), "vocab": {k: list(v) for k, v in vocab.items()}})
+
+
+def _route_get_api_libraries_preview(handler, parsed):
+    from api.library_catalog import safe_child
+    rel = (parse_qs(parsed.query).get("path") or [""])[0]
+    try:
+        path = safe_child(_libraries_root(), *rel.split("/"))
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    types = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif"}
+    if path.suffix.lower() not in types or "previews" not in path.parts or not path.is_file():
+        return bad(handler, "No such preview.", 404)
+    data = path.read_bytes()
+    handler.send_response(200)
+    handler.send_header("Content-Type", types[path.suffix.lower()])
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("Cache-Control", "no-cache")
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+def _route_get_api_libraries_job(handler, parsed):
+    from api.project_starter_agent import get_job
+    job = get_job((parse_qs(parsed.query).get("job_id") or [""])[0])
+    return j(handler, job) if job else bad(handler, "No such import.", 404)
+
+
+def _route_post_api_libraries_import(handler, parsed, body, diag):
+    from api.library_import import start_import
+    body = body if isinstance(body, dict) else {}
+    try:
+        return j(handler, {"job_id": start_import(body.get("link"), _libraries_root())})
+    except ValueError as exc:
+        return bad(handler, str(exc))
+
+
+def _route_post_api_libraries_save(handler, parsed, body, diag):
+    from api.library_catalog import safe_child, slugify
+    from api.library_import import commit_import
+    body = body if isinstance(body, dict) else {}
+    try:
+        slug = slugify(body.get("slug") or (body.get("library") or {}).get("name"))
+        if safe_child(_libraries_root(), slug).exists() and not body.get("replace"):
+            return bad(handler, "A library with that name is already in the catalog.", 409)
+        commit_import(_libraries_root(), str(body.get("staging") or ""), slug,
+                      body.get("library") or {}, [c for c in body.get("components") or [] if isinstance(c, dict)])
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    return j(handler, {"ok": True, "slug": slug})
+
+
+def _route_post_api_libraries_component(handler, parsed, body, diag):
+    from api.library_catalog import update_component
+    body = body if isinstance(body, dict) else {}
+    try:
+        comp = update_component(_libraries_root(), str(body.get("library") or ""), str(body.get("component") or ""),
+                                body.get("fields") if isinstance(body.get("fields"), dict) else {})
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    except FileNotFoundError as exc:
+        return bad(handler, str(exc), 404)
+    return j(handler, {"ok": True, "component": comp})
+
+
 def _route_get_api_skills(handler, parsed):
     qs = parse_qs(parsed.query)
     category = qs.get("category", [None])[0]
@@ -16466,6 +16542,9 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/crons/status"), _route_get_api_crons_status),
         (Exact("/api/crons/delivery-options"), _route_get_api_crons_delivery_options),
         (Exact("/api/skills"), _route_get_api_skills),
+        (Exact("/api/libraries"), _route_get_api_libraries),
+        (Exact("/api/libraries/preview"), _route_get_api_libraries_preview),
+        (Exact("/api/libraries/job"), _route_get_api_libraries_job),
         (Exact("/api/skills/usage"), _route_get_api_skills_usage),
         (Exact("/api/skills/content"), _route_get_api_skills_content),
         (Exact("/api/skills/scan"), _route_get_api_skills_scan),
@@ -21085,6 +21164,9 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/skills/delete"), _route_post_api_skills_delete),
         (Exact("/api/skills/category"), _route_post_api_skills_category),
         (Exact("/api/skills/import"), _route_post_api_skills_import),
+        (Exact("/api/libraries/import"), _route_post_api_libraries_import),
+        (Exact("/api/libraries/save"), _route_post_api_libraries_save),
+        (Exact("/api/libraries/component"), _route_post_api_libraries_component),
         (Exact("/api/skills/toggle"), _route_post_api_skills_toggle),
         (Exact("/api/memory/write"), _route_post_api_memory_write),
         (Exact("/api/memory/entry/delete"), _route_post_api_memory_entry_delete),
