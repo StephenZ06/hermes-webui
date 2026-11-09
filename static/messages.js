@@ -5487,6 +5487,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       _cancelThrottledSnapshotTimer();
       const _doneData=JSON.parse(e.data);
       if(_doneData&&_doneData.ephemeral) _anchorSceneStreamEphemeral=true;
+      if(typeof _setDocsCheck==='function') _setDocsCheck(activeSid,_doneData&&_doneData.docs_check);
       const _doneEvent=e;
       const _finishDone=()=>{
         // Bug A fix: cancel any pending rAF and mark stream finalized before
@@ -8806,3 +8807,52 @@ function startBackgroundPolling(parentSid, taskId, prompt){
 }
 
 // ── Panel navigation (Chat / Tasks / Skills / Memory) ──
+
+
+// ── "Docs not updated" chip ──
+// The server flags a finished turn that changed project files without
+// updating .agent/ECC_HANDOFF.md (api/docs_check.py). The chip sits under that
+// reply; nothing reaches the model unless the user presses Update now.
+let _docsCheckState=null;
+const _DOCS_UPDATE_PROMPT='Update .agent/ECC_HANDOFF.md, .agent/PROJECT_STATUS.md, .agent/TASKS.md and .agent/CHANGELOG.md for what you just changed. Do not change anything else.';
+function _setDocsCheck(sid,check){
+  if(check&&check.stale) _docsCheckState={sid,files:Number(check.files)||0};
+  else if(_docsCheckState&&_docsCheckState.sid===sid) _docsCheckState=null;
+  setTimeout(_paintDocsChip,0);
+}
+function _clearDocsChip(animate){
+  document.querySelectorAll('.docs-chip').forEach(chip=>{
+    if(animate&&chip.animate&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+      const a=chip.animate([{opacity:1,translate:'0 0'},{opacity:0,translate:'0 4px'}],{duration:160,easing:'ease-in'});
+      a.finished.then(()=>chip.remove(),()=>chip.remove());
+    }else chip.remove();
+  });
+}
+function _paintDocsChip(){
+  const st=_docsCheckState;
+  const existing=document.querySelector('.docs-chip');
+  const wanted=!!(st&&typeof S!=='undefined'&&S.session&&S.session.session_id===st.sid&&!S.busy);
+  const rows=document.querySelectorAll('#messages .msg-row.assistant-turn');
+  const row=rows[rows.length-1];
+  if(!wanted||!row){ if(existing) existing.remove(); return; }
+  if(existing&&existing.previousElementSibling===row) return;
+  if(existing) existing.remove();
+  const chip=document.createElement('div');
+  chip.className='docs-chip';chip.setAttribute('role','status');
+  chip.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 12v4"/><path d="M12 19h.01"/></svg>'
+    +'<span class="docs-chip-text">Docs not updated</span>'
+    +'<button type="button" class="docs-chip-update">Update now</button>'
+    +'<button type="button" class="docs-chip-dismiss" aria-label="Dismiss"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+  chip.querySelector('.docs-chip-update').onclick=async()=>{
+    _docsCheckState=null;_clearDocsChip(true);
+    const box=document.getElementById('msg');if(!box)return;
+    box.value=_DOCS_UPDATE_PROMPT;box.dispatchEvent(new Event('input',{bubbles:true}));
+    try{await send();}catch(error){if(typeof showToast==='function')showToast('Could not send: '+(error.message||error));}
+  };
+  chip.querySelector('.docs-chip-dismiss').onclick=()=>{_docsCheckState=null;_clearDocsChip(true);};
+  row.after(chip);
+}
+if(typeof renderMessages==='function'){
+  const _renderMessagesBeforeDocsChip=renderMessages;
+  renderMessages=function(){const out=_renderMessagesBeforeDocsChip.apply(this,arguments);try{_paintDocsChip();}catch(_){}return out;};
+}

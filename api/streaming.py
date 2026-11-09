@@ -12671,6 +12671,13 @@ def _run_agent_streaming(
                 if _tool_limit_reached:
                     _done_payload['terminal_state'] = 'tool_limit_reached'
                     _done_payload['terminal_reason'] = 'max_iterations'
+                try:
+                    from api.docs_check import docs_check as _docs_check
+                    _docs = _docs_check(getattr(s, 'workspace', ''), _live_tool_calls, _turn_started_at)
+                    if _docs:
+                        _done_payload['docs_check'] = _docs
+                except Exception:
+                    logger.debug("Docs check failed for session %s", session_id, exc_info=True)
                 put('done', _done_payload)
                 # Emit one last metering packet for the live message-header TPS label.
                 meter_stats = meter().get_stats(stream_id)
