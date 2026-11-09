@@ -7,5 +7,17 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       HERMES_WEBUI_CHAT_BACKEND: gateway
-      HERMES_WEBUI_GATEWAY_BASE_URL: http://host.docker.internal:8642
+      # Reach the gateway container directly on its own network. Going through
+      # host.docker.internal broke after a Docker Desktop restart: the host
+      # gateway refused ports published on 0.0.0.0 (8642, 9119) while still
+      # passing 127.0.0.1 ones, so the heartbeat failed with the gateway up.
+      HERMES_WEBUI_GATEWAY_BASE_URL: http://hermes:8642
       HERMES_WEBUI_ONBOARDING_OPEN: 1
+    networks:
+      - default
+      - hermes-stack
+
+networks:
+  hermes-stack:
+    name: hermes-stack_default
+    external: true

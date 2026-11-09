@@ -101,3 +101,19 @@ def test_env_example_documents_api_server_key():
         ".env.docker.example must mention that the WebUI key is forwarded "
         "automatically from the same API_SERVER_KEY."
     )
+
+
+def test_local_deployment_reaches_the_gateway_on_its_docker_network():
+    """The live local override must talk to the gateway container directly.
+
+    Through host.docker.internal, Docker Desktop's host gateway stopped
+    forwarding ports published on 0.0.0.0 after a restart (8642 refused while
+    127.0.0.1-published ports still passed), so the agent heartbeat failed
+    with the gateway healthy.
+    """
+    src = (REPO / "docker-compose.override.yml").read_text(encoding="utf-8")
+
+    assert "HERMES_WEBUI_GATEWAY_BASE_URL: http://hermes:8642" in src
+    assert "host.docker.internal:8642" not in src
+    assert "name: hermes-stack_default" in src and "external: true" in src
+    assert "- default" in src  # keep the WebUI's own network and its port publish
