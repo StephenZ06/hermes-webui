@@ -32,7 +32,7 @@ def test_plus_opens_a_choice_of_three_and_new_skill_opens_the_form_with_a_catego
     assert page.evaluate("() => document.querySelector('#panelSkills [onclick=\"openSkillAddMenu()\"], [onclick=\"openSkillAddMenu()\"]') !== null")
     page.evaluate("openSkillAddMenu()")
     page.wait_for_selector(".skill-add-choice")
-    assert page.locator(".skill-add-choice strong").all_inner_texts() == ["New skill", "Import skill", "New category"]
+    assert page.locator(".skill-add-choice strong").all_inner_texts() == ["New skill", "Import", "New category"]
     page.keyboard.press("Escape")
     assert page.locator(".skill-add-overlay").count() == 0
     page.evaluate("openSkillAddMenu()")
@@ -62,11 +62,12 @@ def test_a_new_category_appears_in_the_list_and_in_every_picker(page):
     assert "already exists" in page.inner_text(".skill-add-status")
 
 
-def test_import_refuses_a_link_that_is_not_github_without_running_anything(page):
+def test_a_link_from_anywhere_goes_to_the_installer_and_its_answer_stays_in_the_dialog(page):
     page.evaluate("openSkillAddMenu()")
     page.click("[data-choice=import]")
     page.fill(".skill-add-form [name=url]", "https://gitlab.com/owner/repo")
     page.click(".skill-add-form [type=submit]")
-    page.wait_for_selector(".skill-add-status.is-error")
-    assert page.inner_text(".skill-add-status") == "Only GitHub links can be imported."
+    page.wait_for_selector(".skill-add-status.is-error", timeout=60000)
+    # Not refused up front any more: the message comes from the installer run.
+    assert "Only GitHub links" not in page.inner_text(".skill-add-status")
     assert page.locator(".skill-add-overlay").count() == 1

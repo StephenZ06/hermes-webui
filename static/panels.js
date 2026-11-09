@@ -6436,6 +6436,107 @@ async function loadSkills() {
   } catch(e) { box.innerHTML = `<div style="padding:12px;color:var(--accent);font-size:12px">Error: ${esc(e.message)}</div>`; }
 }
 
+// ── Libraries tab (project builder catalog) ──
+let _librariesData = null;
+let _skillsTab = 'skills';
+const _LIB_LABELS = {npm: 'npm', 'copy-paste': 'Copy-paste', swiftui: 'SwiftUI', 'react-native': 'React Native', ios: 'iOS'};
+const _libLabel = (s) => _LIB_LABELS[s] || String(s || '').replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+
+function switchSkillsTab(name) {
+  _skillsTab = name === 'libraries' ? 'libraries' : 'skills';
+  const libs = _skillsTab === 'libraries';
+  $('skillsTabSkills').classList.toggle('is-active', !libs);
+  $('skillsTabSkills').setAttribute('aria-selected', String(!libs));
+  $('skillsTabLibraries').classList.toggle('is-active', libs);
+  $('skillsTabLibraries').setAttribute('aria-selected', String(libs));
+  $('skillsList').hidden = libs;
+  document.querySelector('#panelSkills .skills-search').hidden = libs;
+  $('librariesPane').hidden = !libs;
+  if (libs) loadLibraries();
+}
+
+async function loadLibraries(force = false) {
+  const box = $('librariesList');
+  if (_librariesData && !force) { renderLibraries(); return; }
+  _panelLoading(box);
+  try {
+    _librariesData = await api('/api/libraries');
+    const v = _librariesData.vocab;
+    [['libFilterStyle', v.styles], ['libFilterMotion', v.motions], ['libFilterPlatform', v.platforms]].forEach(([id, list]) => {
+      const sel = $(id), keep = sel.value, first = sel.options[0].outerHTML;
+      sel.innerHTML = first + list.map(x => `<option value="${esc(x)}">${esc(_libLabel(x))}</option>`).join('');
+      sel.value = keep;
+    });
+    renderLibraries();
+  } catch (e) { box.innerHTML = `<div class="lib-error">Error: ${esc(e.message)}</div>`; }
+}
+
+function _libCompHtml(lib, c) {
+  const chips = [...c.style, c.motion, ...c.platform].filter(Boolean).map(t => `<span class="lib-chip">${esc(_libLabel(t))}</span>`).join('');
+  const img = c.preview ? `<img src="api/libraries/preview?path=${encodeURIComponent(c.preview)}" alt="" loading="lazy" decoding="async">` : `<span class="lib-thumb-empty" aria-hidden="true">${esc((c.name || '?').slice(0, 1))}</span>`;
+  return `<div class="lib-comp" data-lib="${esc(lib.slug)}" data-comp="${esc(c.slug)}">
+    <div class="lib-thumb">${img}</div>
+    <div class="lib-comp-text"><strong>${esc(c.name)}</strong>${c.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<div class="lib-chips">${chips}</div></div>
+    <button type="button" class="lib-edit" data-lib-edit aria-label="Edit tags for ${esc(c.name)}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+  </div>`;
+}
+
+function renderLibraries() {
+  const box = $('librariesList');
+  if (!_librariesData) return;
+  const fs = $('libFilterStyle').value, fm = $('libFilterMotion').value, fp = $('libFilterPlatform').value;
+  const roles = _librariesData.vocab.roles;
+  const libs = _librariesData.libraries;
+  if (!libs.length) { box.innerHTML = '<div class="lib-empty">No libraries yet. Use + → Import and choose Library.</div>'; return; }
+  box.innerHTML = libs.map(lib => {
+    const comps = lib.components.filter(c => (!fs || c.style.includes(fs)) && (!fm || c.motion === fm) && (!fp || c.platform.includes(fp)));
+    const groups = [...roles, ''].map(role => {
+      const list = comps.filter(c => (c.role || '') === role);
+      if (!list.length) return '';
+      return `<div class="lib-role-head">${esc(role ? _libLabel(role) : 'Untagged')}</div><div class="lib-grid">${list.map(c => _libCompHtml(lib, c)).join('')}</div>`;
+    }).join('');
+    const meta = [lib.kind && _libLabel(lib.kind), ...lib.frameworks.map(_libLabel), lib.tailwind && 'Tailwind', lib.license].filter(Boolean).join(' · ');
+    return `<section class="lib-card" data-lib="${esc(lib.slug)}"><header class="lib-head"><span class="lib-name">${esc(lib.name)}</span>${lib.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<small class="lib-meta">${esc(meta)}</small></header>${groups}</section>`;
+  }).join('');
+  box.querySelectorAll('[data-lib-edit]').forEach(btn => btn.onclick = () => {
+    const el = btn.closest('.lib-comp');
+    const lib = libs.find(l => l.slug === el.dataset.lib);
+    _openLibraryTagForm(lib, lib.components.find(c => c.slug === el.dataset.comp));
+  });
+}
+
+function _libTagFields(v, c, prefix = '') {
+  const pick = (name, list, value) => `<select name="${prefix}${name}">${['', ...list].map(x => `<option value="${esc(x)}"${x === value ? ' selected' : ''}>${x ? esc(_libLabel(x)) : 'Choose…'}</option>`).join('')}</select>`;
+  const toggles = (attr, list, chosen) => `<div class="lib-toggles">${list.map(x => `<button type="button" class="lib-toggle${chosen.includes(x) ? ' is-on' : ''}" data-${attr}="${esc(x)}" aria-pressed="${chosen.includes(x)}">${esc(_libLabel(x))}</button>`).join('')}</div>`;
+  return `<label class="skill-add-field"><span>Role</span>${pick('role', v.roles, c.role)}</label>
+    <div class="skill-add-field"><span>Style</span>${toggles('style', v.styles, c.style)}</div>
+    <label class="skill-add-field"><span>Motion</span>${pick('motion', v.motions, c.motion)}</label>
+    <div class="skill-add-field"><span>Platform</span>${toggles('platform', v.platforms, c.platform)}</div>`;
+}
+
+function _readLibTags(root, prefix = '') {
+  const on = (attr) => [...root.querySelectorAll(`.lib-toggle.is-on[data-${attr}]`)].map(b => b.dataset[attr]);
+  return {role: root.querySelector(`[name=${prefix}role]`).value, style: on('style'), motion: root.querySelector(`[name=${prefix}motion]`).value, platform: on('platform')};
+}
+
+function _wireLibToggles(root) {
+  root.querySelectorAll('.lib-toggle').forEach(b => b.onclick = () => { const on = !b.classList.contains('is-on'); b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+}
+
+async function _openLibraryTagForm(lib, comp) {
+  await openSkillAddMenu();
+  const overlay = _skillAddOverlay;
+  const form = _skillAddForm(overlay, comp.name, `<div class="lib-tag-form">${_libTagFields(_librariesData.vocab, comp)}</div>`, 'Save', async (f, status) => {
+    try {
+      await api('/api/libraries/component', {method: 'POST', body: JSON.stringify({library: lib.slug, component: comp.slug, fields: _readLibTags(f)}), retries: 0});
+      _closeSkillAddMenu();
+      await loadLibraries(true);
+    } catch (err) { status.classList.add('is-error'); status.textContent = (err && err.message) || 'Could not save.'; }
+  });
+  form.classList.add('lib-tag-form');
+  _wireLibToggles(form);
+}
+
 let _collapsedCats = new Set(); // persisted collapsed state across re-renders
 
 function _toggleCatCollapse(cat) {
@@ -6892,7 +6993,7 @@ function _paintSkillAddChoices(overlay) {
   const body = overlay.querySelector('.skill-add-body');
   const choices = [
     ['create', 'New skill', 'Write a SKILL.md yourself.'],
-    ['import', 'Import skill', 'Install one from a GitHub link.'],
+    ['import', 'Import', 'A skill or UI library, from any link.'],
     ['category', 'New category', 'A folder to keep skills in.'],
   ];
   body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon"><img src="${_SKILL_ADD_ICONS[key]}" width="32" height="32" alt="" decoding="async" draggable="false"></span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
@@ -6943,29 +7044,84 @@ async function _afterSkillAdded(name) {
   }
 }
 
-function _renderSkillImport(overlay) {
-  _skillAddForm(overlay, 'Import skill', `
-    <label class="skill-add-field"><span>GitHub link</span><input type="url" name="url" required placeholder="https://github.com/owner/repo/tree/main/skills/name" autocomplete="off" spellcheck="false"></label>
-    <label class="skill-add-field"><span>Keep it in</span>${_skillCategorySelect('skillImportCategory', '')}</label>
-    <p class="skill-add-hint">Link to the skill's folder or its SKILL.md. Hermes downloads it, scans it, then installs it for this profile.</p>`,
-  'Install', async (form, status) => {
-    const before = new Set((_skillsData || []).map(s => s.name));
-    status.textContent = 'Installing…'; status.classList.add('is-busy');
-    let res;
-    try {
-      res = await api('/api/skills/import', {method: 'POST', body: JSON.stringify({url: form.url.value, category: form.querySelector('select').value}), timeoutMs: 260000, retries: 0});
-    } catch (err) {
-      status.classList.remove('is-busy'); status.classList.add('is-error');
-      status.textContent = (err && err.message) || 'The install failed.';
-      return;
+function _renderSkillImport(overlay, kind = 'skill') {
+  const isLib = kind === 'library';
+  const form = _skillAddForm(overlay, isLib ? 'Import library' : 'Import skill', `
+    <div class="skill-add-kind" role="radiogroup" aria-label="What to import"><button type="button" role="radio" data-kind="skill" aria-checked="${!isLib}" class="${isLib ? '' : 'is-on'}">Skill</button><button type="button" role="radio" data-kind="library" aria-checked="${isLib}" class="${isLib ? 'is-on' : ''}">Library</button></div>
+    <label class="skill-add-field"><span>Link</span><input type="url" name="url" required placeholder="${isLib ? 'https://github.com/owner/ui-library' : 'https://github.com/owner/repo/tree/main/skills/name'}" autocomplete="off" spellcheck="false"></label>
+    ${isLib ? '' : `<label class="skill-add-field"><span>Keep it in</span>${_skillCategorySelect('skillImportCategory', '')}</label>`}
+    <p class="skill-add-hint">${isLib ? 'Hermes downloads it without running anything, then drafts tags for each component for you to check.' : "Link to the skill's folder or its SKILL.md. Hermes downloads it, scans it, then installs it for this profile."}</p>`,
+  isLib ? 'Import' : 'Install', async (f, status) => isLib ? _importLibrary(overlay, f, status) : _installSkillFrom(f, status, false));
+  form.querySelectorAll('.skill-add-kind button').forEach(b => b.onclick = () => { if (b.dataset.kind !== kind && !overlay._busy) _renderSkillImport(overlay, b.dataset.kind); });
+}
+
+async function _installSkillFrom(form, status, force) {
+  const before = new Set((_skillsData || []).map(s => s.name));
+  status.textContent = 'Installing…'; status.className = 'skill-add-status is-busy';
+  try {
+    await api('/api/skills/import', {method: 'POST', body: JSON.stringify({url: form.url.value, category: form.querySelector('select').value, force}), timeoutMs: 260000, retries: 0});
+  } catch (err) {
+    status.className = 'skill-add-status is-error';
+    let data = {};
+    try { data = JSON.parse(err && err.body || '{}'); } catch (_) {}
+    status.textContent = (err && err.message) || 'The install failed.';
+    if (data.status === 'blocked' && data.can_force) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'app-dialog-btn skill-add-force'; btn.textContent = 'Install anyway';
+      btn.onclick = () => _installSkillFrom(form, status, true);
+      status.append(' ', btn);
     }
-    status.classList.remove('is-busy');
-    showToast('Skill imported');
-    _closeSkillAddMenu();
-    await _afterSkillAdded(null);
-    const added = (_skillsData || []).find(s => !before.has(s.name));
-    if (added) await _afterSkillAdded(added.name);
+    return;
+  }
+  status.className = 'skill-add-status';
+  showToast('Skill imported');
+  _closeSkillAddMenu();
+  await _afterSkillAdded(null);
+  const added = (_skillsData || []).find(s => !before.has(s.name));
+  if (added) await _afterSkillAdded(added.name);
+}
+
+async function _importLibrary(overlay, form, status) {
+  status.textContent = 'Downloading and drafting…'; status.className = 'skill-add-status is-busy';
+  try {
+    const {job_id} = await api('/api/libraries/import', {method: 'POST', body: JSON.stringify({link: form.url.value}), retries: 0});
+    let job;
+    do { await new Promise(r => setTimeout(r, 2000)); job = await api('/api/libraries/job?job_id=' + encodeURIComponent(job_id)); } while (job.status === 'running' && overlay.isConnected);
+    if (!overlay.isConnected) return;
+    if (job.status !== 'done') throw new Error(job.error || 'The import failed.');
+    _renderLibraryReview(overlay, job.result);
+  } catch (err) { status.className = 'skill-add-status is-error'; status.textContent = (err && err.message) || 'The import failed.'; }
+}
+
+async function _renderLibraryReview(overlay, result) {
+  if (!_librariesData) _librariesData = await api('/api/libraries');
+  const v = _librariesData.vocab, d = result.draft, lib = d.library || {};
+  const pick = (name, list, value) => `<select name="${name}">${['', ...list].map(x => `<option value="${esc(x)}"${x === value ? ' selected' : ''}>${x ? esc(_libLabel(x)) : 'Choose…'}</option>`).join('')}</select>`;
+  const comps = (d.components || []).map((c, i) => `<fieldset class="lib-review-comp" data-i="${i}"><legend><input name="c${i}name" value="${esc(c.name)}" aria-label="Component name"></legend>${_libTagFields(v, {style: [], platform: [], ...c}, 'c' + i)}</fieldset>`).join('');
+  const form = _skillAddForm(overlay, 'Check the draft', `<div class="lib-review">
+    ${result.draft_error ? `<p class="skill-add-hint is-warn">Hermes could not draft this one (${esc(result.draft_error)}). Fill it in below.</p>` : ''}
+    <label class="skill-add-field"><span>Name</span><input name="name" required value="${esc(lib.name || '')}"></label>
+    <label class="skill-add-field"><span>Kind</span>${pick('kind', v.kinds, lib.kind)}</label>
+    <div class="skill-add-field"><span>Frameworks</span><div class="lib-toggles">${v.frameworks.map(x => `<button type="button" class="lib-toggle${(lib.frameworks || []).includes(x) ? ' is-on' : ''}" data-framework="${esc(x)}" aria-pressed="${(lib.frameworks || []).includes(x)}">${esc(_libLabel(x))}</button>`).join('')}</div></div>
+    <label class="skill-add-check"><input type="checkbox" name="tailwind"${lib.tailwind ? ' checked' : ''}><span>Needs Tailwind CSS</span></label>
+    <label class="skill-add-field"><span>Install command</span><input name="install" value="${esc(lib.install || '')}"></label>
+    <p class="skill-add-hint">Licence: ${esc(lib.license || 'not stated')} · ${esc(lib.source || '')}</p>
+    ${comps || '<p class="skill-add-hint">No components found. Save it and add tags later.</p>'}</div>`, 'Save to catalog', async (f, status) => {
+    const components = [...f.querySelectorAll('.lib-review-comp')].map(fs => ({name: fs.querySelector(`[name=c${fs.dataset.i}name]`).value, ...(d.components[fs.dataset.i] || {}), ..._readLibTags(fs, 'c' + fs.dataset.i)}));
+    components.forEach((c, i) => { c.name = f.querySelector(`[name=c${i}name]`).value; });
+    const library = {...lib, name: f.name.value, kind: f.kind.value, tailwind: f.tailwind.checked, install: f.install.value,
+      frameworks: [...f.querySelectorAll('.lib-toggle.is-on[data-framework]')].map(b => b.dataset.framework)};
+    try {
+      await api('/api/libraries/save', {method: 'POST', body: JSON.stringify({staging: result.staging, slug: d.slug || library.name, library, components}), retries: 0});
+      showToast('Library added');
+      _closeSkillAddMenu();
+      await loadLibraries(true);
+    } catch (err) { status.classList.add('is-error'); status.textContent = (err && err.message) || 'Could not save.'; }
   });
+  _wireLibToggles(form);
+  const installField = form.install.closest('.skill-add-field');
+  const syncInstall = () => { installField.hidden = form.kind.value !== 'npm'; };
+  form.kind.addEventListener('change', syncInstall); syncInstall();
 }
 
 function _renderSkillNewCategory(overlay) {

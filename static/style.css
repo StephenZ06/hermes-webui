@@ -17926,3 +17926,46 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .skill-add-choices.is-entering .skill-add-choice,.skill-add-status:not(:empty){animation:none;}
   .skill-add-choice-icon img,.skill-add-choice{transition:none;}
 }
+
+/* ── Skills page: Skills / Libraries tabs and the library catalog ── */
+.skills-tabs{display:flex;gap:8px;padding:0 12px 4px;flex-shrink:0;}
+.libraries-pane{display:flex;flex-direction:column;flex:1;min-height:0;padding-top:8px;}
+.libraries-pane[hidden],.skills-search[hidden],#skillsList[hidden]{display:none;}
+.skills-tab{flex:1;height:32px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;}
+.skills-tab:hover{color:var(--text);border-color:var(--accent);}
+.skills-tab.is-active{background:var(--accent-bg);color:var(--text);border-color:var(--accent);}
+.lib-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 8px;flex-shrink:0;}
+.lib-filters select{height:32px;min-width:0;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg,var(--bg));color:var(--text);font:inherit;font-size:12px;padding:0 8px;}
+.lib-card{padding:0 4px 16px;}
+.lib-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:8px 0;}
+.lib-name{font-weight:700;font-size:13px;}
+.lib-meta{color:var(--muted);font-size:11px;}
+.lib-role-head{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--muted);text-transform:uppercase;padding:8px 0;}
+.lib-grid{display:grid;grid-template-columns:1fr;gap:8px;}
+.lib-comp{display:grid;grid-template-columns:56px minmax(0,1fr) 32px;align-items:center;gap:8px;height:72px;padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);box-sizing:border-box;}
+.lib-thumb{width:56px;height:56px;border-radius:8px;overflow:hidden;background:var(--hover-bg);display:grid;place-items:center;}
+.lib-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.lib-thumb-empty{font-weight:700;color:var(--muted);}
+.lib-comp-text{min-width:0;display:flex;flex-direction:column;gap:4px;}
+.lib-comp-text strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lib-chips{display:flex;flex-wrap:wrap;gap:4px;height:16px;overflow:hidden;}
+.lib-chip{font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;background:var(--hover-bg);color:var(--muted);white-space:nowrap;}
+.lib-badge-needs{font-size:10px;line-height:16px;padding:0 6px;border-radius:8px;background:color-mix(in srgb,var(--warning) 16%,transparent);color:var(--warning);align-self:flex-start;}
+.lib-edit{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;}
+.lib-edit:hover{background:var(--hover-bg);color:var(--text);}
+.lib-empty,.lib-error{padding:16px;font-size:12px;color:var(--muted);}
+.skill-add-kind{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.skill-add-kind button,.lib-toggle{height:32px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;}
+.skill-add-kind button.is-on,.lib-toggle.is-on{background:var(--accent-bg);color:var(--text);border-color:var(--accent);}
+.lib-toggles{display:flex;flex-wrap:wrap;gap:8px;}
+.lib-toggle{padding:0 12px;}
+.lib-review{display:flex;flex-direction:column;gap:8px;max-height:min(60vh,560px);overflow:auto;}
+.lib-review-comp{border:1px solid var(--border2);border-radius:8px;padding:8px 16px 16px;display:flex;flex-direction:column;gap:8px;}
+.lib-review-comp legend input{font:inherit;font-weight:600;border:0;background:transparent;color:var(--text);padding:0 4px;}
+.skill-add-force{margin-left:8px;}
+
+.skill-add-field select{height:40px;}
+.skill-add-field[hidden]{display:none;}
+.skill-add-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;}
+.skill-add-check input{width:16px;height:16px;margin:0;accent-color:var(--accent);}
+.lib-review-comp legend{padding:0 4px;}
