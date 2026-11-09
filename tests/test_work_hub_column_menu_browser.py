@@ -189,10 +189,12 @@ def test_work_hub_fields_light_up_exactly_like_the_chat_filter(page):
     assert ring("[data-board-filter-query='triage']", "[data-board-filter-query='triage']") == reference
 
 
-def test_the_icon_rail_leaves_equal_whole_pixel_gaps_beside_its_buttons(page):
+def test_the_icon_rail_squares_sit_half_a_pixel_right_of_centre(page):
+    # The rounded squares were asked to sit off centre (1px right, then 0.5px
+    # back left): 6.5px from the rail's left edge and 5.5px from its border.
     gaps = page.evaluate("""() => { const r = document.querySelector('.rail'); const rr = r.getBoundingClientRect();
         const inner = rr.right - parseFloat(getComputedStyle(r).borderRightWidth);
         return [...r.querySelectorAll('.rail-btn')].filter(b => b.offsetParent).map(b => { const q = b.getBoundingClientRect(); return [q.left - rr.left, inner - q.right]; }); }""")
     assert gaps
     for left, right in gaps:
-        assert left == right and left == int(left), gaps
+        assert (left, right) == (6.5, 5.5), gaps

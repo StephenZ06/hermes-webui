@@ -178,7 +178,7 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
 agents-office is PolyForm Noncommercial 1.0.0; this repository is MIT. Copied
 code cannot ship under this repo's licence. This work therefore treats the
 upstream project as a **visual and structural reference only** — the same
-posture `Agent Canvas FounderOS Migration.md` took toward FounderOS — and
+posture `docs/AGENT_CANVAS_FOUNDEROS_MIGRATION.md` took toward FounderOS — and
 writes its own scene code. three.js itself is MIT and is vendored with its
 licence (`static/vendor/three/0.185.1/LICENSE.md`).
 

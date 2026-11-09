@@ -166,6 +166,29 @@ Rows that a text change re-flows, such as the centred titlebar and the
 composer's chips, slide their items to their new places (`SlideOnChange`)
 instead of letting them jump.
 
+Three shared mechanisms in `static/motion-ui.js` and `static/ui.js` cover
+motion that would otherwise need editing at every call site:
+
+- **Popup presence** (`motion-ui.js`): any menu, picker, popover or modal added
+  to `<body>` with no animation of its own slides and fades in (menus from
+  their trigger, modals rise while the backdrop fades). When one is removed
+  without an exit of its own, a pixel-only copy (styles baked inline, every
+  class, id and data attribute stripped, inert) fades out in its place, so
+  code that looks a popup up by class never mistakes the copy for an open
+  popup. Popups that already animate (`.popup-closing`, `.is-leaving`,
+  `MotionUI.presence`, a CSS entrance) are left alone.
+- **Content arrival** (`motion-ui.js`): when a page writes its data in place of
+  a loading bar, spinner or skeleton, the new content fades in (opacity only,
+  so positions are final from the first frame). Lists with motion of their own
+  and the chat transcript are skipped.
+- **Linked deletes** (`rebuildWithExits` in `ui.js`): a side panel rebuilt after
+  something was deleted on another page (a workspace deleted in Chat, Work Hub
+  or Notes) puts the old row back, inert and stripped of ids and data
+  attributes, and collapses it out with `animateRemoval`.
+
+Modal backdrops dim and blur half as much as the original values
+(`app-dialog-overlay` 0.31 and 3px), so the page behind stays readable.
+
 On a desktop with a mouse the top bar rests above the window and slides down
 when the pointer reaches the top edge, or when keyboard focus lands in it. Touch
 screens, phones and installed apps with window controls in the bar keep it in

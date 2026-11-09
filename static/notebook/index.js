@@ -165,14 +165,49 @@
     if (!root) return;
     // Only the first load covers the page: switching notes keeps the list and
     // the editor chrome in place instead of flashing a loader over them.
-    const loading = S.loading && !S.loaded && !S.error;
+    // The first load also covers the note being reopened, so the list, the
+    // side panel and the note come in together rather than one by one.
+    const loading = (S.loading && !S.loaded && !S.error) || firstReveal;
     root.classList.toggle('nb-is-loading', loading);
+    const side = $('notebookSidebar');
+    if (side) side.classList.toggle('nb-side-pending', loading);
     const loader = root.querySelector('.nb-page-loader');
     if (loader) {
       loader.setAttribute('aria-busy', String(loading));
       const label = loader.querySelector('.nb-page-loader-label');
       if (label) label.textContent = 'Loading notes';
     }
+  }
+  let firstReveal = false;
+  // Lift the first-load cover and bring everything in with one fade.
+  function finishFirstReveal() {
+    if (!firstReveal) return;
+    firstReveal = false;
+    syncInitialLoadingState();
+    const root = $('notebookRoot'), side = $('notebookSidebar');
+    [root, side].forEach((el) => {
+      if (!el) return;
+      el.classList.remove('nb-arriving');
+      void el.offsetWidth;
+      el.classList.add('nb-arriving');
+      setTimeout(() => el.classList.remove('nb-arriving'), 520);
+    });
+  }
+  // BlockNote renders a mounted note a frame or two later: resolve once its
+  // first block is on the page (or after 600ms, so it can never hang).
+  function editorPainted() {
+    return new Promise((resolve) => {
+      const host = $('nbEditorHost');
+      if (!host || !editorCtl) { resolve(); return; }
+      const done = () => requestAnimationFrame(() => resolve());
+      if (host.querySelector('.bn-block-content')) { done(); return; }
+      const watch = new MutationObserver(() => {
+        if (!host.querySelector('.bn-block-content')) return;
+        watch.disconnect(); clearTimeout(timer); done();
+      });
+      watch.observe(host, {subtree: true, childList: true});
+      const timer = setTimeout(() => { watch.disconnect(); resolve(); }, 600);
+    });
   }
   function loadBootstrap() {
     if (bootstrapPromise) return bootstrapPromise;
@@ -323,7 +358,10 @@
     const vaultBefore = !!(navOf() && navOf().classList.contains('nb-nav-vault'));
     const scrolled = navOf() ? navOf().scrollTop : 0;
     const titlesBefore = sidebarTitles(side);
-    buildSidebar(side);
+    // A workspace or folder deleted on another page collapses out of the list.
+    const rowKey = (node) => node.dataset.nbKey || (node.querySelector(':scope > [data-nb-key]') || {dataset: {}}).dataset.nbKey || '';
+    if (typeof window.rebuildWithExits === 'function') window.rebuildWithExits(side, '.nb-projects,.nb-folders', rowKey, () => buildSidebar(side));
+    else buildSidebar(side);
     easeRenamedTitles(side, titlesBefore);
     if (scrolled && navOf() && navOf().classList.contains('nb-nav-vault') === vaultBefore) navOf().scrollTop = scrolled;
     if (from) window.playActiveHighlightGlide(side, from, {...SIDEBAR_HIGHLIGHT, bounds: side});
@@ -1843,7 +1881,8 @@
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');
     S.noteLoading = true; S.noteError = ''; S.pane = 'editor';
     destroyEditor();
-    showSkeleton(noteId);
+    // Under the first-load cover there is nothing to stand in for.
+    if (!firstReveal) showSkeleton(noteId);
     render();
     try {
       const {note} = await (takePrefetched(noteId) || window.NotebookApi.get(noteId));
@@ -2345,6 +2384,7 @@
       // Build one stable, centred loading layer before the request starts.
       // The real page stays underneath it, so it can fade cleanly into view.
       const bootstrap = loadBootstrap();
+      firstReveal = true;
       ensureShell();
       // The note to reopen and the editor load alongside the note list,
       // rather than one after another once the list is in.
@@ -2352,11 +2392,18 @@
       if (!last) { try { last = localStorage.getItem(LAST_KEY); } catch (_) {} }
       if (last) prefetchNote(last);
       loadEditorModule().catch(() => {});
-      await bootstrap;
-      syncInitialLoadingState();
-      if (!isShowing()) return;
-      render();
-      if (last && S.notes.some((n) => n.id === last && live(n))) { S.pane = window.matchMedia('(max-width: 760px)').matches ? 'list' : 'editor'; await openNote(last); }
+      // An editor that never loads cannot hold the page hidden.
+      const lift = setTimeout(finishFirstReveal, 5000);
+      try {
+        await bootstrap;
+        if (!isShowing()) return;
+        render();
+        if (last && S.notes.some((n) => n.id === last && live(n))) { S.pane = window.matchMedia('(max-width: 760px)').matches ? 'list' : 'editor'; await openNote(last); await editorPainted(); }
+      } finally {
+        // Every exit (shown, error, left the page) lifts the cover.
+        clearTimeout(lift);
+        finishFirstReveal();
+      }
       prefetched = null;
     } else {
       render();

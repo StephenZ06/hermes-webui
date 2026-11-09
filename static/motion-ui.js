@@ -571,3 +571,208 @@
     init();
   }
 })();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Popup presence: every menu, picker and modal opened on top of the page.
+//
+// Dozens of features add their own popup to <body> and remove it with
+// el.remove() from many close paths (a click outside, Escape, picking an item,
+// opening another). Rather than editing each one, this watches <body>:
+// - a popup that arrives with no animation of its own fades and slides in
+//   (menus from their trigger, modals rise while the backdrop fades);
+// - a popup removed without an exit of its own leaves a short-lived copy in
+//   its place that fades and slides out, inert, so the page never snaps.
+// Popups that already animate (MotionUI.presence, .popup-closing, .is-leaving,
+// .overlay-closing, a CSS entrance) are left alone, and reduced motion skips
+// all of it.
+// ─────────────────────────────────────────────────────────────────────────────
+(function(){
+  'use strict';
+  const POPUP = /(^|[\s_-])(menu|picker|popup|popover|overlay|dialog|modal|backdrop|lightbox|dropdown|scrim|sheet|drawer)([\s_-]|$)/i;
+  const SKIP = /(ghost|glide|toast|tooltip|drag|confetti|burst|plane|highlight|levelup|loader|spinner|skel|sr-only)/i;
+  const CLOSING = /(closing|leaving|is-out|is-hiding|is-exiting)/i;
+  const BACKDROP = /(overlay|backdrop|scrim|lightbox)/i;
+  const IN_EASE = 'cubic-bezier(.16,1,.3,1)';
+  const OUT_EASE = 'cubic-bezier(.4,0,1,1)';
+  const tracked = new WeakMap(); // popup -> {at, dir}
+  const MAX_GHOST_NODES = 300;      // bigger popups just close
+  // What a pixel copy still needs: images, SVG geometry and form values.
+  const KEEP_ATTR = /^(src|srcset|alt|width|height|viewBox|d|points|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|fill|stroke|stroke-width|stroke-linecap|stroke-linejoin|transform|xmlns|href|xlink:href|value|type|checked|disabled|placeholder|colspan|rowspan)$/;
+
+  function reduced(){
+    try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; }
+  }
+  function className(el){
+    return typeof el.className === 'string' ? el.className : (el.getAttribute && el.getAttribute('class')) || '';
+  }
+  function isPopup(el){
+    if(!el || el.nodeType !== 1 || el.dataset.popupGhost) return false;
+    if(!/^(DIV|SECTION|ASIDE|DIALOG|UL|NAV|FORM|MENU)$/.test(el.tagName)) return false;
+    const cls = className(el) + ' ' + (el.id || '');
+    const role = el.getAttribute('role') || '';
+    if(SKIP.test(cls)) return false;
+    return POPUP.test(cls) || /^(dialog|menu|listbox|alertdialog)$/.test(role);
+  }
+  function isBackdrop(el){
+    return BACKDROP.test(className(el) + ' ' + (el.id || ''));
+  }
+  function panelOf(el){
+    return el.querySelector(':scope > [role="dialog"], :scope > [role="alertdialog"]') || el.firstElementChild;
+  }
+  function animating(el){
+    try{ return el.getAnimations().some((a) => a.playState !== 'finished'); }catch(_){ return true; }
+  }
+  // Menus below the middle of the screen open upward, so they rise; the rest drop.
+  function menuDir(el){
+    const r = el.getBoundingClientRect();
+    return r.top > window.innerHeight / 2 ? 6 : -6;
+  }
+
+  function enter(el){
+    const cs = getComputedStyle(el);
+    if(cs.display === 'none' || cs.visibility === 'hidden') return;
+    if(!/^(fixed|absolute|sticky)$/.test(cs.position)) return;
+    const info = {at: performance.now(), dir: 0};
+    tracked.set(el, info);
+    if(cs.animationName && cs.animationName !== 'none') return;
+    if(animating(el)) return;
+    if(isBackdrop(el)){
+      el.animate([{opacity: 0}, {opacity: 1}], {duration: 180, easing: 'ease-out'});
+      const panel = panelOf(el);
+      if(panel && !animating(panel) && getComputedStyle(panel).animationName === 'none'){
+        panel.animate([{opacity: 0, translate: '0 12px', scale: '.98'}, {opacity: 1, translate: '0 0', scale: '1'}], {duration: 260, easing: IN_EASE});
+      }
+      return;
+    }
+    info.dir = menuDir(el);
+    el.animate([{opacity: 0, translate: `0 ${info.dir}px`, scale: '.97'}, {opacity: 1, translate: '0 0', scale: '1'}], {duration: 200, easing: IN_EASE});
+  }
+
+  function leave(el){
+    const info = tracked.get(el);
+    tracked.delete(el);
+    if(!info || el.isConnected) return;               // moved, not closed
+    if(performance.now() - info.at < 60) return;      // never really shown
+    if(CLOSING.test(className(el)) || el.inert || el.dataset.closing === '1') return;
+    if(el.style.display === 'none' || el.style.opacity === '0' || el.hidden) return;
+    if(el.getElementsByTagName('*').length > MAX_GHOST_NODES) return;
+    const backdrop = isBackdrop(el);
+    const ghost = el.cloneNode(true);
+    ghost.inert = true;
+    document.body.appendChild(ghost);
+    // Bake the look in, then drop every class, id and data attribute, so the
+    // copy is pixels only: code that looks a popup up by class (a toggle
+    // checking whether its menu is open) never finds it. All styles are read
+    // before any is written, and nothing else runs in between.
+    const nodes = [ghost, ...ghost.getElementsByTagName('*')];
+    const looks = nodes.map((n) => {
+      const cs = getComputedStyle(n);
+      let text = '';
+      for(let i = 0; i < cs.length; i++){
+        const prop = cs[i];
+        if(/^(animation|transition)/.test(prop)) continue;
+        text += prop + ':' + cs.getPropertyValue(prop) + ';';
+      }
+      return text;
+    });
+    nodes.forEach((n, i) => {
+      [...n.attributes].forEach((attr) => { if(!KEEP_ATTR.test(attr.name)) n.removeAttribute(attr.name); });
+      n.setAttribute('style', looks[i]);
+    });
+    ghost.inert = true;
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.pointerEvents = 'none';
+    ghost.dataset.popupGhost = '1';
+    let anim;
+    if(backdrop){
+      anim = ghost.animate([{opacity: 1}, {opacity: 0}], {duration: 180, easing: 'ease-in', fill: 'forwards'});
+      const panel = panelOf(ghost);
+      if(panel) panel.animate([{opacity: 1, translate: '0 0', scale: '1'}, {opacity: 0, translate: '0 8px', scale: '.98'}], {duration: 180, easing: OUT_EASE, fill: 'forwards'});
+    }else{
+      const dir = info.dir || menuDir(ghost);
+      anim = ghost.animate([{opacity: 1, translate: '0 0', scale: '1'}, {opacity: 0, translate: `0 ${dir * 0.7}px`, scale: '.97'}], {duration: 150, easing: OUT_EASE, fill: 'forwards'});
+    }
+    const done = () => ghost.remove();
+    anim.finished.then(done, done);
+    setTimeout(done, 400);
+  }
+
+  function init(){
+    if(!document.body || typeof MutationObserver === 'undefined' || !Element.prototype.animate) return;
+    new MutationObserver((records) => {
+      if(reduced()) return;
+      for(const rec of records){
+        rec.removedNodes.forEach((n) => { if(n.nodeType === 1 && tracked.has(n)) leave(n); });
+        rec.addedNodes.forEach((n) => { if(isPopup(n) && n.isConnected){ try{ enter(n); }catch(_){} } });
+      }
+    }).observe(document.body, {childList: true});
+  }
+  window.PopupPresence = {isPopup};
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, {once: true});
+  else init();
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Content arrival: a page's data replacing its loader fades in.
+//
+// Pages show a loading bar, spinner or skeleton, then write their content in
+// its place (usually one innerHTML). Each page used to cut straight from the
+// loader to the content. This watches the main view and the side panels: when
+// a write removes a loader and adds content (in the same step or the next),
+// the new content fades in, a beat apart per block. The chat transcript has its own
+// motion and is left out, as is anything already animating.
+// ─────────────────────────────────────────────────────────────────────────────
+(function(){
+  'use strict';
+  const LOADER = /(^|[\s_-])(loading|loader|spinner|skeleton|skel|is-loading)([\s_-]|$)/i;
+  const OWN_MOTION = '#messages, .messages, #messagesInner, .skel-host, [data-no-arrival]';
+  function cls(el){ return typeof el.className === 'string' ? el.className : ''; }
+  function isLoader(node){
+    if(node.nodeType !== 1) return false;
+    if(LOADER.test(cls(node))) return true;
+    const only = node.children.length === 1 ? node.firstElementChild : null;
+    return !!(only && LOADER.test(cls(only)));
+  }
+  function reduced(){
+    try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; }
+  }
+  function arrive(nodes){
+    let i = 0;
+    nodes.forEach((node) => {
+      if(node.nodeType !== 1 || isLoader(node) || !node.isConnected) return;
+      if(!node.getClientRects().length) return;
+      // Lists with motion of their own (playListItemChange) keep it alone.
+      try{ if(node.getAnimations({subtree: true}).length) return; }catch(_){ return; }
+      // Opacity only: layout and positions are final from the first frame.
+      node.animate([{opacity: 0}, {opacity: 1}],
+        {duration: 280, delay: Math.min(i, 5) * 30, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards'});
+      i += 1;
+    });
+  }
+  const cleared = new WeakMap(); // element -> when a loader left it
+  function init(){
+    if(typeof MutationObserver === 'undefined' || !Element.prototype.animate) return;
+    const roots = [document.querySelector('main.main'), document.querySelector('.sidebar')].filter(Boolean);
+    if(!roots.length) return;
+    const watch = new MutationObserver((records) => {
+      if(reduced()) return;
+      for(const rec of records){
+        if(!rec.addedNodes.length) {
+          rec.removedNodes.forEach((n) => { if(isLoader(n)) cleared.set(rec.target, performance.now()); });
+          continue;
+        }
+        const target = rec.target;
+        if(target.nodeType !== 1 || target.closest(OWN_MOTION)) continue;
+        let hadLoader = false;
+        rec.removedNodes.forEach((n) => { if(!hadLoader && isLoader(n)) hadLoader = true; });
+        // A loader removed in one step and the content added in the next.
+        if(hadLoader) cleared.set(target, performance.now());
+        else if(performance.now() - (cleared.get(target) || -1e9) > 120) continue;
+        arrive([...rec.addedNodes]);
+      }
+    });
+    roots.forEach((root) => watch.observe(root, {childList: true, subtree: true}));
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, {once: true});
+  else init();
+})();

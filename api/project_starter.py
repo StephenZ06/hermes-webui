@@ -43,10 +43,10 @@ _TEMPLATES = {
                 ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md")),
     "api": ("API/Backend", "Services, endpoints and data stores.",
             ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
+    "website": ("Website", "Marketing sites, portfolios and content pages.",
+                ("PRODUCT.md", "PAGES.md", "UI_UX.md", "SEO.md", "TESTING.md")),
     "cli": ("CLI Tool", "Command-line tools and automation scripts.",
             ("PRODUCT.md", "ARCHITECTURE.md", "CLI.md", "TESTING.md")),
-    "data": ("Data / ML", "Analysis, pipelines and model training.",
-             ("PRODUCT.md", "DATA.md", "EXPERIMENTS.md", "TESTING.md")),
     "research": ("Research", "Investigations, reviews and write-ups.",
                  ("RESEARCH.md", "SOURCES.md", "FINDINGS.md")),
 }
@@ -222,16 +222,17 @@ _DOC_SECTIONS = {
         ("Output", "Human and machine-readable output formats."),
         ("Distribution", "How the tool is packaged and installed."),
     ]),
-    "DATA.md": ("Data", [
-        ("Sources", "Where data comes from, its licence, and how it is refreshed."),
-        ("Pipeline", "Each step from raw data to output, and where intermediate files live."),
-        ("Quality checks", "Validation that runs before data is used."),
-        ("Privacy", "Personal or sensitive fields and how they are handled."),
+    "PAGES.md": ("Pages and content", [
+        ("Sitemap", "Every page, its URL and what it is for."),
+        ("Content", "Headings, copy and calls to action for each page, and who supplies them."),
+        ("Media", "Images, video and fonts: source, licence and the sizes each page needs."),
+        ("Editing", "How content is changed after launch (files, a CMS, or a form), and by whom."),
     ]),
-    "EXPERIMENTS.md": ("Experiments", [
-        ("Log", "One entry per run: date, hypothesis, setup, metrics and result."),
-        ("Baselines", "Reference results new runs are compared against."),
-        ("Reproducibility", "Seeds, environment and data versions needed to repeat a run."),
+    "SEO.md": ("SEO, performance and hosting", [
+        ("Metadata", "Title, description and social preview for each page; sitemap.xml and robots.txt."),
+        ("Performance budget", "Target load time and page weight, and how they are measured."),
+        ("Analytics", "What is tracked, with what tool, and the consent it needs."),
+        ("Hosting and domain", "Where the site is deployed, the domain and DNS, and who owns the accounts (no secrets in the repo)."),
     ]),
     "RESEARCH.md": ("Research", [
         ("Question", "The question this research must answer."),
@@ -270,6 +271,8 @@ def _readme(name: str, label: str, brief: str, docs: tuple[str, ...]) -> str:
 ## Getting started
 
 TBD: prerequisites, install and run commands. Keep these copy-pasteable and tested.
+Dependencies install inside this project (a `.venv` for Python, `node_modules`
+from `package.json` for JavaScript), never globally.
 
 ## Project map
 
@@ -301,6 +304,12 @@ These rules apply to every AI agent working in this repository.
 
 - Keep the change to the requested scope; note adjacent problems instead of fixing them silently.
 - Follow the commands and checks in `docs/TESTING.md` (or the README) before calling work done.
+- Install dependencies inside the project only: a virtual environment in `.venv`
+  for Python (`python -m venv .venv`, then its own `pip`), `node_modules` from the
+  project's `package.json` (or `npx`) for JavaScript, and the platform's own
+  project-local tooling elsewhere. Never install globally: no `pip install`
+  outside the environment, no `npm install -g`, no `sudo`. Keep `.venv/` and
+  `node_modules/` out of version control.
 - Never commit secrets, tokens, `.env` files or personal data.
 - Do not deploy, migrate, push or delete outside the repository without explicit approval.
 

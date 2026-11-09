@@ -6845,16 +6845,49 @@ async function openSkillAddMenu() {
   overlay.querySelector('[data-skill-add=close]').onclick = _closeSkillAddMenu;
   overlay._onKey = (e) => { if (e.key === 'Escape' && !overlay._busy) { e.preventDefault(); e.stopPropagation(); _closeSkillAddMenu(); } };
   document.addEventListener('keydown', overlay._onKey, true);
-  _renderSkillAddChoices(overlay);
+  _renderSkillAddChoices(overlay, 0);
 }
 
+// Artwork for the three choices (static/skills/), 32px centred in a 36px slot.
 const _SKILL_ADD_ICONS = {
-  create: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>',
-  import: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>',
-  category: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 12v5M9.5 14.5h5"/></svg>',
+  create: 'static/skills/new-skill.png',
+  import: 'static/skills/import-skill.png',
+  category: 'static/skills/new-category.png',
 };
 
-function _renderSkillAddChoices(overlay) {
+// Moving between the choices and a form: the dialog eases to its new height
+// while the new step slides in from the side it comes from (forward from the
+// right, Back from the left) and the title cross-fades.
+function _skillAddSwap(overlay, dir, render) {
+  const dialog = overlay.querySelector('.skill-add-dialog');
+  const body = overlay.querySelector('.skill-add-body');
+  const title = overlay.querySelector('#skillAddTitle');
+  const first = !body.childElementCount;
+  const from = dialog.getBoundingClientRect().height;
+  render();
+  let reduce = false;
+  try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
+  if (first || reduce || !dialog.animate) return;
+  const to = dialog.getBoundingClientRect().height;
+  const ease = 'cubic-bezier(.16,1,.3,1)';
+  if (Math.abs(to - from) > 1) {
+    dialog.style.overflow = 'hidden';
+    const grow = dialog.animate([{height: from + 'px'}, {height: to + 'px'}], {duration: 280, easing: ease});
+    const done = () => { dialog.style.overflow = ''; };
+    grow.finished.then(done, done);
+  }
+  body.animate([{opacity: 0, translate: `${dir * 16}px 0`}, {opacity: 1, translate: '0 0'}], {duration: 260, easing: ease});
+  if (title) title.animate([{opacity: 0}, {opacity: 1}], {duration: 200, easing: 'ease-out'});
+}
+
+function _renderSkillAddChoices(overlay, dir = -1) {
+  _skillAddSwap(overlay, dir, () => _paintSkillAddChoices(overlay));
+  // Opening the menu: the three choices rise in one after another.
+  const list = overlay.querySelector('.skill-add-choices');
+  if (list && dir === 0) list.classList.add('is-entering');
+}
+
+function _paintSkillAddChoices(overlay) {
   overlay.querySelector('#skillAddTitle').textContent = 'Add to Skills';
   const body = overlay.querySelector('.skill-add-body');
   const choices = [
@@ -6862,7 +6895,7 @@ function _renderSkillAddChoices(overlay) {
     ['import', 'Import skill', 'Install one from a GitHub link.'],
     ['category', 'New category', 'A folder to keep skills in.'],
   ];
-  body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon">${_SKILL_ADD_ICONS[key]}</span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
+  body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon"><img src="${_SKILL_ADD_ICONS[key]}" width="32" height="32" alt="" decoding="async" draggable="false"></span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
   body.querySelectorAll('.skill-add-choice').forEach(btn => btn.onclick = () => {
     const key = btn.dataset.choice;
     if (key === 'create') { _closeSkillAddMenu(); openSkillCreate(); return; }
@@ -6873,6 +6906,12 @@ function _renderSkillAddChoices(overlay) {
 }
 
 function _skillAddForm(overlay, title, fieldsHtml, submitLabel, onSubmit) {
+  let form;
+  _skillAddSwap(overlay, 1, () => { form = _paintSkillAddForm(overlay, title, fieldsHtml, submitLabel, onSubmit); });
+  return form;
+}
+
+function _paintSkillAddForm(overlay, title, fieldsHtml, submitLabel, onSubmit) {
   overlay.querySelector('#skillAddTitle').textContent = title;
   const body = overlay.querySelector('.skill-add-body');
   body.innerHTML = `<form class="skill-add-form">${fieldsHtml}<div class="skill-add-status" role="status" aria-live="polite"></div>

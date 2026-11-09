@@ -102,6 +102,51 @@ function animateRemoval(el,opts={}){
     return el.animate(frames,{duration:collapse?220:160,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}).finished.then(()=>{},()=>{});
   }catch(_){return Promise.resolve();}
 }
+// A list rebuilt from fresh data after something was deleted on another page
+// (a workspace deleted in Chat leaves the Work Hub and Notes side panels, and
+// the other way round). The rebuild would make the row vanish; instead the
+// old row goes back where it was, inert, and collapses out like a delete on
+// its own page. Only the rows directly in `containerSel` (matched by order
+// and class) are compared, by keyOf(row); hidden lists rebuild plainly.
+function rebuildWithExits(root,containerSel,keyOf,rebuild){
+  const snap=[];
+  if(root&&root.isConnected&&root.getClientRects().length&&!_listMotionReduced()){
+    root.querySelectorAll(containerSel).forEach((box,index)=>{
+      const items=[...box.children].map(node=>({node,key:keyOf(node)}))
+        .filter(item=>item.key&&!item.node.dataset.leaving&&item.node.getBoundingClientRect().height>1);
+      snap.push({index,cls:box.className,items});
+    });
+  }
+  const out=rebuild();
+  if(!snap.length) return out;
+  const boxes=[...root.querySelectorAll(containerSel)];
+  snap.forEach(({index,cls,items})=>{
+    const box=boxes[index];
+    if(!box||box.className!==cls) return;
+    const now=new Map();
+    [...box.children].forEach(node=>{ const key=keyOf(node); if(key) now.set(key,node); });
+    if(!now.size||items.every(item=>now.has(item.key))) return;
+    let last=null;
+    items.forEach(({node,key})=>{
+      const fresh=now.get(key);
+      if(fresh){ last=fresh; return; }
+      node.dataset.leaving='1';
+      node.inert=true;
+      node.setAttribute('aria-hidden','true');
+      node.classList.remove('active');
+      // Nothing that looks rows up (by id, data attribute or the folder it
+      // controls) may find the leaving copy; classes stay for its look.
+      [node,...node.querySelectorAll('*')].forEach(el=>{
+        [...el.attributes].forEach(attr=>{ if(attr.name==='id'||attr.name==='aria-controls'||(attr.name.startsWith('data-')&&attr.name!=='data-leaving')) el.removeAttribute(attr.name); });
+      });
+      if(last) last.after(node); else box.prepend(node);
+      last=node;
+      animateRemoval(node).then(()=>node.remove());
+    });
+  });
+  return out;
+}
+window.rebuildWithExits=rebuildWithExits;
 function markArrival(el){
   if(!el||_listMotionReduced())return el;
   el.classList.remove('item-arrive');void el.offsetWidth;el.classList.add('item-arrive');

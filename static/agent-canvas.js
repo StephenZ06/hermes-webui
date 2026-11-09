@@ -18,7 +18,7 @@
 // Agent Canvas: a live org-chart of the real Hermes delegation tree for the
 // current chat session — a Conductor root (the main session) with subagent
 // branches hanging below it, styled after the FounderOS Conductor/org UI
-// (see "Agent Canvas FounderOS Migration.md") but built from hermes-webui's
+// (see docs/AGENT_CANVAS_FOUNDEROS_MIGRATION.md) but built from hermes-webui's
 // own theme tokens so it stays correct across every skin/light/dark mode.
 //
 // Data flow: gateway_chat.py relays the upstream 'subagent.start' /

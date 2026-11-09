@@ -146,7 +146,7 @@ Additional checks passed:
 At the time this handoff was written, these unrelated user files remained
 untracked and were deliberately left untouched:
 
-- `BlockNote Integration Plan for Hermes WebUI.md`
+- `docs/BLOCKNOTE_INTEGRATION_PLAN.md`
 - `mockups/`
 
 This handoff file itself is newly created and has not been committed yet.

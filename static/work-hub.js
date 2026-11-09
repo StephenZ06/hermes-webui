@@ -180,7 +180,11 @@
     // The rebuilt nav (and its folder list) would start back at the top, so a
     // board picked far down the list jumped out of sight; keep where they were.
     const scrolled = [sidebar.querySelector('.work-hub-nav'), el('workHubProjects')].map(node => (node ? node.scrollTop : 0));
-    buildWorkHubNavigation(sidebar);
+    // A workspace deleted on another page collapses out of the list.
+    // Workspace rows only: a folder's board list comes and goes as it opens.
+    const rowKey = node => { const tile = node.matches('.work-hub-project-tile') ? node : node.querySelector(':scope > .work-hub-project-tile'); return tile ? 'p:' + tile.dataset.scope : ''; };
+    if (typeof rebuildWithExits === 'function') rebuildWithExits(sidebar, '#workHubProjects', rowKey, () => buildWorkHubNavigation(sidebar));
+    else buildWorkHubNavigation(sidebar);
     [sidebar.querySelector('.work-hub-nav'), el('workHubProjects')].forEach((node, i) => { if (node && scrolled[i]) node.scrollTop = scrolled[i]; });
     // The rows were just rebuilt, so the one under the pointer would replay its
     // hover reveal (rename/delete sliding open) on every click; it starts open.

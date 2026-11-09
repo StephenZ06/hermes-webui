@@ -1,6 +1,18 @@
 # Project status — hermes-webui
 
 
+## 2026-11-09 (night): motion pass (popups, loaders, linked deletes), Website template, Notes arrival, gateway route
+
+- Gateway heartbeat: the live WebUI container reached the agent gateway through `host.docker.internal:8642`; after a Docker Desktop restart the host gateway refused ports published on 0.0.0.0 (8642, 9119) while still passing 127.0.0.1 ones, so the heartbeat failed with the gateway healthy. `docker-compose.override.yml` now joins `hermes-stack_default` (external) and uses `http://hermes:8642`. Starting the WebUI now needs that network to exist (hermes-stack up).
+- Motion chokepoints (see docs/UIUX-GUIDE.md "Loading and content swaps"): PopupPresence and content arrival in `static/motion-ui.js`; `rebuildWithExits` in `static/ui.js`, wired into the Chat, Work Hub and Notes side panels. Modal backdrops: half the dim and blur.
+- Chat "+" menu: conversation (mask, text colour) and project (colour art) icons from `icons/sidepanel/` at 16px with 8px on every side; slides in, slides out fading.
+- Wizard: "Data / ML" replaced by **Website** (PAGES.md, SEO.md, PRODUCT.md, UI_UX.md, TESTING.md; art `static/project-starter/website.webp` at the shared 92/128 size), placed where CLI Tool was (CLI moves one right). Every template's AGENTS.md and README now require project-local dependency installs (.venv, node_modules; never global). All eight template icons 2px lower.
+- Notes: first load keeps its cover until the list, the side panel and the reopened note's first block are on the page (5s cap), then fades them in together.
+- Skills "+" menu: artwork from `icons/skills/` (category art cleaned of export specks), choices stagger in, steps slide with a height ease, statuses fade in.
+- Rail: rounded squares 0.5px left (now 0.5px right of centre); active marker follows.
+- Repo root tidied: the two plan documents moved to `docs/` (AGENT_CANVAS_FOUNDEROS_MIGRATION.md, BLOCKNOTE_INTEGRATION_PLAN.md), avatars to `docs/images/`, the empty `wsl$/` tree removed. The PNG marks loose in `static/` were left in place: several paths are built at runtime (e.g. `/static/office-integration-${...}.png`).
+- Pre-existing failures on HEAD (not this round): `test_issue1443_ime_helper_promotion::test_project_create_and_rename_use_windowed_helper`, `test_work_hub_mobile_browser::test_delete_confirm_is_compact_with_a_red_outline_button`.
+
 ## 2026-11-09 (evening): Skills "+" menu, agent core deps, Notes first line, wizard drops, Office/Files spacing
 
 - Agent dependencies (class fix for snowballstemmer): hermes-agent now gates *every* core dependency on `python_version >= '3.14'`, so the container's 3.12 `/app/venv` misses whatever the agent added after the venv was built (rich, prompt_toolkit, fire, tenacity, jinja2, firecrawl-anydoc, ... 18 pins on 2026-11-09). With rich missing the `hermes` CLI cannot even build its parser. `scripts/ensure_agent_core_deps.py` lists the agent's own missing pins (markers evaluated as 3.14, platform clauses kept); `docker_init.bash::ensure_agent_runtime_imports` installs them on every start, per pin on failure, never fatal.

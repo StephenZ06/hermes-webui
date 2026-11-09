@@ -141,7 +141,7 @@ def test_template_catalog_lists_the_files_each_template_creates(tmp_path: Path):
     catalog = {t["key"]: t for t in project_starter.template_catalog()}
 
     assert len(catalog) == 8
-    assert {"blank", "web", "ios", "android", "api", "cli", "data", "research"} == set(catalog)
+    assert {"blank", "web", "ios", "android", "api", "website", "cli", "research"} == set(catalog)
     for key, entry in catalog.items():
         target = tmp_path / key
         project_starter.create_starter_pack(tmp_path, key, key, "")
@@ -273,3 +273,23 @@ def test_every_starter_document_links_to_the_others(tmp_path: Path):
             assert target.is_file(), (rel, target)  # no dead links
         linked = {t.relative_to(root.resolve()).as_posix() for t in targets}
         assert linked >= set(docs) - {rel}, (rel, set(docs) - {rel} - linked)
+
+
+def test_website_template_takes_the_cli_slot_and_writes_website_documents(tmp_path: Path):
+    keys = [t["key"] for t in project_starter.template_catalog()]
+    # Second row of the wizard's 4-wide grid: API, Website, CLI, Research.
+    assert keys[4:] == ["api", "website", "cli", "research"]
+    project_starter.create_starter_pack(tmp_path, "site", "website", "A portfolio site.")
+    docs = sorted(p.name for p in (tmp_path / "site" / "docs").iterdir())
+    assert docs == ["PAGES.md", "PRODUCT.md", "SEO.md", "TESTING.md", "UI_UX.md"]
+    assert "## Sitemap" in (tmp_path / "site" / "docs" / "PAGES.md").read_text(encoding="utf-8")
+    assert "## Hosting and domain" in (tmp_path / "site" / "docs" / "SEO.md").read_text(encoding="utf-8")
+
+
+def test_every_template_tells_agents_to_install_dependencies_inside_the_project(tmp_path: Path):
+    for key in project_starter.available_templates():
+        project_starter.create_starter_pack(tmp_path, key, key, "")
+        agents = (tmp_path / key / "AGENTS.md").read_text(encoding="utf-8")
+        readme = (tmp_path / key / "README.md").read_text(encoding="utf-8")
+        assert "`.venv`" in agents and "Never install globally" in agents and "npm install -g" in agents, key
+        assert "never globally" in readme, key

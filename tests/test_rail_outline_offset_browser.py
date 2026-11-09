@@ -1,4 +1,4 @@
-"""Icon-only rail: the rounded hover/active square sits 1px further right
+"""Icon-only rail: the rounded hover/active square sits 0.5px further right
 while the icon inside it stays where it was."""
 
 import pytest
@@ -29,6 +29,6 @@ def test_rail_squares_move_right_and_icons_stay(page):
     assert got
     for btn in got:
         # Unshifted, the 36px square starts 6px in and its icon is centred on 24px.
-        assert btn["box"] == 7 and btn["icon"] == 24, btn
+        assert btn["box"] == 6.5 and btn["icon"] == 24, btn
     marker = page.evaluate("() => { const b = document.querySelector('.rail .rail-btn.active'); return b ? getComputedStyle(b, '::before').left : null; }")
-    assert marker in (None, "-7px")
+    assert marker in (None, "-6.5px")

@@ -215,15 +215,16 @@ def test_each_template_icon_shows_its_own_centred_spinner_until_it_loads(real_2x
     page.wait_for_function("() => !document.querySelector('.ps-art-wrap.is-loading')")
 
 
-def test_data_ml_artwork_is_scaled_down_to_match_its_neighbours(real_2x):
+def test_website_template_uses_its_artwork_at_the_shared_size_and_every_icon_sits_2px_lower(real_2x):
     page = real_2x
-    TEMPLATES_WITH_DATA = dict(TEMPLATES, templates=TEMPLATES["templates"] + [
-        {"key": "data", "label": "Data/ML", "description": "Notebooks and models.", "files": ["AGENTS.md"]}])
-    _to_template_step(page, TEMPLATES_WITH_DATA)
-    sizes = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ps-template .ps-art')].map(i =>
-      [i.src.split('/').pop(), i.getBoundingClientRect().width]))""")
-    assert sizes["data.webp"] < sizes["web.webp"] - 4, sizes
-    assert len({w for k, w in sizes.items() if k not in ("data.webp", "blank.webp")}) == 1
+    with_site = dict(TEMPLATES, templates=TEMPLATES["templates"] + [
+        {"key": "website", "label": "Website", "description": "Marketing sites, portfolios and content pages.", "files": ["AGENTS.md"]}])
+    _to_template_step(page, with_site)
+    page.wait_for_function("() => [...document.querySelectorAll('.ps-template .ps-art')].every(i => i.complete && i.naturalWidth > 0)")
+    art = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ps-template .ps-art')].map(i =>
+      [i.src.split('/').pop(), {w: i.getBoundingClientRect().width, nudge: getComputedStyle(i).translate}]))""")
+    assert art["website.webp"]["w"] == art["web.webp"]["w"], art
+    assert all(a["nudge"] == "0px 2px" for a in art.values()), art
 
 
 def test_recommended_choice_wears_a_star_in_its_top_right_corner(real_2x):

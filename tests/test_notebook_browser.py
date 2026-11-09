@@ -1842,3 +1842,30 @@ def test_format_toolbar_opens_below_the_selection_with_nudged_icons(page):
     }""")
     assert got["barTop"] >= got["selBottom"], got
     assert abs(got["bold"] - 1) <= 0.01 and abs(got["colors"] + 1) <= 0.01, got
+
+
+def test_first_load_lifts_its_cover_only_when_list_side_panel_and_note_are_all_in(page):
+    """The parts used to arrive one by one (list, then the note's skeleton,
+    then its text); now the cover stays until all of them are on the page and
+    they fade in together."""
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    title = "Arrive " + uuid.uuid4().hex[:6]
+    note = _api("/api/notebook/notes/create", {"title": title, "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Body arrives with the list", "styles": {}}]}]})["note"]
+    page.evaluate("id => localStorage.setItem('hermes-notebook-last', id)", note["id"])
+    page.evaluate("""() => { window.__lift = null;
+      const watch = new MutationObserver(() => { const root = document.getElementById('notebookRoot');
+        if (!root || window.__lift || !root.querySelector('.nb')) return;
+        if (root.classList.contains('nb-is-loading')) { window.__covered = true; return; }
+        if (!window.__covered) return;
+        const side = document.getElementById('notebookSidebar');
+        window.__lift = {list: !!root.querySelector('.nb-item'), side: !!(side && side.querySelector('.nb-nav')),
+          sidePending: side.classList.contains('nb-side-pending'), text: !!root.querySelector('.bn-block-content'),
+          arriving: root.classList.contains('nb-arriving'), skeleton: !!root.querySelector('.skel')}; });
+      watch.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['class']});
+      switchPanel('notebook'); }""")
+    page.wait_for_function("() => !!window.__lift", timeout=15000)
+    lift = page.evaluate("() => window.__lift")
+    assert lift == {"list": True, "side": True, "sidePending": False, "text": True, "arriving": True, "skeleton": False}, lift

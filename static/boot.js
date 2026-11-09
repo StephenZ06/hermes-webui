@@ -3746,18 +3746,24 @@ function _toggleNewChatMenu(anchorBtn){
   if(existing){existing.remove();return;}
   const menu=document.createElement('div');
   menu.className='new-chat-menu';
-  const mkItem=(label,onClick)=>{
+  const mkItem=(label,onClick,iconKind)=>{
     const item=document.createElement('button');
     item.type='button';
     item.className='new-chat-menu-item';
-    item.textContent=label;
+    const icon=document.createElement('span');
+    icon.className='new-chat-menu-icon is-'+iconKind;
+    icon.setAttribute('aria-hidden','true');
+    const text=document.createElement('span');
+    text.className='new-chat-menu-label';
+    text.textContent=label;
+    item.append(icon,text);
     item.onclick=(e)=>{e.stopPropagation();menu.remove();onClick();};
     return item;
   };
-  menu.appendChild(mkItem(t('new_conversation'),()=>{_createNewConversationWithPicker(anchorBtn);}));
+  menu.appendChild(mkItem(t('new_conversation'),()=>{_createNewConversationWithPicker(anchorBtn);},'conversation'));
   menu.appendChild(mkItem(t('new_project_folder'),()=>{
     if(typeof _startProjectCreate==='function') _startProjectCreate();
-  }));
+  },'project'));
   // Measure after the items exist so the menu hugs its labels and its right
   // edge lines up with the button.
   document.body.appendChild(menu);

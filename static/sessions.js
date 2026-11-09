@@ -9507,6 +9507,17 @@ function renderSessionListFromCache(){
     return el;
   }
 }
+// A workspace deleted on another page (Work Hub, Notes) collapses out of the
+// Chat side panel instead of vanishing when the list repaints.
+(function(){
+  const paint=renderSessionListFromCache;
+  const rowKey=node=>{ const chip=node.matches&&node.matches('[data-project-id]')?node:(node.querySelector&&node.querySelector('[data-project-id]')); return chip?'p:'+chip.dataset.projectId:''; };
+  renderSessionListFromCache=function(){
+    const list=typeof $==='function'?$('sessionList'):null;
+    if(list&&typeof rebuildWithExits==='function') return rebuildWithExits(list,'.project-folder-list',rowKey,paint);
+    return paint.apply(this,arguments);
+  };
+})();
 
 async function _handleActiveSessionStorageEvent(e){
   if(!e || e.key !== 'hermes-webui-session') return;
@@ -10003,7 +10014,7 @@ const _PROJECT_STARTER_ICONS={
   android:'<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M8 8a4 4 0 0 1 8 0M8.5 4.5 7 3M15.5 4.5 17 3M9.5 12h.01M14.5 12h.01"/>',
   api:'<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
   cli:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 10 3 2-3 2M12 15h5"/>',
-  data:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  website:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h8M8 16h5"/>',
   research:'<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 6 6"/>',
   newProject:'<path d="M12 5v14M5 12h14"/><rect x="2.5" y="2.5" width="19" height="19" rx="4"/>',
   existing:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m9 13 2 2 4-4"/>',
@@ -10016,7 +10027,7 @@ const _PROJECT_STARTER_ICONS={
 // Full-colour artwork for the start choices and templates (icons/new-workspace,
 // optically normalised to the same visual size in static/project-starter/).
 function _psToast(msg){if(typeof showToast==='function')showToast(msg,null,'error');}
-const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,data:1,research:1,new:1,existing:1};
+const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,website:1,research:1,new:1,existing:1};
 function _psArt(name,size){
   return '<img class="ps-art ps-art-'+name+'" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
 }
@@ -10081,10 +10092,10 @@ function _inferProjectTemplate(brief){
   if(/\b(ios|iphone|ipad|swiftui|xcode)\b/.test(text)) return 'ios';
   if(/\b(android|kotlin|jetpack)\b/.test(text)) return 'android';
   if(/\b(cli|command[- ]line|terminal tool)\b/.test(text)) return 'cli';
-  if(/\b(machine learning|ml model|dataset|pipeline|notebook|analytics)\b/.test(text)) return 'data';
+  if(/\b(website|landing page|portfolio|marketing site|blog|homepage)\b/.test(text)) return 'website';
   if(/\b(api|backend|server|service|endpoint)\b/.test(text)) return 'api';
   if(/\b(research|thesis|literature review|investigation)\b/.test(text)) return 'research';
-  if(/\b(web|website|dashboard|frontend|saas|browser)\b/.test(text)) return 'web';
+  if(/\b(web app|webapp|dashboard|frontend|saas|browser)\b/.test(text)) return 'web';
   return 'blank';
 }
 

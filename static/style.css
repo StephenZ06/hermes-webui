@@ -2439,8 +2439,8 @@
   /* Icon-only rails: the rounded hover/active square sits 1px further right
      while the icon inside (and the active edge marker, placed at -7px below
      to make up for the shift) stays where it was. */
-  .rail .rail-btn,.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{translate:1px 0;}
-  .rail .rail-btn>:not([class*="badge"]),.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab>:not([class*="badge"]){translate:-1px 0;}
+  .rail .rail-btn,.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{translate:.5px 0;}
+  .rail .rail-btn>:not([class*="badge"]),.sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab>:not([class*="badge"]){translate:-.5px 0;}
   /* Custom tooltip — replaces native title="" for faster, more polished display.
      Native browser tooltips have a ~1.5s hover delay that reads as "no tooltip
      exists" (#1775). Our custom tooltip appears at ~150ms hover, dismisses
@@ -2480,7 +2480,7 @@
    removes the pseudo-element entirely. Solution: scope the legacy
    `.nav-tab:hover::after` data-label tooltip to `.sidebar-nav` (mobile) only
    (see line ~681). The rail rule is no longer needed. */
-  .rail .nav-tab.active::before{content:'';position:absolute;left:-7px;top:50%;bottom:auto;transform:translateY(-50%);width:3px;height:16px;background:var(--accent);border-radius:0 2px 2px 0;}
+  .rail .nav-tab.active::before{content:'';position:absolute;left:-6.5px;top:50%;bottom:auto;transform:translateY(-50%);width:3px;height:16px;background:var(--accent);border-radius:0 2px 2px 0;}
   .dashboard-link{position:relative;}
   .dashboard-link-visible,.nav-action-visible{display:flex!important;}
   .dashboard-external-badge{position:absolute;right:5px;top:5px;width:9px;height:9px;border-radius:2px;border:1px solid var(--accent);background:var(--sidebar);box-shadow:0 0 0 2px var(--sidebar);opacity:.95;}
@@ -17785,9 +17785,6 @@ textarea#msg::-webkit-scrollbar{display:none;}
 /* Create-project wizard: the step prompt sits as far below the stepper as the
    content sits below the prompt (both 14px with the body's 2px top padding). */
 .ps-wizard .ps-stepper{margin-bottom:12px;}
-/* The Data/ML artwork fills more of its square than its neighbours; scale it
-   down so all template icons read the same size inside the same 34px slot. */
-.ps-template .ps-art-data{transform:scale(.84);}
 /* Per-icon loading spinner, centred in the icon's own box. */
 .ps-art-wrap{position:relative;}
 .ps-art{transition:opacity .22s ease-out;}
@@ -17815,6 +17812,9 @@ textarea#msg::-webkit-scrollbar{display:none;}
    in their cards. */
 .ps-template .ps-art-blank{transform:translateY(2px) scale(.86);}
 .ps-template :is(.ps-art-web,.ps-art-ios,.ps-art-android){transform:translateY(2px);}
+/* All eight template icons then sit a further 2px lower (translate composes
+   with the per-icon transforms above). */
+.ps-template .ps-art{translate:0 2px;}
 /* Notes format bar: icons sit 1px lower in their buttons; the colour button's
    "A" and the box around it sit 1px higher. */
 .hermes-note-editor .bn-formatting-toolbar svg{translate:0 1px;}
@@ -17860,3 +17860,69 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .skill-add-status.is-busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:8px;vertical-align:-1px;border-radius:50%;border:2px solid color-mix(in srgb,var(--text) 18%,transparent);border-top-color:var(--accent);animation:ps-art-spin .8s linear infinite;}
 .skill-add-form .app-dialog-actions{margin-top:4px;}
 @media (prefers-reduced-motion:reduce){.skill-add-status.is-busy::before{animation:none;}}
+
+/* ── Notes: one arrival ──────────────────────────────────────────────── */
+/* The first load keeps its cover until the list, the side panel and the
+   reopened note are all ready, then they fade in together with the Notes
+   text entrance (the list a beat before the note). */
+#notebookSidebar.nb-side-pending > *{opacity:0;}
+#notebookSidebar.nb-arriving > *{animation:nb-text-in .3s ease both;}
+#notebookRoot.nb-arriving .nb-list{animation:nb-text-in .3s ease both;}
+#notebookRoot.nb-arriving .nb-editor{animation:nb-text-in .3s ease .05s both;}
+@media (prefers-reduced-motion:reduce){#notebookSidebar.nb-arriving > *,#notebookRoot.nb-arriving :is(.nb-list,.nb-editor){animation:none;}}
+
+/* ── Modal backdrops: half the dim and half the blur ─────────────────── */
+/* Every popup's backdrop darkens and blurs the page half as much as it
+   did, so the page behind stays readable. Values are each overlay's own,
+   halved; skins that set a darker scrim are halved too. */
+.app-dialog-overlay,.cmdk-overlay{background:rgba(0,0,0,.31);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
+:root.dark:is([data-skin="zeus"],[data-skin="zeus-2"]) :is(.app-dialog-overlay,.kanban-modal-overlay){background:rgba(0,0,0,.36);}
+.project-starter-overlay{background:rgba(0,0,0,.34);backdrop-filter:blur(3.5px);-webkit-backdrop-filter:blur(3.5px);}
+.onboarding-overlay{background:rgba(0,0,0,.39);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+.kanban-modal-overlay{background:rgba(0,0,0,.39);}
+.goal-planner-overlay{background:rgba(0,0,0,.275);}
+.dash-picker-overlay.is-open{background:rgba(0,0,0,.275);}
+.job-drawer-backdrop{background:rgba(0,0,0,.19);}
+.job-modal-backdrop{background:rgba(0,0,0,.21);}
+.office-biz-scrim{background:rgba(0,0,0,.225);}
+.checkpoint-diff{background:rgba(0,0,0,.3);}
+.resume-preview{background:rgba(0,0,0,.39);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
+#wikiBrowserOverlay{background:rgba(0,0,0,.25)!important;}
+#checkpointDiffModal{background:rgba(0,0,0,.3)!important;}
+#auxAdvancedOverlay{background:rgba(5,7,15,.34)!important;backdrop-filter:blur(2px)!important;-webkit-backdrop-filter:blur(2px)!important;}
+
+/* ── Chat "+" menu: icons, and a slide in and out ─────────────────────── */
+/* Each row: a 16px icon with the same 8px above, below and to its left. The
+   conversation mark is line art, drawn in the text colour; the project
+   artwork keeps its own colours. */
+.new-chat-menu-item{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 8px;line-height:16px;}
+.new-chat-menu-icon{display:block;flex:none;width:16px;height:16px;}
+.new-chat-menu-icon.is-conversation{background:currentColor;-webkit-mask:url("sidepanel/conversation.png") center/contain no-repeat;mask:url("sidepanel/conversation.png") center/contain no-repeat;}
+.new-chat-menu-icon.is-project{background:url("sidepanel/project.png") center/contain no-repeat;}
+.new-chat-menu-label{display:block;}
+/* It slides down out of the + button and fades in; it slides back up while
+   fading out (the exit is played by PopupPresence in motion-ui.js). */
+.new-chat-menu{transform-origin:100% 0;animation:new-chat-menu-in .22s cubic-bezier(.16,1,.3,1);}
+@keyframes new-chat-menu-in{from{opacity:0;translate:0 -8px;scale:.97;}}
+@media (prefers-reduced-motion:reduce){.new-chat-menu{animation:none;}}
+
+/* ── Skills "+" menu: artwork and motion ──────────────────────────────── */
+/* Each choice's artwork is 32px, centred in the 36px slot so it keeps the
+   card's 12px padding on every side; the colour art needs no tinted tile. */
+.skill-add-choice-icon{background:none;}
+.skill-add-choice-icon img{display:block;width:32px;height:32px;object-fit:contain;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 2px 5px rgba(0,0,0,.22));transition:transform .26s cubic-bezier(.22,1,.36,1);}
+.skill-add-choice{transition:border-color .18s ease,background .18s ease,translate .18s ease;}
+.skill-add-choice:hover .skill-add-choice-icon img,.skill-add-choice:focus-visible .skill-add-choice-icon img{transform:translateY(-1px) scale(1.06);}
+.skill-add-choice:active{translate:0 1px;}
+/* Opening the menu: the choices rise in one after another. */
+.skill-add-choices.is-entering .skill-add-choice{animation:skill-choice-in .32s cubic-bezier(.16,1,.3,1) both;}
+.skill-add-choices.is-entering .skill-add-choice:nth-child(2){animation-delay:.04s;}
+.skill-add-choices.is-entering .skill-add-choice:nth-child(3){animation-delay:.08s;}
+@keyframes skill-choice-in{from{opacity:0;translate:0 8px;}}
+/* Install progress and errors ease in rather than appearing. */
+.skill-add-status:not(:empty){animation:skill-status-in .2s ease-out;}
+@keyframes skill-status-in{from{opacity:0;translate:0 -3px;}}
+@media (prefers-reduced-motion:reduce){
+  .skill-add-choices.is-entering .skill-add-choice,.skill-add-status:not(:empty){animation:none;}
+  .skill-add-choice-icon img,.skill-add-choice{transition:none;}
+}
