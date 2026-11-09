@@ -1723,3 +1723,65 @@ def test_a_workspace_deleted_on_the_chat_page_leaves_the_notes_page(page):
     finally:
         if pid:
             _api("/api/projects/delete", {"project_id": pid})
+
+
+def test_empty_lines_survive_the_markdown_round_trip_used_for_vault_notes(page):
+    # Vault (Obsidian) notes are saved as Markdown. Empty lines the user added
+    # used to vanish on reopen: parsing folded every run of blank lines into one.
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    result = page.evaluate("""async () => {
+        const editor = Notebook.editor.editor;
+        const P = (t) => ({type: 'paragraph', content: t});
+        const shape = (blocks) => blocks.map(b => [b.type, (Array.isArray(b.content) ? b.content : []).map(c => c.text).join('')]);
+        const cases = [
+            [P(''), P('one   two'), P(''), P(''), P('three')],
+            [P('a'), {type: 'codeBlock', props: {language: 'text'}, content: 'x\\n\\n\\n\\ny'}, P(''), {type: 'heading', props: {level: 2}, content: 'H'}],
+            [P('a'), {type: 'bulletListItem', content: 'i1'}, {type: 'bulletListItem', content: 'i2'}, P(''), P('c')],
+        ];
+        const out = [];
+        for (const blocks of cases) {
+            editor.replaceBlocks(editor.document, blocks);
+            const want = shape(editor.document);
+            while (want.length > 1 && want[want.length - 1][0] === 'paragraph' && !want[want.length - 1][1]) want.pop();
+            const markdown = Notebook._widths.write();
+            out.push({want, got: shape(await Notebook._widths.readMarkdown(markdown)), again: markdown === Notebook._widths.write()});
+        }
+        return out;
+    }""")
+    for case in result:
+        assert case["got"] == case["want"], case
+
+
+def test_notes_page_has_no_spellcheck_underlines(page):
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    checks = page.evaluate("""() => ['#nbTitle', '.hermes-note-editor [contenteditable=true]', '#nbSearch'].map(sel => {
+        const el = document.querySelector(sel); return el ? el.spellcheck : null; })""")
+    assert checks == [False, False, False], checks
+
+
+def test_a_renamed_note_eases_into_its_new_side_panel_label(page):
+    folder = _api("/api/notebook/folders/create", {"name": f"Ease {uuid.uuid4().hex[:4]}"})["folder"]
+    _open(page)
+    page.click("#notebookSidebar [data-nb-action=create-menu]")
+    page.click("[data-nb-create=note]")
+    page.click(f"[data-nb-pick='f:{folder['id']}']")
+    page.wait_for_function(
+        "() => { const t = document.getElementById('nbTitle'); return !!t && document.activeElement === t && t.value === ''; }",
+        timeout=30000)
+    page.fill("#nbTitle", "First name")
+    _saved(page)
+    note_id = page.evaluate("() => Notebook._state.note.id")
+    row = f"#notebookSidebar [data-nb-note-row='{note_id}'] > button > span"
+    page.wait_for_function(f"() => document.querySelector(\"{row}\")?.textContent === 'First name'", timeout=10000)
+    # Record every animation started on the label while the rename saves.
+    page.evaluate("""() => { window.__eased = []; const orig = Element.prototype.animate;
+      Element.prototype.animate = function (frames, opts) { if (this.closest('[data-nb-note-row]')) window.__eased.push({text: this.textContent, frames: JSON.stringify(frames)}); return orig.call(this, frames, opts); }; }""")
+    page.fill("#nbTitle", "Second name")
+    _saved(page)
+    page.wait_for_function(f"() => document.querySelector(\"{row}\")?.textContent === 'Second name'", timeout=10000)
+    eased = page.evaluate("() => window.__eased")
+    assert any(e["text"] == "Second name" and "blur" in e["frames"] for e in eased), eased

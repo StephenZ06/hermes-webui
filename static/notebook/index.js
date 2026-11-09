@@ -322,9 +322,32 @@
     const navOf = () => side.querySelector('.nb-nav');
     const vaultBefore = !!(navOf() && navOf().classList.contains('nb-nav-vault'));
     const scrolled = navOf() ? navOf().scrollTop : 0;
+    const titlesBefore = sidebarTitles(side);
     buildSidebar(side);
+    easeRenamedTitles(side, titlesBefore);
     if (scrolled && navOf() && navOf().classList.contains('nb-nav-vault') === vaultBefore) navOf().scrollTop = scrolled;
     if (from) window.playActiveHighlightGlide(side, from, {...SIDEBAR_HIGHLIGHT, bounds: side});
+  }
+  // A renamed note's side-panel label eases into its new text (fade and
+  // un-blur) instead of snapping when the save lands and the panel repaints.
+  const titleSpans = (side) => side.querySelectorAll('[data-nb-note-row] > button[data-nb-open] > span');
+  function sidebarTitles(side) {
+    const seen = new Map();
+    titleSpans(side).forEach((span) => seen.set(span.parentElement.dataset.nbOpen, span.textContent));
+    return seen;
+  }
+  function easeRenamedTitles(side, before) {
+    if (!before.size || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+    titleSpans(side).forEach((span) => {
+      const was = before.get(span.parentElement.dataset.nbOpen);
+      if (was === undefined || was === span.textContent || !span.animate) return;
+      span.classList.add('nb-title-easing');
+      const run = span.animate([
+        {opacity: 0.15, filter: 'blur(3px)', transform: 'translateY(3px)'},
+        {opacity: 1, filter: 'blur(0)', transform: 'translateY(0)'},
+      ], {duration: 320, easing: 'cubic-bezier(.22,1,.36,1)'});
+      run.onfinish = run.oncancel = () => span.classList.remove('nb-title-easing');
+    });
   }
   function buildSidebar(side) {
     if (!S.loaded) { side.innerHTML = S.error ? `<p class="nb-side-error">${esc(S.error)}</p>` : ''; return; }
@@ -481,7 +504,7 @@
   // Built once with the shell; renderEditorHeadPersistent() only updates it.
   function editorHeadShell() {
     return `<div id="nbEditorBanners"></div><div id="nbEditorEmpty" class="nb-empty nb-editor-empty" hidden></div><div id="nbEditorChrome" class="nb-editor-chrome" hidden>`
-      + `<div class="nb-head-row"><button type="button" class="nb-icon-btn nb-back" data-nb-action="back" data-allow-blur aria-label="Back to notes">${icon('back', 16)}</button><input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title"><span class="nb-status" id="nbStatus" aria-live="polite"></span>`
+      + `<div class="nb-head-row"><button type="button" class="nb-icon-btn nb-back" data-nb-action="back" data-allow-blur aria-label="Back to notes">${icon('back', 16)}</button><input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title" spellcheck="false" autocorrect="off" autocomplete="off"><span class="nb-status" id="nbStatus" aria-live="polite"></span>`
       + `<button type="button" class="nb-icon-btn" id="nbAddFiles" data-nb-action="add-files" aria-label="Add images or files" title="Add images or files">${icon('image', 16)}</button>`
       + `<button type="button" class="nb-icon-btn" id="nbPin" data-nb-action="toggle-pinned" aria-pressed="false" aria-label="Pin" title="Pin">${icon('pin', 15)}</button>`
       + `<button type="button" class="nb-icon-btn fav" id="nbFavorite" data-nb-action="toggle-favorite" aria-pressed="false" aria-label="Add to favorites" title="Favorite">${icon('star', 15)}</button>`
@@ -1509,6 +1532,12 @@
       md = md.slice(0, open + 2) + caption + '|' + Math.round(b.props.previewWidth) + md.slice(at);
       from += String(Math.round(b.props.previewWidth)).length + 1;
     });
+    // The serializer drops empty paragraphs at the very top; keep them as
+    // leading blank-line pairs (markEmptyLines reads them back).
+    let lead = 0;
+    const isEmpty = (b) => b && b.type === 'paragraph' && !(Array.isArray(b.content) && b.content.length) && !(b.children && b.children.length);
+    while (lead < blocks.length - 1 && isEmpty(blocks[lead])) lead++;
+    if (lead && md.trim()) md = '\n\n'.repeat(lead) + md.replace(/^\n+/, '');
     return md;
   }
   // Parsed Markdown reads an embedded recording or clip as a picture; the file's
@@ -1541,6 +1570,46 @@
       if (m) { b.props.name = m[1]; b.props.previewWidth = Number(m[2]); }
     });
     return blocks;
+  }
+  // Empty lines. The editor writes each empty paragraph as one more blank line
+  // pair, but parsing Markdown folds any run of blank lines into one paragraph
+  // break, so a vault note reopened without the empty lines the user added.
+  // Before parsing, each extra blank-line pair becomes a marker paragraph (never
+  // inside a code fence); after parsing, a marker paragraph becomes empty again.
+  const BLANK_MARK = '\u2063hermes-empty-line\u2063';
+  function markEmptyLines(md) {
+    const lines = String(md || '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let fence = null, blank = 0, started = false;
+    const flush = () => {
+      // Between two blocks: one blank line is the break, each further pair an
+      // empty paragraph. Before the first block every pair is one.
+      const empties = started ? Math.floor((blank - 1) / 2) : Math.floor(blank / 2);
+      if (blank) out.push('');
+      for (let i = 0; i < empties; i++) out.push(BLANK_MARK, '');
+      blank = 0;
+    };
+    for (const line of lines) {
+      if (fence) { out.push(line); if (line.trim().startsWith(fence)) fence = null; continue; }
+      if (!line.trim()) { blank++; continue; }
+      flush();
+      const open = /^\s*(```+|~~~+)/.exec(line);
+      if (open) fence = open[1];
+      out.push(line); started = true;
+    }
+    if (fence) blank = 0; // an unclosed fence keeps its own blank lines
+    return out.join('\n') + '\n';
+  }
+  function unmarkEmptyLines(blocks) {
+    (blocks || []).forEach((b) => {
+      const content = Array.isArray(b.content) ? b.content : [];
+      if (b.type === 'paragraph' && content.length === 1 && content[0].type === 'text' && content[0].text === BLANK_MARK) b.content = [];
+      unmarkEmptyLines(b.children);
+    });
+    return blocks;
+  }
+  async function readMarkdown(md) {
+    return unmarkEmptyLines(await Promise.resolve(editorCtl.parseMarkdown(markEmptyLines(md))));
   }
   async function mountEditor(note, content) {
     const host = $('nbEditorHost');
@@ -1585,7 +1654,7 @@
     installMediaLoadStates(host);
     if (fromMarkdown) {
       try {
-        const blocks = withMediaBlocks(withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''))));
+        const blocks = withMediaBlocks(withImageWidths(await readMarkdown(note.markdown || '')));
         if (editorNoteId === note.id && Array.isArray(blocks) && blocks.length) editorCtl.replaceAll(blocks);
         baseline = editorMarkdown();
       } catch (error) {
@@ -1899,7 +1968,7 @@
       const text = await file.text();
       const note = await newNote({title: file.name.replace(/\.(md|markdown|txt)$/i, '').slice(0, 240)});
       if (!note || !editorCtl) return;
-      editorCtl.replaceAll(editorCtl.parseMarkdown(text));
+      editorCtl.replaceAll(await readMarkdown(text));
     };
     picker.click();
   }
@@ -2283,7 +2352,7 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, openScope, vaultChanged, _state: S, _save: save, _upload: (file) => uploadFile(file), _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
+  window.Notebook = {mount, unmount, refresh, openFrom, openScope, vaultChanged, _state: S, _save: save, _upload: (file) => uploadFile(file), _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks)), readMarkdown: async (md) => withMediaBlocks(withImageWidths(await readMarkdown(md)))}};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());

@@ -17793,3 +17793,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
    the top edge as from the right edge. */
 .ps-option.is-recommended{padding-right:34px;}
 .ps-option-star{position:absolute;top:8px;right:8px;width:18px;height:18px;display:block;pointer-events:none;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));}
+
+/* Notes: no long-press callout (link/image/selection sheet) on touch Safari. */
+#mainNotebook,#panelNotebook{-webkit-touch-callout:none;}
+.nb-title-easing{will-change:opacity,filter,transform;}
