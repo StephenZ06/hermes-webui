@@ -451,6 +451,23 @@ ensure_hindsight_client_docker_dependency() {
   fi
 }
 
+ensure_agent_runtime_imports() {
+  # hermes-agent imports some packages unconditionally while its pyproject.toml
+  # only declares them for `python_version >= '3.14'`, so `uv pip install -e
+  # .[all]` skips them on this image's older Python. tools/tool_search_catalog.py
+  # importing `snowballstemmer` is the live case: without it every tool round
+  # dies with "No module named 'snowballstemmer'". Runs outside the
+  # .deps_installed guard so an agent update that adds such an import heals on
+  # the next start instead of needing a fresh venv.
+  echo ""; echo "== Checking hermes-agent runtime imports"
+  if python -c "import snowballstemmer" >/dev/null 2>&1; then
+    echo "-- snowballstemmer already installed"
+  else
+    echo "-- Installing snowballstemmer for the agent's tool search"
+    uv pip install "snowballstemmer==3.1.1" --trusted-host pypi.org --trusted-host files.pythonhosted.org || error_exit "Failed to install snowballstemmer"
+  fi
+}
+
 if [ -f /app/venv/.deps_installed ]; then
   echo ""; echo "== Dependencies already installed — skipping (fast restart)"
 else
@@ -545,6 +562,7 @@ else
 fi
 
 ensure_hindsight_client_docker_dependency
+ensure_agent_runtime_imports
 
 echo ""; echo "== Running hermes-webui"
 cd /app; python server.py || error_exit "hermes-webui failed or exited with an error"
