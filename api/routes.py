@@ -19350,13 +19350,17 @@ def _route_post_api_skills_import(handler, parsed, body, diag):
         category = normalize_category(body.get("category"))
     except ValueError as exc:
         return bad(handler, str(exc))
-    result = install_skill(source, category)
+    result = install_skill(source, category, force=bool(body.get("force")))
     _SKILLS_STATS_CACHE.clear()
     result["source"] = source
     if result["ok"]:
         return j(handler, result)
     if result["status"] == "exists":
         result["error"] = "That skill is already installed."
+        return j(handler, result, 409)
+    if result["status"] in ("blocked", "hard_blocked"):
+        result["can_force"] = result["status"] == "blocked"
+        result["error"] = result["reason"]
         return j(handler, result, 409)
     last = [line for line in result.get("output", "").splitlines() if line.strip()][-3:]
     result["error"] = "The install failed." + (" " + " ".join(last) if last else "")

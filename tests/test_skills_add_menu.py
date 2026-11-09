@@ -23,12 +23,14 @@ def test_github_links_become_installer_sources(link, expected):
     assert skill_import.skill_source_from_link(link) == expected
 
 
-@pytest.mark.parametrize("link", [
-    "", "http://github.com/o/r", "https://gitlab.com/o/r", "https://github.com/o",
-    "https://github.com/o/r/issues/1", "https://raw.githubusercontent.com/o/r/main/README.md",
-    "https://github.com/o/r/tree/main/a b", "file:///etc/passwd", "--force",
-])
-def test_anything_but_a_github_skill_link_is_refused(link):
+@pytest.mark.parametrize("link", ["https://gitlab.com/o/r", "https://skills.dev/pdf/SKILL.md", "owner/repo/skills/pdf",
+                                  "https://github.com/o/r/issues/1"])
+def test_other_links_are_passed_to_the_installer_unchanged(link):
+    assert skill_import.skill_source_from_link(f"  {link} ") == link
+
+
+@pytest.mark.parametrize("link", ["", "   ", "--force", "-x", "a\nb"])
+def test_empty_links_and_option_lookalikes_are_still_refused(link):
     with pytest.raises(ValueError):
         skill_import.skill_source_from_link(link)
 
@@ -72,7 +74,28 @@ def test_install_runs_the_hermes_cli_for_the_active_profile(monkeypatch, tmp_pat
     Done.stdout, Done.returncode = "Warning: 'pdf' is already installed at x", 0
     assert skill_import.install_skill("a/b/c")["status"] == "exists"
     Done.stdout, Done.returncode = "Blocked by scan", 1
-    assert skill_import.install_skill("a/b/c") == {"ok": False, "status": "failed", "output": "Blocked by scan"}
+    assert skill_import.install_skill("a/b/c")["status"] == "blocked"
+    Done.stdout = "network error"
+    assert skill_import.install_skill("a/b/c") == {"ok": False, "status": "failed", "output": "network error"}
+
+
+def test_a_scan_refusal_is_reported_as_blocked_and_force_adds_the_flag(monkeypatch, tmp_path):
+    calls = []
+
+    class Done:
+        returncode = 1
+        stdout = "Not installed: high-risk patterns found (network exfiltration).\nRe-run with --force to install anyway."
+        stderr = ""
+
+    monkeypatch.setattr(skill_import, "_gateway_restart_profile_context", lambda: (tmp_path, None))
+    monkeypatch.setattr(skill_import, "_resolve_hermes_command", lambda: "/bin/hermes")
+    monkeypatch.setattr(skill_import.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or Done())
+    out = skill_import.install_skill("o/r/s")
+    assert out["status"] == "blocked" and "high-risk" in out["reason"]
+    skill_import.install_skill("o/r/s", force=True)
+    assert calls[-1][-1] == "--force"
+    Done.stdout = "Hermes never installs unverified skills with high-risk findings, even with --force."
+    assert skill_import.install_skill("o/r/s")["status"] == "hard_blocked"
 
 
 PYPROJECT = '''

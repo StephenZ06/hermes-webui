@@ -1,4 +1,4 @@
-"""Skills page: add a category, and import a skill from a GitHub link.
+"""Skills page: add a category, and import a skill from a link.
 
 Importing runs the agent's own installer (``hermes skills install``) for the
 active profile, so the skill goes through the same fetch, quarantine and
@@ -33,6 +33,22 @@ def normalize_category(raw) -> str:
 
 
 def skill_source_from_link(link) -> str:
+    """Turn a pasted link into what ``hermes skills install`` accepts.
+
+    GitHub links are converted (see ``_github_source``); any other link is passed
+    to the installer unchanged, which does its own fetch and security scan. Only
+    empty input and option look-alikes are refused.
+    """
+    text = str(link or "").strip()
+    if not text or text.startswith("-") or any(c in text for c in "\r\n\0"):
+        raise ValueError("Paste a link to the skill.")
+    try:
+        return _github_source(text)
+    except ValueError:
+        return text
+
+
+def _github_source(link: str) -> str:
     """Turn a pasted GitHub link into what ``hermes skills install`` accepts.
 
     - ``https://github.com/OWNER/REPO/tree/BRANCH/PATH`` and ``.../blob/BRANCH/PATH/SKILL.md``
@@ -40,7 +56,7 @@ def skill_source_from_link(link) -> str:
     - ``https://github.com/OWNER/REPO`` becomes ``OWNER/REPO``.
     - A raw ``SKILL.md`` link (raw.githubusercontent.com or gist) is passed through as a URL.
 
-    Anything else is refused: only GitHub links are accepted.
+    Raises ValueError for anything that is not one of these GitHub shapes.
     """
     text = str(link or "").strip()
     if not text:
@@ -96,7 +112,7 @@ def local_categories(skills_dir: Path) -> list[str]:
         return []
 
 
-def install_skill(source: str, category: str = "") -> dict:
+def install_skill(source: str, category: str = "", force: bool = False) -> dict:
     """Run ``hermes skills install`` for the active profile; returns ok, status, output."""
     home, cli_profile = _gateway_restart_profile_context()
     env = os.environ.copy()
@@ -108,6 +124,8 @@ def install_skill(source: str, category: str = "") -> dict:
     cmd += ["skills", "install", source, "--yes"]
     if category:
         cmd += ["--category", category]
+    if force:
+        cmd.append("--force")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env,
                               timeout=INSTALL_TIMEOUT_SECONDS, stdin=subprocess.DEVNULL)
@@ -118,7 +136,17 @@ def install_skill(source: str, category: str = "") -> dict:
     output = _ANSI_RE.sub("", (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")).strip()
     tail = output[-1500:]
     if proc.returncode != 0:
+        if re.search(r"even with --force", output, re.I):
+            return {"ok": False, "status": "hard_blocked", "output": tail, "reason": _reason(output)}
+        if re.search(r"--force to install anyway|high-risk|blocked by scan", output, re.I):
+            return {"ok": False, "status": "blocked", "output": tail, "reason": _reason(output)}
         return {"ok": False, "status": "failed", "output": tail}
     if re.search(r"already installed", output, re.I):
         return {"ok": False, "status": "exists", "output": tail}
     return {"ok": True, "status": "installed", "output": tail}
+
+
+def _reason(output: str) -> str:
+    """The scan's own words, without the --force hint, for the import form."""
+    lines = [line.strip() for line in output.splitlines() if line.strip() and "--force" not in line]
+    return " ".join(lines[-3:])[:600] or "The security scan refused this skill."
