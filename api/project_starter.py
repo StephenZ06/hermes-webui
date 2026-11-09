@@ -17,6 +17,7 @@ from api.workspace import (
     _O_DIRECTORY,
     _O_NOFOLLOW,
     open_anchored_create_fd,
+    open_anchored_write_fd,
     rmtree_anchored,
     unlink_anchored,
 )
@@ -539,6 +540,8 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     try:
         for path, content in candidates.items():
             if path.exists() or path.is_symlink():
+                if path.name == "AGENTS.md" and path.parent == root and _append_hermes_section(root, path, candidates[path]):
+                    added["appended"] = [str(path)]
                 continue
             _write(root, path, content)
             added["files"].append(str(path))
@@ -549,10 +552,57 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     return {"path": str(root), "template": template_key, "created": str(len(added["files"])), "added": added}
 
 
+HERMES_BEGIN = "<!-- hermes:begin -->"
+HERMES_END = "<!-- hermes:end -->"
+
+
+def _rewrite(root: Path, path: Path, content: str) -> None:
+    fd = open_anchored_write_fd(root, path)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+
+
+def _append_hermes_section(root: Path, path: Path, generated: str) -> bool:
+    """Add Hermes' continuity rules to a project's own AGENTS.md, once.
+
+    The user's text is kept as it is; the rules go in a section between
+    ``HERMES_BEGIN`` and ``HERMES_END`` that ``rollback_adopted`` removes.
+    """
+    if path.is_symlink() or not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if HERMES_BEGIN in text:
+        return False
+    rules = generated.split("## Before any change", 1)[-1].split("\n## Related documents", 1)[0].strip()
+    section = (f"{HERMES_BEGIN}\n## Hermes continuity\n\nAdded when Hermes adopted this project. "
+               "These rules sit alongside the ones above.\n\n### Before any change\n\n"
+               + rules.replace("\n## ", "\n### ") + f"\n{HERMES_END}\n")
+    _rewrite(root, path, text.rstrip("\n") + "\n\n" + section)
+    return True
+
+
+def _remove_hermes_section(root: Path, path: Path) -> None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if HERMES_BEGIN not in text or HERMES_END not in text:
+        return
+    head, rest = text.split(HERMES_BEGIN, 1)
+    tail = rest.split(HERMES_END, 1)[1].lstrip("\n")
+    head = head.rstrip("\n") + "\n"
+    _rewrite(root, path, head + ("\n" + tail if tail else ""))
+
+
 def rollback_adopted(project_root: Path, result: dict) -> None:
     """Undo an adopt: remove only the documents and folders it added."""
     root = Path(project_root).resolve()
     added = (result or {}).get("added") or {}
+    for appended in added.get("appended") or []:
+        try:
+            _remove_hermes_section(root, Path(appended))
+        except (OSError, ValueError):
+            pass
     new_dirs = [Path(d) for d in added.get("dirs") or []]
     for file_path in added.get("files") or []:
         path = Path(file_path)

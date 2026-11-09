@@ -293,3 +293,34 @@ def test_every_template_tells_agents_to_install_dependencies_inside_the_project(
         readme = (tmp_path / key / "README.md").read_text(encoding="utf-8")
         assert "`.venv`" in agents and "Never install globally" in agents and "npm install -g" in agents, key
         assert "never globally" in readme, key
+
+
+def test_adopting_a_project_with_its_own_agents_md_appends_a_marked_hermes_section(tmp_path: Path):
+    project = tmp_path / "app"
+    project.mkdir()
+    own = "# Our agent rules\n\nUse tabs.\n"
+    (project / "AGENTS.md").write_text(own, encoding="utf-8")
+
+    result = project_starter.adopt_starter_pack(project, "web", "")
+    text = (project / "AGENTS.md").read_text(encoding="utf-8")
+    assert text.startswith(own)
+    assert text.count("<!-- hermes:begin -->") == 1 and "<!-- hermes:end -->" in text
+    for rule in (".agent/ECC_HANDOFF.md", "Never install globally", "Before finishing"):
+        assert rule in text
+    # A second adopt leaves the section alone.
+    project_starter.adopt_starter_pack(project, "web", "")
+    assert (project / "AGENTS.md").read_text(encoding="utf-8").count("<!-- hermes:begin -->") == 1
+
+    project_starter.rollback_adopted(project, result)
+    assert (project / "AGENTS.md").read_text(encoding="utf-8") == own
+
+
+def test_rollback_keeps_edits_the_user_made_around_the_section(tmp_path: Path):
+    project = tmp_path / "app"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
+    result = project_starter.adopt_starter_pack(project, "api", "")
+    path = project / "AGENTS.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\nAdded later.\n", encoding="utf-8")
+    project_starter.rollback_adopted(project, result)
+    assert path.read_text(encoding="utf-8") == "# Rules\n\nAdded later.\n"
