@@ -6440,6 +6440,33 @@ async function loadSkills() {
 let _librariesData = null;
 let _libPreviewBust = Date.now();
 const _libPreviewJobs = new Set();
+const _libDraftJobs = new Set();
+
+async function _redraftLibrary(slug) {
+  if (_libDraftJobs.has(slug)) return;
+  _libDraftJobs.add(slug); renderLibraries();
+  let job;
+  try {
+    const {job_id} = await api('/api/libraries/draft', {method: 'POST', body: JSON.stringify({library: slug}), retries: 0});
+    do { await new Promise(r => setTimeout(r, 2000)); job = await api('/api/libraries/job?job_id=' + encodeURIComponent(job_id)); } while (job.status === 'running');
+  } catch (e) { job = {status: 'error', error: e && e.message}; }
+  _libDraftJobs.delete(slug); renderLibraries();
+  if (job.status !== 'done') { showToast(job.error || 'Hermes could not draft this library.'); return; }
+  await openSkillAddMenu();
+  _renderLibraryReview(_skillAddOverlay, job.result);
+}
+
+async function _deleteLibrary(card) {
+  const slug = card.dataset.lib;
+  const lib = (_librariesData.libraries || []).find(l => l.slug === slug) || {name: slug};
+  const ok = await showConfirmDialog({title: 'Remove ' + lib.name + '?', message: 'Its components, previews and downloaded source leave the catalog. Projects that already use it keep their copies.', confirmLabel: 'Remove', danger: true, focusCancel: true});
+  if (!ok) return;
+  try { await api('/api/libraries/delete', {method: 'POST', body: JSON.stringify({library: slug}), retries: 0}); }
+  catch (e) { showToast((e && e.message) || 'Could not remove it.'); return; }
+  if (typeof animateRemoval === 'function') { try { await animateRemoval(card); } catch (_) {} }
+  showToast(lib.name + ' removed');
+  await loadLibraries(true);
+}
 
 async function _captureLibraryPreviews(slug, jobId) {
   if (_libPreviewJobs.has(slug)) return;
@@ -6518,8 +6545,17 @@ function renderLibraries() {
     const note = busy ? '<p class="lib-note is-busy"><span class="ps-pulse"></span>Capturing previews…</p>'
       : ps && ps.missing ? `<p class="lib-note">${ps.missing} preview${ps.missing === 1 ? '' : 's'} could not be captured${ps.browser ? '' : ' (no headless browser here, so only page and README images were tried)'}. <button type="button" class="lib-link" data-lib-capture>Try again</button></p>`
       : !ps && lib.components.length ? '<p class="lib-note"><button type="button" class="lib-link" data-lib-capture>Capture previews</button></p>' : '';
-    return `<section class="lib-card" data-lib="${esc(lib.slug)}"><header class="lib-head"><span class="lib-name">${esc(lib.name)}</span>${lib.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<small class="lib-meta">${esc(meta)}</small></header>${note}${groups}</section>`;
+    const needs = lib.needs_details || lib.components.some(c => c.needs_details);
+    const drafting = _libDraftJobs.has(lib.slug);
+    const actions = `<span class="lib-actions">${needs ? `<button type="button" class="lib-draft" data-lib-draft${drafting ? ' disabled' : ''}>${drafting ? '<span class="ps-pulse"></span>Drafting…' : 'Draft with Hermes'}</button>` : ''}<button type="button" class="lib-edit lib-delete" data-lib-delete aria-label="Remove ${esc(lib.name)} from the catalog"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></span>`;
+    return `<section class="lib-card" data-lib="${esc(lib.slug)}"><header class="lib-head"><span class="lib-title"><span class="lib-name">${esc(lib.name)}</span>${lib.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}</span>${actions}<small class="lib-meta">${esc(meta)}</small></header>${note}${groups}</section>`;
   }).join('');
+  box.querySelectorAll('[data-lib-draft]').forEach(btn => btn.onclick = () => _redraftLibrary(btn.closest('.lib-card').dataset.lib));
+  box.querySelectorAll('[data-lib-delete]').forEach(btn => btn.onclick = () => _deleteLibrary(btn.closest('.lib-card')));
+  box.querySelectorAll('.lib-comp').forEach(el => el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-lib-edit]')) return;
+    el.querySelector('[data-lib-edit]').click();
+  }));
   box.querySelectorAll('[data-lib-capture]').forEach(btn => btn.onclick = () => _captureLibraryPreviews(btn.closest('.lib-card').dataset.lib));
   box.querySelectorAll('.lib-comp[data-loop]').forEach(el => {
     const img = el.querySelector('.lib-thumb img'); if (!img) return;
@@ -7156,7 +7192,7 @@ async function _renderLibraryReview(overlay, result) {
     const library = {...lib, name: f.name.value, kind: f.kind.value, tailwind: f.tailwind.checked, install: f.install.value,
       frameworks: [...f.querySelectorAll('.lib-toggle.is-on[data-framework]')].map(b => b.dataset.framework)};
     try {
-      const saved = await api('/api/libraries/save', {method: 'POST', body: JSON.stringify({staging: result.staging, slug: d.slug || library.name, library, components}), retries: 0});
+      const saved = await api('/api/libraries/save', {method: 'POST', body: JSON.stringify({staging: result.staging, slug: d.slug || library.name, library, components, replace: !!result.replace}), retries: 0});
       showToast('Library added. Capturing previews…');
       _closeSkillAddMenu();
       if (typeof switchSkillsTab === 'function') switchSkillsTab('libraries');

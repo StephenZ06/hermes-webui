@@ -169,3 +169,19 @@ def test_a_library_without_status_offers_to_capture_previews(page, catalog):
     page.evaluate("switchSkillsTab('libraries')")
     page.wait_for_selector(".lib-card")
     assert page.inner_text(".lib-note") == "Capture previews"
+
+
+def test_a_library_needing_details_offers_draft_with_hermes_and_can_be_removed(page, catalog):
+    page.evaluate("switchSkillsTab('libraries')")
+    page.wait_for_selector(".lib-card[data-lib=calm-ui] [data-lib-draft]")  # "loose" needs details
+    page.click(".lib-card[data-lib=calm-ui] [data-lib-delete]")
+    page.wait_for_selector("#appDialogConfirm:visible")
+    page.click("#appDialogConfirm")
+    page.wait_for_selector(".lib-card[data-lib=calm-ui]", state="detached")
+    assert not (catalog / "calm-ui").exists()
+
+
+def test_clicking_a_component_card_opens_its_tag_form(page, catalog):
+    page.evaluate("switchSkillsTab('libraries')")
+    page.click(".lib-comp[data-comp=fade] .lib-thumb")
+    page.wait_for_selector(".lib-tag-form")

@@ -193,3 +193,31 @@ def commit_import(root: Path, staging: str, slug: str, library: dict, components
     if stage:
         shutil.rmtree(stage, ignore_errors=True)
     return lib_dir
+
+
+def _redraft_work(root: Path, slug: str) -> dict:
+    """Draft tags for a library that is already in the catalog (pre-installed or
+    imported without details), from its source copy, or its link when there is none."""
+    lib_dir = lc.safe_child(root, lc.slugify(slug))
+    if not lib_dir.is_dir():
+        raise FileNotFoundError("No such library.")
+    meta, _ = lc.parse_front_matter((lib_dir / "LIBRARY.md").read_text(encoding="utf-8")) if (lib_dir / "LIBRARY.md").is_file() else ({}, "")
+    link = str(meta.get("source") or "")
+    gathered = gather(lib_dir)
+    if not (gathered["readme"] or gathered["tree"]) and link:
+        stage = lc.safe_child(root, STAGING_DIR, "redraft-" + lib_dir.name)
+        shutil.rmtree(stage, ignore_errors=True)
+        try:
+            fetch_source(link, stage)
+            gathered = gather(stage)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+    draft = _draft_with_planner(link or lib_dir.name, gathered)
+    draft["slug"] = lib_dir.name
+    draft["library"]["source"] = link or draft["library"].get("source", "")
+    return {"staging": "", "mode": "existing", "draft": draft, "replace": True}
+
+
+def start_redraft(root: Path, slug: str) -> str:
+    from api.project_starter_agent import _start_job
+    return _start_job("library-redraft", lambda: _redraft_work(Path(root), slug))

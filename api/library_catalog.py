@@ -209,3 +209,16 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion)
             items[0]["recommended"] = items[0]["score"] > 0
             out[role] = items
     return out
+
+
+def delete_library(root: Path, slug: str) -> None:
+    """Remove one library folder (entry, components, previews and source copy)."""
+    import shutil
+
+    clean = slugify(slug)
+    if clean != str(slug).strip():
+        raise ValueError("Unknown library.")
+    target = safe_child(root, clean)
+    if not target.is_dir() or target.is_symlink():
+        raise FileNotFoundError("No such library.")
+    shutil.rmtree(target)

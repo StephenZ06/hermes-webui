@@ -104,3 +104,30 @@ def test_a_failed_draft_still_returns_an_editable_entry(tmp_path, monkeypatch):
     result = li._import_work("https://x.dev/ui", tmp_path, "job9")
     assert result["draft"]["library"]["source"] == "https://x.dev/ui"
     assert result["draft"]["library"]["needs_details"] is True and result["draft_error"] == "no model"
+
+
+def test_redraft_reads_an_existing_library_source_and_flags_replace(tmp_path, monkeypatch):
+    from api import library_catalog as lc
+    root = tmp_path / "libraries"
+    lc.save_library(root, "calm", {"name": "calm", "source": "https://x/calm"}, [])
+    (root / "calm" / "source").mkdir()
+    (root / "calm" / "source" / "README.md").write_text("# Calm UI")
+    seen = {}
+    monkeypatch.setattr(li, "_draft_with_planner", lambda link, gathered: seen.update(gathered) or li.parse_draft(DRAFT))
+    out = li._redraft_work(root, "calm")
+    assert "Calm UI" in seen["readme"]
+    assert out["replace"] is True and out["draft"]["slug"] == "calm"
+    assert out["draft"]["library"]["source"] == "https://x/calm"
+
+
+def test_delete_library_removes_only_that_folder(tmp_path):
+    from api import library_catalog as lc
+    root = tmp_path / "libraries"
+    lc.save_library(root, "a", {"name": "a"}, [])
+    lc.save_library(root, "b", {"name": "b"}, [])
+    lc.delete_library(root, "a")
+    assert [l["slug"] for l in lc.list_libraries(root)] == ["b"]
+    with pytest.raises(ValueError):
+        lc.delete_library(root, "../x")
+    with pytest.raises(FileNotFoundError):
+        lc.delete_library(root, "missing")

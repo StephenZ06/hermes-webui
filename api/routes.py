@@ -16070,6 +16070,31 @@ def _start_preview_job(slug: str) -> str:
     return _start_job("library-previews", lambda: capture_library(root, slug))
 
 
+def _route_post_api_libraries_draft(handler, parsed, body, diag):
+    from api.library_catalog import safe_child, slugify
+    from api.library_import import start_redraft
+    body = body if isinstance(body, dict) else {}
+    try:
+        slug = slugify(body.get("library"))
+        if not safe_child(_libraries_root(), slug).is_dir():
+            return bad(handler, "No such library.", 404)
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    return j(handler, {"job_id": start_redraft(_libraries_root(), slug)})
+
+
+def _route_post_api_libraries_delete(handler, parsed, body, diag):
+    from api.library_catalog import delete_library
+    body = body if isinstance(body, dict) else {}
+    try:
+        delete_library(_libraries_root(), str(body.get("library") or ""))
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    except FileNotFoundError as exc:
+        return bad(handler, str(exc), 404)
+    return j(handler, {"ok": True})
+
+
 def _route_post_api_libraries_previews(handler, parsed, body, diag):
     from api.library_catalog import safe_child, slugify
     body = body if isinstance(body, dict) else {}
@@ -21251,6 +21276,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/libraries/save"), _route_post_api_libraries_save),
         (Exact("/api/libraries/component"), _route_post_api_libraries_component),
         (Exact("/api/libraries/previews"), _route_post_api_libraries_previews),
+        (Exact("/api/libraries/draft"), _route_post_api_libraries_draft),
+        (Exact("/api/libraries/delete"), _route_post_api_libraries_delete),
         (Exact("/api/libraries/preview_upload"), _route_post_api_libraries_preview_upload),
         (Exact("/api/skills/toggle"), _route_post_api_skills_toggle),
         (Exact("/api/memory/write"), _route_post_api_memory_write),
