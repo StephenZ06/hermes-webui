@@ -136,3 +136,36 @@ def test_component_cards_share_one_size_and_sit_on_the_8px_grid(page, width):
     gap = page.evaluate("() => { const [a, b] = document.querySelector('.lib-grid').querySelectorAll('.lib-comp'); const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return rb.top > ra.top + 1 ? rb.top - ra.bottom : rb.left - ra.right; }")
     assert gap == 8
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+def _png_data_url():
+    import base64
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new("RGB", (320, 200), (20, 160, 90)).save(out, "PNG")
+    return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()
+
+
+def test_an_uploaded_picture_becomes_the_preview(catalog):
+    code, out = _call("/api/libraries/preview_upload", {"library": "calm-ui", "component": "fade", "data": _png_data_url()})
+    assert code == 200 and out["preview"] == "calm-ui/previews/fade.webp"
+    with urllib.request.urlopen(BASE + "/api/libraries/preview?path=calm-ui/previews/fade.webp", timeout=10) as resp:
+        assert resp.headers["Content-Type"] == "image/webp" and resp.read(4) == b"RIFF"
+    assert _call("/api/libraries/preview_upload", {"library": "calm-ui", "component": "fade", "data": "bm90IGFuIGltYWdl"})[0] == 400
+    assert _call("/api/libraries/preview_upload", {"library": "calm-ui", "component": "nope", "data": _png_data_url()})[0] == 404
+
+
+def test_preview_status_shows_what_could_not_be_captured(page, catalog):
+    (catalog / "calm-ui" / "previews").mkdir(exist_ok=True)
+    (catalog / "calm-ui" / "previews" / "STATUS.json").write_text(json.dumps({"browser": False, "captured": 0, "fallback": 1, "missing": 2}))
+    page.evaluate("switchSkillsTab('libraries')")
+    page.wait_for_selector(".lib-note")
+    assert page.inner_text(".lib-note").startswith("2 previews could not be captured")
+    assert page.locator(".lib-note [data-lib-capture]").count() == 1
+
+
+def test_a_library_without_status_offers_to_capture_previews(page, catalog):
+    page.evaluate("switchSkillsTab('libraries')")
+    page.wait_for_selector(".lib-card")
+    assert page.inner_text(".lib-note") == "Capture previews"

@@ -10,6 +10,7 @@ the entry is marked ``needs_details`` for the user to fix.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -108,8 +109,20 @@ def _read_meta(path: Path) -> tuple[dict, bool]:
 
 
 def _preview(lib_dir: Path, slug: str, suffix: str) -> str | None:
-    p = lib_dir / "previews" / f"{slug}{suffix}"
-    return f"{lib_dir.name}/previews/{p.name}" if p.is_file() else None
+    suffixes = (".webp", ".png", ".jpg", ".gif") if suffix == ".webp" else (suffix,)
+    for ext in suffixes:
+        p = lib_dir / "previews" / f"{slug}{ext}"
+        if p.is_file():
+            return f"{lib_dir.name}/previews/{p.name}"
+    return None
+
+
+def _preview_status(lib_dir: Path) -> dict | None:
+    try:
+        data = json.loads((lib_dir / "previews" / "STATUS.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def list_libraries(root: Path) -> list[dict]:
@@ -131,7 +144,7 @@ def list_libraries(root: Path) -> list[dict]:
             comp["needs_details"] = comp["needs_details"] or cbroken
             comp.update(slug=f.stem, preview=_preview(lib_dir, f.stem, ".webp"), loop=_preview(lib_dir, f.stem, ".loop.webp"))
             comps.append(comp)
-        out.append({"slug": lib_dir.name, **lib, "components": comps})
+        out.append({"slug": lib_dir.name, **lib, "components": comps, "preview_status": _preview_status(lib_dir)})
     return out
 
 

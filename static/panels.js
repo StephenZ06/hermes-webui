@@ -6438,6 +6438,23 @@ async function loadSkills() {
 
 // ── Libraries tab (project builder catalog) ──
 let _librariesData = null;
+let _libPreviewBust = Date.now();
+const _libPreviewJobs = new Set();
+
+async function _captureLibraryPreviews(slug, jobId) {
+  if (_libPreviewJobs.has(slug)) return;
+  _libPreviewJobs.add(slug);
+  if (_librariesData) renderLibraries();
+  try {
+    const id = jobId || (await api('/api/libraries/previews', {method: 'POST', body: JSON.stringify({library: slug}), retries: 0})).job_id;
+    let job;
+    do { await new Promise(r => setTimeout(r, 2000)); job = await api('/api/libraries/job?job_id=' + encodeURIComponent(id)); } while (job.status === 'running');
+    if (job.status !== 'done') showToast(job.error || 'Previews could not be captured.');
+  } catch (e) { showToast((e && e.message) || 'Previews could not be captured.'); }
+  _libPreviewJobs.delete(slug);
+  _libPreviewBust = Date.now();
+  if ($('librariesList')) await loadLibraries(true);
+}
 let _skillsTab = 'skills';
 const _LIB_LABELS = {npm: 'npm', 'copy-paste': 'Copy-paste', swiftui: 'SwiftUI', 'react-native': 'React Native', ios: 'iOS'};
 const _libLabel = (s) => _LIB_LABELS[s] || String(s || '').replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
@@ -6473,8 +6490,8 @@ async function loadLibraries(force = false) {
 
 function _libCompHtml(lib, c) {
   const chips = [...c.style, c.motion, ...c.platform].filter(Boolean).map(t => `<span class="lib-chip">${esc(_libLabel(t))}</span>`).join('');
-  const img = c.preview ? `<img src="api/libraries/preview?path=${encodeURIComponent(c.preview)}" alt="" loading="lazy" decoding="async">` : `<span class="lib-thumb-empty" aria-hidden="true">${esc((c.name || '?').slice(0, 1))}</span>`;
-  return `<div class="lib-comp" data-lib="${esc(lib.slug)}" data-comp="${esc(c.slug)}">
+  const img = c.preview ? `<img src="api/libraries/preview?path=${encodeURIComponent(c.preview)}&v=${_libPreviewBust}" alt="" loading="lazy" decoding="async">` : `<span class="lib-thumb-empty" aria-hidden="true">${esc((c.name || '?').slice(0, 1))}</span>`;
+  return `<div class="lib-comp" data-lib="${esc(lib.slug)}" data-comp="${esc(c.slug)}"${c.loop ? ` data-loop="${esc(c.loop)}"` : ''}>
     <div class="lib-thumb">${img}</div>
     <div class="lib-comp-text"><strong>${esc(c.name)}</strong>${c.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<div class="lib-chips">${chips}</div></div>
     <button type="button" class="lib-edit" data-lib-edit aria-label="Edit tags for ${esc(c.name)}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
@@ -6496,8 +6513,21 @@ function renderLibraries() {
       return `<div class="lib-role-head">${esc(role ? _libLabel(role) : 'Untagged')}</div><div class="lib-grid">${list.map(c => _libCompHtml(lib, c)).join('')}</div>`;
     }).join('');
     const meta = [lib.kind && _libLabel(lib.kind), ...lib.frameworks.map(_libLabel), lib.tailwind && 'Tailwind', lib.license].filter(Boolean).join(' · ');
-    return `<section class="lib-card" data-lib="${esc(lib.slug)}"><header class="lib-head"><span class="lib-name">${esc(lib.name)}</span>${lib.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<small class="lib-meta">${esc(meta)}</small></header>${groups}</section>`;
+    const ps = lib.preview_status;
+    const busy = _libPreviewJobs.has(lib.slug);
+    const note = busy ? '<p class="lib-note is-busy"><span class="ps-pulse"></span>Capturing previews…</p>'
+      : ps && ps.missing ? `<p class="lib-note">${ps.missing} preview${ps.missing === 1 ? '' : 's'} could not be captured${ps.browser ? '' : ' (no headless browser here, so only page and README images were tried)'}. <button type="button" class="lib-link" data-lib-capture>Try again</button></p>`
+      : !ps && lib.components.length ? '<p class="lib-note"><button type="button" class="lib-link" data-lib-capture>Capture previews</button></p>' : '';
+    return `<section class="lib-card" data-lib="${esc(lib.slug)}"><header class="lib-head"><span class="lib-name">${esc(lib.name)}</span>${lib.needs_details ? '<span class="lib-badge-needs">Needs details</span>' : ''}<small class="lib-meta">${esc(meta)}</small></header>${note}${groups}</section>`;
   }).join('');
+  box.querySelectorAll('[data-lib-capture]').forEach(btn => btn.onclick = () => _captureLibraryPreviews(btn.closest('.lib-card').dataset.lib));
+  box.querySelectorAll('.lib-comp[data-loop]').forEach(el => {
+    const img = el.querySelector('.lib-thumb img'); if (!img) return;
+    const still = img.src, loop = 'api/libraries/preview?path=' + encodeURIComponent(el.dataset.loop);
+    const reduce = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.addEventListener('mouseenter', () => { if (!reduce()) img.src = loop; });
+    el.addEventListener('mouseleave', () => { img.src = still; });
+  });
   box.querySelectorAll('[data-lib-edit]').forEach(btn => btn.onclick = () => {
     const el = btn.closest('.lib-comp');
     const lib = libs.find(l => l.slug === el.dataset.lib);
@@ -6526,15 +6556,29 @@ function _wireLibToggles(root) {
 async function _openLibraryTagForm(lib, comp) {
   await openSkillAddMenu();
   const overlay = _skillAddOverlay;
-  const form = _skillAddForm(overlay, comp.name, `<div class="lib-tag-form">${_libTagFields(_librariesData.vocab, comp)}</div>`, 'Save', async (f, status) => {
+  const form = _skillAddForm(overlay, comp.name, `<div class="lib-tag-form">${_libTagFields(_librariesData.vocab, comp)}
+    <div class="skill-add-field"><span>Picture</span><label class="lib-picture">${comp.preview ? `<img src="api/libraries/preview?path=${encodeURIComponent(comp.preview)}&v=${_libPreviewBust}" alt="">` : '<span class="lib-picture-empty">No picture yet</span>'}<input type="file" name="picture" accept="image/png,image/jpeg,image/webp,image/gif"><span class="lib-picture-cta">${comp.preview ? 'Replace picture' : 'Add a picture'}</span></label></div></div>`, 'Save', async (f, status) => {
     try {
       await api('/api/libraries/component', {method: 'POST', body: JSON.stringify({library: lib.slug, component: comp.slug, fields: _readLibTags(f)}), retries: 0});
+      const file = f.picture && f.picture.files && f.picture.files[0];
+      if (file) {
+        const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read that file.')); r.readAsDataURL(file); });
+        await api('/api/libraries/preview_upload', {method: 'POST', body: JSON.stringify({library: lib.slug, component: comp.slug, data}), retries: 0});
+        _libPreviewBust = Date.now();
+      }
       _closeSkillAddMenu();
       await loadLibraries(true);
     } catch (err) { status.classList.add('is-error'); status.textContent = (err && err.message) || 'Could not save.'; }
   });
   form.classList.add('lib-tag-form');
   _wireLibToggles(form);
+  const pic = form.querySelector('[name=picture]');
+  if (pic) pic.onchange = () => {
+    const file = pic.files && pic.files[0]; if (!file) return;
+    const box = pic.closest('.lib-picture'); const url = URL.createObjectURL(file);
+    box.querySelector('img, .lib-picture-empty').outerHTML = `<img src="${url}" alt="">`;
+    box.querySelector('.lib-picture-cta').textContent = 'Replace picture';
+  };
 }
 
 let _collapsedCats = new Set(); // persisted collapsed state across re-renders
@@ -7112,10 +7156,12 @@ async function _renderLibraryReview(overlay, result) {
     const library = {...lib, name: f.name.value, kind: f.kind.value, tailwind: f.tailwind.checked, install: f.install.value,
       frameworks: [...f.querySelectorAll('.lib-toggle.is-on[data-framework]')].map(b => b.dataset.framework)};
     try {
-      await api('/api/libraries/save', {method: 'POST', body: JSON.stringify({staging: result.staging, slug: d.slug || library.name, library, components}), retries: 0});
-      showToast('Library added');
+      const saved = await api('/api/libraries/save', {method: 'POST', body: JSON.stringify({staging: result.staging, slug: d.slug || library.name, library, components}), retries: 0});
+      showToast('Library added. Capturing previews…');
       _closeSkillAddMenu();
+      if (typeof switchSkillsTab === 'function') switchSkillsTab('libraries');
       await loadLibraries(true);
+      if (saved && saved.previews_job) _captureLibraryPreviews(saved.slug, saved.previews_job);
     } catch (err) { status.classList.add('is-error'); status.textContent = (err && err.message) || 'Could not save.'; }
   });
   _wireLibToggles(form);

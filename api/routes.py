@@ -16060,7 +16060,46 @@ def _route_post_api_libraries_save(handler, parsed, body, diag):
                       body.get("library") or {}, [c for c in body.get("components") or [] if isinstance(c, dict)])
     except ValueError as exc:
         return bad(handler, str(exc))
-    return j(handler, {"ok": True, "slug": slug})
+    return j(handler, {"ok": True, "slug": slug, "previews_job": _start_preview_job(slug)})
+
+
+def _start_preview_job(slug: str) -> str:
+    from api.library_previews import capture_library
+    from api.project_starter_agent import _start_job
+    root = _libraries_root()
+    return _start_job("library-previews", lambda: capture_library(root, slug))
+
+
+def _route_post_api_libraries_previews(handler, parsed, body, diag):
+    from api.library_catalog import safe_child, slugify
+    body = body if isinstance(body, dict) else {}
+    try:
+        slug = slugify(body.get("library"))
+        if not safe_child(_libraries_root(), slug).is_dir():
+            return bad(handler, "No such library.", 404)
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    return j(handler, {"job_id": _start_preview_job(slug)})
+
+
+def _route_post_api_libraries_preview_upload(handler, parsed, body, diag):
+    import base64
+    import binascii
+
+    from api.library_catalog import safe_child, slugify
+    from api.library_previews import save_still
+    body = body if isinstance(body, dict) else {}
+    try:
+        lib_dir = safe_child(_libraries_root(), slugify(body.get("library")))
+        comp = slugify(body.get("component"))
+        if not (lib_dir / "components" / f"{comp}.md").is_file():
+            return bad(handler, "No such component.", 404)
+        raw = str(body.get("data") or "")
+        data = base64.b64decode(raw.split(",", 1)[-1], validate=True)
+        path = save_still(lib_dir, comp, data)
+    except (ValueError, binascii.Error) as exc:
+        return bad(handler, str(exc) or "That file is not an image Hermes can read.")
+    return j(handler, {"ok": True, "preview": f"{lib_dir.name}/previews/{path.name}"})
 
 
 def _route_post_api_libraries_component(handler, parsed, body, diag):
@@ -21211,6 +21250,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/libraries/import"), _route_post_api_libraries_import),
         (Exact("/api/libraries/save"), _route_post_api_libraries_save),
         (Exact("/api/libraries/component"), _route_post_api_libraries_component),
+        (Exact("/api/libraries/previews"), _route_post_api_libraries_previews),
+        (Exact("/api/libraries/preview_upload"), _route_post_api_libraries_preview_upload),
         (Exact("/api/skills/toggle"), _route_post_api_skills_toggle),
         (Exact("/api/memory/write"), _route_post_api_memory_write),
         (Exact("/api/memory/entry/delete"), _route_post_api_memory_entry_delete),
