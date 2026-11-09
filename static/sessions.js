@@ -10017,7 +10017,20 @@ const _PROJECT_STARTER_ICONS={
 // optically normalised to the same visual size in static/project-starter/).
 const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,data:1,research:1,new:1,existing:1};
 function _psArt(name,size){
-  return '<img class="ps-art" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
+  return '<img class="ps-art ps-art-'+name+'" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
+}
+// Each artwork slot shows its own spinner, centred in the icon's box, until that
+// image has decoded; the image then fades in. Slots load independently.
+function _psWatchArt(root){
+  if(!root) return;
+  root.querySelectorAll('.ps-art-wrap').forEach(wrap=>{
+    const img=wrap.querySelector('img.ps-art');
+    if(!img||(img.complete&&img.naturalWidth>0)) return;
+    wrap.classList.add('is-loading');
+    const done=()=>wrap.classList.remove('is-loading');
+    img.addEventListener('load',done,{once:true});
+    img.addEventListener('error',done,{once:true});
+  });
 }
 function _psIcon(name,size=18){
   return '<svg class="ps-icon" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(_PROJECT_STARTER_ICONS[name]||'')+'</svg>';
@@ -10162,6 +10175,7 @@ async function _openProjectStarterWizard(profile){
       body.classList.add(direction>=0?'ps-enter-fwd':'ps-enter-back');
       paintStepper();
       ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate})[st.step]();
+      _psWatchArt(body);
       _psGlideHeight(dialog,h0);
     };
     const go=(step,direction)=>{st.step=step;render(direction);};
@@ -10471,7 +10485,7 @@ async function _openProjectStarterWizard(profile){
         const text=_psEl('span','ps-option-text');text.append(_psEl('span','ps-option-label',label));
         if(details[i]) text.append(_psEl('span','ps-option-detail',details[i]));
         opt.append(key(i+1),text);
-        if(item.recommended===label){opt.classList.add('is-recommended');opt.append(_psEl('span','ps-option-rec','Recommended'));}
+        if(item.recommended===label){opt.classList.add('is-recommended');const star=document.createElement('img');star.className='ps-option-star';star.src='static/wizard/star.png';star.alt='Recommended';star.width=18;star.height=18;star.decoding='async';star.draggable=false;opt.append(star);}
         opt.onclick=()=>{st.answers[item.id]=label;renderQuestions();};
         opts.append(opt);
       });

@@ -17774,3 +17774,22 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .files-pick,.files-pick svg,.files-toolbar-actions .files-action-danger svg{transition:none;}
   .files-browser .dm-wiggle,.files-select-bar.is-entering,.files-browser.is-leaving-mode .files-select-bar,.files-browser.is-mode-entering .files-pick,.files-browser.is-leaving-mode .files-pick{animation:none!important;}
 }
+
+/* Create-project wizard: the step prompt sits as far below the stepper as the
+   content sits below the prompt (both 14px with the body's 2px top padding). */
+.ps-wizard .ps-stepper{margin-bottom:12px;}
+/* The Data/ML artwork fills more of its square than its neighbours; scale it
+   down so all template icons read the same size inside the same 34px slot. */
+.ps-template .ps-art-data{transform:scale(.84);}
+/* Per-icon loading spinner, centred in the icon's own box. */
+.ps-art-wrap{position:relative;}
+.ps-art{transition:opacity .22s ease-out;}
+.ps-art-wrap.is-loading .ps-art{opacity:0;}
+.ps-art-wrap.is-loading::after{content:"";position:absolute;inset:0;margin:auto;width:18px;height:18px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,var(--text) 14%,transparent);border-top-color:var(--accent);animation:ps-art-spin .8s linear infinite;}
+@keyframes ps-art-spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.ps-art-wrap.is-loading::after{animation:ps-art-breathe 1.2s ease-in-out infinite alternate;}.ps-art{transition:none;}}
+@keyframes ps-art-breathe{from{opacity:.35;}to{opacity:1;}}
+/* Recommended choice: a star pinned to the card's top-right corner, as far from
+   the top edge as from the right edge. */
+.ps-option.is-recommended{padding-right:34px;}
+.ps-option-star{position:absolute;top:8px;right:8px;width:18px;height:18px;display:block;pointer-events:none;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));}

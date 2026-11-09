@@ -25,9 +25,9 @@ TEMPLATES = {
 }
 
 
-def _to_template_step(page):
+def _to_template_step(page, templates=TEMPLATES):
     page.route("**/api/workspaces", lambda route: route.fulfill(json={"workspaces": [{"name": "Home", "path": "/tmp/ws"}]}))
-    page.route("**/api/projects/starter/templates", lambda route: route.fulfill(json=TEMPLATES))
+    page.route("**/api/projects/starter/templates", lambda route: route.fulfill(json=templates))
     page.route("**/api/projects/starter/folders*", lambda route: route.fulfill(json={"folders": []}))
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
@@ -168,3 +168,70 @@ def test_details_step_types_the_fourth_answer_in_place_and_explains_the_pick(rea
     page.wait_for_function("() => document.activeElement.classList.contains('is-selected')")
     page.keyboard.press("4")
     assert page.evaluate("() => document.activeElement.classList.contains('ps-option-input')")
+
+
+PROMPT_GAPS = """() => { const s = document.querySelector('.ps-wizard .ps-stepper').getBoundingClientRect(),
+  p = document.querySelector('.ps-wizard .ps-prompt'), r = p.getBoundingClientRect(),
+  n = p.nextElementSibling.getBoundingClientRect(); return {top: r.top - s.bottom, bottom: n.top - r.bottom}; }"""
+
+
+def test_step_prompt_has_the_same_room_above_and_below(real_2x):
+    page = real_2x
+    _to_template_step(page)
+    gap = page.evaluate(PROMPT_GAPS)
+    assert abs(gap["top"] - gap["bottom"]) <= 0.5, gap
+    page.click(".ps-prev")
+    page.wait_for_timeout(400)
+    page.click(".ps-prev")
+    page.wait_for_timeout(400)
+    gap = page.evaluate(PROMPT_GAPS)  # step 1, "Please pick one:"
+    assert abs(gap["top"] - gap["bottom"]) <= 0.5, gap
+
+
+def test_each_template_icon_shows_its_own_centred_spinner_until_it_loads(real_2x):
+    page = real_2x
+    held = []
+    page.route("**/static/project-starter/*.webp", lambda route: held.append(route))
+    _to_template_step(page)
+    slots = page.evaluate("""() => [...document.querySelectorAll('.ps-template .ps-art-wrap')].map(w => {
+      const b = w.getBoundingClientRect(), a = getComputedStyle(w, '::after'), img = w.querySelector('img');
+      return {loading: w.classList.contains('is-loading'), spin: a.animationName, w: a.width, h: a.height,
+        box: [b.width, b.height], hidden: getComputedStyle(img).opacity}; })""")
+    assert len(slots) == 4 and all(s["loading"] and s["spin"] == "ps-art-spin" for s in slots), slots
+    assert all(s["box"] == [34, 34] and s["w"] == "18px" and s["h"] == "18px" for s in slots), slots
+    # The spinner is centred in the icon's box: inset 0 with auto margins.
+    centred = page.evaluate("""() => { const w = document.querySelector('.ps-template .ps-art-wrap'), a = getComputedStyle(w, '::after');
+      return [a.position, a.top, a.bottom, a.marginTop, a.marginBottom]; }""")
+    assert centred[0] == "absolute" and centred[1] == centred[2] == "0px" and centred[3] == centred[4], centred
+    # Releasing one image clears only that slot; the others keep spinning.
+    first = next(r for r in held if r.request.url.endswith("/web.webp"))
+    first.continue_()
+    page.wait_for_function("() => document.querySelectorAll('.ps-template .ps-art-wrap.is-loading').length === 3")
+    assert page.evaluate("() => !document.querySelector('.ps-art-web').parentElement.classList.contains('is-loading')")
+    for route in held:
+        if route is not first:
+            route.continue_()
+    page.wait_for_function("() => !document.querySelector('.ps-art-wrap.is-loading')")
+
+
+def test_data_ml_artwork_is_scaled_down_to_match_its_neighbours(real_2x):
+    page = real_2x
+    TEMPLATES_WITH_DATA = dict(TEMPLATES, templates=TEMPLATES["templates"] + [
+        {"key": "data", "label": "Data/ML", "description": "Notebooks and models.", "files": ["AGENTS.md"]}])
+    _to_template_step(page, TEMPLATES_WITH_DATA)
+    sizes = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ps-template .ps-art')].map(i =>
+      [i.src.split('/').pop(), i.getBoundingClientRect().width]))""")
+    assert sizes["data.webp"] < sizes["web.webp"] - 4, sizes
+    assert len({w for k, w in sizes.items() if k != "data.webp"}) == 1
+
+
+def test_recommended_choice_wears_a_star_in_its_top_right_corner(real_2x):
+    page = real_2x
+    _to_details_step(page)
+    assert "Recommended" not in page.inner_text(".ps-options")
+    star = page.evaluate("""() => { const o = document.querySelector('.ps-option.is-recommended'), s = o.querySelector('.ps-option-star'),
+      a = o.getBoundingClientRect(), b = s.getBoundingClientRect();
+      return {top: b.top - a.top, right: a.right - b.right, w: b.width, ok: s.complete && s.naturalWidth > 0,
+        src: new URL(s.src).pathname, stars: document.querySelectorAll('.ps-option-star').length}; }""")
+    assert star["src"] == "/static/wizard/star.png" and star["ok"] and star["stars"] == 1, star
+    assert star["w"] == 18 and abs(star["top"] - star["right"]) <= 0.5, star
