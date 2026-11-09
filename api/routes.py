@@ -20294,6 +20294,33 @@ def _starter_docs_job(proj, *, adopt, template_key):
     return start_docs_setup(proj, adopt=adopt, template_label=template.get("label", ""), files=template.get("files"))
 
 
+def _installed_skill_names() -> set[str]:
+    return {s["name"] for s in _skills_list_from_dir(_active_skills_dir()).get("skills", []) if s.get("name")}
+
+
+def _route_post_api_projects_starter_toolkit(handler, parsed, body, diag):
+    """Skill and component suggestions for the wizard's Toolkit step."""
+    from api import library_catalog as lc
+    from api import project_toolkit as tk
+
+    body = body if isinstance(body, dict) else {}
+    template = str(body.get("template") or "blank").strip().lower()
+    skills = _skills_list_from_dir(_active_skills_dir()).get("skills", [])
+    out = {"skills": tk.suggest_skills(skills, template=template, brief=str(body.get("brief") or "")[:20000]),
+           "components": {}, "visual": tk.is_visual(template), "frameworks": list(lc.FRAMEWORKS), "libraries": 0}
+    if tk.is_visual(template):
+        framework = str(body.get("framework") or "").strip().lower()
+        if framework not in lc.FRAMEWORKS:
+            framework = tk.default_framework(template)
+        platform = tk.platform_for(template, framework)
+        libraries = lc.list_libraries(_libraries_root())
+        out.update(framework=framework, platform=platform, libraries=len(libraries),
+                   components=lc.match_components(libraries, platform=platform, framework=framework,
+                                                  tailwind=body.get("tailwind") is True,
+                                                  style=str(body.get("style") or ""), motion=str(body.get("motion") or "")))
+    return j(handler, out)
+
+
 def _route_post_api_projects_starter_analyze(handler, parsed, body, diag):
     from api.project_starter import template_catalog
     from api.project_starter_agent import start_analysis
@@ -20345,6 +20372,20 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         return bad(handler, "Could not create the project files in this workspace.", 500)
 
     project_path = starter["path"]
+    toolkit = None
+    try:
+        from api.project_toolkit import apply_toolkit, normalize_toolkit
+
+        toolkit = normalize_toolkit(body.get("toolkit"), template=starter["template"],
+                                    libraries_root=_libraries_root(), skill_names=_installed_skill_names())
+        starter["toolkit_files"] = apply_toolkit(Path(project_path), toolkit, libraries_root=_libraries_root())
+    except Exception:
+        try:
+            rmtree_anchored(Path(parent), Path(project_path))
+        except Exception:
+            logger.exception("Could not roll back project starter files: %s", project_path)
+        logger.exception("Project toolkit write failed")
+        return bad(handler, "Could not write the chosen skills and components into the project.", 500)
     proj = {
         "project_id": uuid.uuid4().hex[:12],
         "name": name,
@@ -20371,7 +20412,10 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
 
     registry_key = register_in_lifecycle_registry(name, Path(project_path))
     docs_job = _starter_docs_job(proj, adopt=False, template_key=starter["template"]) if body.get("docs_agent", True) else None
-    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job, "registry_key": registry_key})
+    from api.project_toolkit import kickoff_message
+
+    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job, "registry_key": registry_key,
+                       "kickoff": kickoff_message(name, starter["template"], toolkit)})
 
 
 def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
@@ -21203,6 +21247,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/projects/create_starter"), _route_post_api_projects_create_starter),
         (Exact("/api/projects/adopt_starter"), _route_post_api_projects_adopt_starter),
         (Exact("/api/projects/starter/analyze"), _route_post_api_projects_starter_analyze),
+        (Exact("/api/projects/starter/toolkit"), _route_post_api_projects_starter_toolkit),
         (Exact("/api/projects/rename"), _route_post_api_projects_rename),
         (Exact("/api/projects/set_workspace"), _route_post_api_projects_set_workspace),
         (Exact("/api/profiles/set_approval_mode"), _route_post_api_profiles_set_approval_mode),

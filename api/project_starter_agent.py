@@ -116,7 +116,11 @@ Do not use any tools and do not create files. Reply with ONLY one JSON object:
     "other": "placeholder for a typed answer, e.g. Other stack (type it)",
     "recommended": "one of the option labels, copied exactly",
     "why": "2-4 sentences tied to the brief",
-    "examples": ["concrete example", "..."]}}]}}
+    "examples": ["concrete example", "..."]}}],
+ "look": {{"style": "minimal|elegant|playful|bold|technical|editorial",
+   "motion": "none|subtle|expressive",
+   "framework": "react|vue|svelte|vanilla|swiftui|compose|react-native|flutter",
+   "tailwind": true|false, "why": "one sentence tied to the brief"}}}}
 
 The project will be created from the "{template}" template, which writes these
 files: {files}. To fill them well we need: what is being built and for whom, the
@@ -136,6 +140,12 @@ brief better than the other two, naming the trade-off you accept. In
 that way, a library or service it pairs with, or what it means for this
 project's first milestone). Prefer mainstream, well-supported choices unless
 the brief points elsewhere.
+
+"look" recommends the visual direction from the business the brief describes:
+the one style that suits its audience and brand, how much motion it should use,
+and the UI framework and whether Tailwind CSS fit the brief and template (for
+iOS pick swiftui or react-native, for Android compose, react-native or flutter).
+In "why", name the audience or brand trait that decides it, in one sentence.
 
 Project name: {name}
 Brief:
@@ -248,11 +258,30 @@ def parse_analysis(text: str) -> dict:
         questions.append(entry)
         if len(questions) >= _MAX_QUESTIONS:
             break
-    return {
+    out = {
         "complete": bool(data.get("complete")) and not questions,
         "summary": str(data.get("summary") or "").strip()[:400],
         "questions": questions,
     }
+    look = parse_look(data.get("look"))
+    if look:
+        out["look"] = look
+    return out
+
+
+def parse_look(raw) -> dict | None:
+    """The brief's recommended style and motion (both required), framework and Tailwind."""
+    from api.library_catalog import FRAMEWORKS, MOTIONS, STYLES
+
+    if not isinstance(raw, dict):
+        return None
+    style = str(raw.get("style") or "").strip().lower()
+    motion = str(raw.get("motion") or "").strip().lower()
+    if style not in STYLES or motion not in MOTIONS:
+        return None
+    framework = str(raw.get("framework") or "").strip().lower()
+    return {"style": style, "motion": motion, "framework": framework if framework in FRAMEWORKS else "",
+            "tailwind": raw.get("tailwind") is True, "why": str(raw.get("why") or "").strip()[:300]}
 
 
 def _profile_model(session) -> tuple[str | None, str | None]:
@@ -377,7 +406,10 @@ def _new_project_prompt(name: str, template_label: str, files: list[str]) -> str
         "replace placeholder text with concrete guidance derived from the brief and the "
         "decisions recorded in them (stack, structure, conventions, testing, delivery). "
         "Keep AGENTS.md's continuity rules about .agent/ECC_HANDOFF.md, and update that "
-        "handoff to record what you set up. Do not write application features yet; a "
+        "handoff to record what you set up. Text between <!-- hermes:toolkit:begin --> and "
+        "<!-- hermes:toolkit:end --> records the owner's choices in the wizard (skills, look and "
+        "feel, approved components, stack): keep those blocks word for word and build on them; "
+        "the stack they name is decided. Do not write application features yet; a "
         "manifest, config and the smallest entry point the toolchain needs to install "
         "and run its tests are fine.\n\n"
         f"{_SETUP_RULES}\n\n"
