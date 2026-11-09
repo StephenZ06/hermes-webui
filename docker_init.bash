@@ -452,19 +452,35 @@ ensure_hindsight_client_docker_dependency() {
 }
 
 ensure_agent_runtime_imports() {
-  # hermes-agent imports some packages unconditionally while its pyproject.toml
-  # only declares them for `python_version >= '3.14'`, so `uv pip install -e
-  # .[all]` skips them on this image's older Python. tools/tool_search_catalog.py
-  # importing `snowballstemmer` is the live case: without it every tool round
-  # dies with "No module named 'snowballstemmer'". Runs outside the
-  # .deps_installed guard so an agent update that adds such an import heals on
-  # the next start instead of needing a fresh venv.
-  echo ""; echo "== Checking hermes-agent runtime imports"
-  if python -c "import snowballstemmer" >/dev/null 2>&1; then
-    echo "-- snowballstemmer already installed"
-  else
-    echo "-- Installing snowballstemmer for the agent's tool search"
-    uv pip install "snowballstemmer==3.1.1" --trusted-host pypi.org --trusted-host files.pythonhosted.org || error_exit "Failed to install snowballstemmer"
+  # hermes-agent's pyproject.toml declares every core dependency only for
+  # `python_version >= '3.14'`, so `uv pip install -e .[all]` skips them all on
+  # this image's older Python, and anything the agent adds after the venv was
+  # built never arrives: `snowballstemmer` made every tool round die with "No
+  # module named 'snowballstemmer'", and `rich`, `prompt_toolkit` and `fire`
+  # stop the `hermes` CLI from starting (Skills page imports run it).
+  # scripts/ensure_agent_core_deps.py lists the agent's own exact pins that are
+  # missing here; they are installed one install call at a time on failure so a
+  # single unavailable pin cannot hold back the rest. Runs outside the
+  # .deps_installed guard so an agent update heals on the next start. A failure
+  # is reported, never fatal: the WebUI still starts.
+  echo ""; echo "== Checking hermes-agent core dependencies"
+  local _pyproject=""
+  for _p in /app/hermes-agent-src /home/hermeswebui/.hermes/hermes-agent /opt/hermes; do
+    if [ -f "$_p/pyproject.toml" ]; then _pyproject="$_p/pyproject.toml"; break; fi
+  done
+  if [ -z "$_pyproject" ]; then echo "-- hermes-agent pyproject.toml not found, skipping"; return 0; fi
+  local _missing
+  _missing=$( (cd / && python /app/scripts/ensure_agent_core_deps.py "$_pyproject") 2>/dev/null) || {
+    echo "!! Could not read hermes-agent's dependency list from $_pyproject"; return 0; }
+  if [ -z "$_missing" ]; then echo "-- All core dependencies present"; return 0; fi
+  echo "-- Installing missing core dependencies: $(echo $_missing)"
+  # shellcheck disable=SC2086
+  if ! uv pip install $_missing --trusted-host pypi.org --trusted-host files.pythonhosted.org; then
+    local _pin
+    for _pin in $_missing; do
+      uv pip install "$_pin" --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+        || echo "!! Could not install $_pin for hermes-agent"
+    done
   fi
 }
 
