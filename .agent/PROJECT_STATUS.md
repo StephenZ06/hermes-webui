@@ -1,6 +1,16 @@
 # Project status — hermes-webui
 
 
+## 2026-11-09 (late night): project builder (catalog, builder wizard, previews, docs check)
+
+- Spec `docs/superpowers/specs/2026-11-09-project-builder-design.md`; part 1 plan `docs/superpowers/plans/2026-11-09-project-builder-part1-catalog.md`. Parts 2-4 were built from the spec directly in the same session (no separate plan files).
+- Part 1: library catalog under `HERMES_HOME/libraries/` (per component, fixed style/motion/role/platform tags), import from any link without running anything, one planner turn drafts tags for review, Draft with Hermes for entries that need details, remove a library, Skills page Libraries tab with filters and tag editing. Skill import now takes any link and offers Install anyway when the scan refuses (not when the installer hard-blocks).
+- Part 2: wizard as a builder (Look & feel from the brief, Toolkit, Review, live Build summary, Create & start building sends the version-1 kickoff once setup finishes; on setup failure it waits for Send anyway). Choices are written into `hermes:toolkit` sections of AGENTS.md and docs/UI_UX.md; copy-paste components into `vendor/ui/`.
+- Part 3: previews. The live container has Pillow but no Playwright, so only the og:image and README fallbacks run there; STATUS.json makes that visible with a Try again button. Users can replace any picture.
+- Part 4: "Docs not updated" chip (server-side `docs_check` on the turn's write/patch calls), and adopt appends a marked Hermes section to an existing AGENTS.md (rollback removes only it).
+- Not verified: a real end-to-end import and draft against the Architecture model (tests stub the planner), Playwright capture inside the container (not installed there), and a real Create & start building run with the setup agent.
+
+
 ## 2026-11-09 (night): motion pass (popups, loaders, linked deletes), Website template, Notes arrival, gateway route
 
 - Gateway heartbeat: the live WebUI container reached the agent gateway through `host.docker.internal:8642`; after a Docker Desktop restart the host gateway refused ports published on 0.0.0.0 (8642, 9119) while still passing 127.0.0.1 ones, so the heartbeat failed with the gateway healthy. `docker-compose.override.yml` now joins `hermes-stack_default` (external) and uses `http://hermes:8642`. Starting the WebUI now needs that network to exist (hermes-stack up).

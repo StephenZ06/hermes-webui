@@ -1770,3 +1770,40 @@ blanket trust would defeat the check.
 
 The distinction matters because add uses permissive validation to avoid the circular
 dependency: you cannot get a path into the saved list if you need the saved list to add it.
+
+## Project builder: skill and library catalog (2026-11)
+
+Spec: `docs/superpowers/specs/2026-11-09-project-builder-design.md`.
+
+- `api/library_catalog.py` owns `HERMES_HOME/libraries/<slug>/` for the active profile:
+  `LIBRARY.md` (name, source, license, kind npm|copy-paste|link, frameworks, tailwind, install),
+  `components/<slug>.md` (name, role, style, motion, platform, demo, files), `previews/`, and an
+  optional read-only `source/` copy. Tags come from fixed lists; anything else is dropped and the
+  entry is marked `needs_details`. Every path goes through `safe_child`. `match_components` filters by
+  platform, framework and Tailwind and ranks by style then motion.
+- `api/library_import.py` takes any link: a git remote is shallow-cloned with hooks, submodules and
+  the ext transport off and history dropped; anything else is fetched once as page text. Nothing is
+  installed or run. One planner turn (Architecture profile, no tools) drafts the entry; the user
+  reviews it before `commit_import` moves it out of `.staging/`. `start_redraft` re-drafts an entry
+  that is already in the catalog.
+- `api/library_previews.py` captures stills and loops with Playwright when it is installed, otherwise
+  falls back to the demo page's og:image and the README's first image; `previews/STATUS.json` records
+  what was found. The live container has no Playwright, so only the fallbacks run there.
+- `api/skill_import.py` accepts any link (GitHub links are converted, others passed to
+  `hermes skills install` as they are) and reports a scan refusal as `blocked` so the UI can offer
+  Install anyway (`--force`); `hard_blocked` (the installer refuses even with --force) has no button.
+- `api/project_toolkit.py`: skill suggestions for a template and brief, validation of the wizard's
+  toolkit against installed skills and the catalog, writing the choices into the new project
+  (`hermes:toolkit` sections in `AGENTS.md` and `docs/UI_UX.md`, copy-paste files into
+  `vendor/ui/<library>/`), and the version-1 kickoff message. The brief analysis
+  (`project_starter_agent.parse_analysis`) also returns `look` (style, motion, framework, tailwind,
+  why); the setup agent is told to keep the toolkit sections word for word.
+- `api/docs_check.py`: the turn's own write/patch calls decide whether the `done` payload carries
+  `docs_check` (project files changed, `.agent/ECC_HANDOFF.md` untouched during the turn).
+- `adopt_starter_pack` appends Hermes' continuity rules to an existing `AGENTS.md` between
+  `<!-- hermes:begin -->` and `<!-- hermes:end -->`; `rollback_adopted` removes only that section.
+
+Routes: `GET /api/libraries`, `/api/libraries/preview`, `/api/libraries/job`;
+`POST /api/libraries/import`, `/save`, `/component`, `/previews`, `/preview_upload`, `/draft`,
+`/delete`; `POST /api/projects/starter/toolkit`. `create_starter` accepts `toolkit` and returns
+`kickoff`.

@@ -199,6 +199,26 @@ together and fade in once as soon as the rail is parsed, with no image requests 
 no timer. Kanban's visibility comes from the last saved choice in `localStorage`
 (`hermes-hide-kanban`). After changing a PNG in `static/`, regenerate its 64px copy.
 
+## Project builder wizard and the library catalog
+
+The create-project wizard is laid out as a builder: the step on the left and a
+live Build summary on the right (at 900px and below it folds into a bar under the
+step). Website, Web app, iOS and Android projects get a Look & feel step
+preselected from the brief, with the reason shown, then every template gets a
+Toolkit step (recommended skills ticked; visual templates also get catalog
+components by role) and a Review step whose primary action is Create & start
+building. Between 721px and 1023px the stepper shows only the current label.
+
+Cards in these steps sit on an 8px grid and share one size per row; the browser
+tests measure this at 1440, 820 and 390 widths. Recommendations reuse the star
+artwork (`static/wizard/star.png`) at top/right 8px, as on the Details step.
+
+The Skills page has Skills / Libraries tabs. Library components show their
+preview (the loop plays on hover, never under reduced motion), tag chips and a
+Needs details badge; clicking a card opens its tag form, which can also replace
+the picture. The "Docs not updated" chip under a reply uses the warning colour,
+fades in, and never sends anything unless Update now is pressed.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with

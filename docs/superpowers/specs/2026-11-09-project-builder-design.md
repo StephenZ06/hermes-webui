@@ -1,7 +1,7 @@
 # Project builder: catalog, builder wizard, previews, docs check
 
 Date: 2026-11-09
-Status: design approved in conversation, awaiting written-spec review
+Status: implemented 2026-11-09 (all four parts)
 
 ## Goal
 
