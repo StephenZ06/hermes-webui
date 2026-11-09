@@ -214,7 +214,7 @@
     layout.querySelector('.files-up').disabled = state.path === '.';
     showTitle(layout.querySelector('.files-title'), state.path === '.' ? (workspace ? workspace.name : 'Files') : crumbs[crumbs.length - 1], workspace);
     showPath(layout.querySelector('.files-path'), crumbMarkup);
-    write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action files-action-danger${picking ? ' is-active' : ''}" data-action="delete-mode" data-delete-mode-keep aria-label="${picking ? 'Done deleting' : 'Delete files'}" aria-pressed="${picking}">${icons.trash}</button>`);
+    write(layout.querySelector('.files-toolbar-actions'), readOnly ? '<span class="files-read-only-tag">Read only</span>' : `<button type="button" class="files-action" data-action="new-file" aria-label="New file"><i class="files-mask files-mask-file"></i></button><button type="button" class="files-action" data-action="new-folder" aria-label="New folder"><i class="files-mask files-mask-folder"></i></button><button type="button" class="files-action files-action-danger${picking ? ' is-active' : ''}" data-action="delete-mode" data-delete-mode-keep aria-label="${picking ? 'Done deleting' : 'Delete files'}" aria-pressed="${picking}"><i class="files-mask files-mask-delete"></i></button>`);
     const list = layout.querySelector('.files-list');
     list.classList.toggle('is-loading', state.loading);
     layout.querySelector('.files-browser').classList.toggle('is-picking', picking);
@@ -223,7 +223,7 @@
     write(layout.querySelector('.files-select-slot'), picking ? `<div class="files-select-bar${state.modeFresh ? ' is-entering' : ''}" role="toolbar" aria-label="Delete files">
       <div class="files-select-row"><span class="files-select-count" aria-live="polite"></span><button type="button" class="files-select-link" data-action="pick-all"></button>
       <button type="button" class="files-select-done" data-action="delete-mode">Done</button></div>
-      <button type="button" class="files-select-delete" data-action="delete-picked">${icons.trash}<span>Delete</span></button></div>` : '');
+      <button type="button" class="files-select-delete" data-action="delete-picked"><i class="files-mask files-mask-delete"></i><span>Delete</span></button></div>` : '');
     if (picking) syncPicked();
     const inspector = layout.querySelector('.files-inspector-content');
     if (write(inspector, previewMarkup) && !state.opening) restart(inspector, 'is-swapping');

@@ -17450,6 +17450,7 @@ textarea.office-biz-input{resize:vertical;}
 .files-mask{display:block;width:15px;height:15px;background:currentColor;-webkit-mask:var(--files-mask) center/contain no-repeat;mask:var(--files-mask) center/contain no-repeat;}
 .files-mask-file{--files-mask:url(files-icons/new-file.png);}
 .files-mask-folder{--files-mask:url(files-icons/new-folder.png);}
+.files-mask-delete{--files-mask:url(work-hub-delete-mark.png);}
 @media (min-width:681px){.files-toolbar-actions .files-action{width:32px;padding:0;}}
 .files-inspector-stage,.files-inspector-content{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;}
 .files-inspector-stage{position:relative;}

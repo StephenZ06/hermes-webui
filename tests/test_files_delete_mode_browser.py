@@ -47,6 +47,18 @@ def test_the_upload_button_is_now_a_red_delete_button(files_page):
     assert look["label"] == "Delete files"
 
 
+def test_delete_buttons_use_the_work_hub_delete_mark(files_page):
+    page, _ = files_page
+    page.click("[data-action='delete-mode']")
+    page.wait_for_selector(".files-select-bar")
+    marks = page.evaluate("""() => ['.files-toolbar-actions [data-action="delete-mode"]', '.files-select-delete'].map(sel => {
+      const b = document.querySelector(sel), i = b.querySelector('i.files-mask-delete');
+      return {svg: !!b.querySelector('svg'), mask: i ? getComputedStyle(i).webkitMaskImage || getComputedStyle(i).maskImage : ''}; })""")
+    assert all(not m["svg"] and "work-hub-delete-mark.png" in m["mask"] for m in marks), marks
+    ok = page.evaluate("async () => (await fetch('static/work-hub-delete-mark.png')).ok")
+    assert ok
+
+
 def test_picked_rows_are_deleted_together_and_folders_go_recursively(files_page):
     page, deleted = files_page
     page.click("[data-action='delete-mode']")
