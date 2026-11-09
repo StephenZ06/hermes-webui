@@ -18134,3 +18134,11 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .docs-chip-dismiss:hover{background:var(--hover-bg);color:var(--text);}
 @keyframes docs-chip-in{from{opacity:0;translate:0 4px;}to{opacity:1;translate:0 0;}}
 @media (prefers-reduced-motion:reduce){.docs-chip{animation:none;}}
+.lib-filters .themed-select-trigger{padding:0 8px;gap:4px;font-size:11px;}
+.lib-filters .themed-select-wrap{min-width:0;}
+/* With eight builder steps, mid-width screens keep only the current step's
+   label so none of them is cut off. */
+@media (min-width:721px) and (max-width:1023px){
+  .ps-builder .ps-step:not(.is-current) .ps-step-label{display:none;}
+  .ps-builder .ps-step.is-current{flex:2.4 1 0;}
+}
