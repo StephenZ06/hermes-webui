@@ -35,7 +35,9 @@ def test_resume_upload_through_the_file_picker(tmp_path):
         browser, page = _open(pw, "resume-studio")
         try:
             page.wait_for_selector(".resume-master, #resume-drop", timeout=20000)
-            if page.query_selector(".resume-master"):
+            # The empty upload card also has .resume-master (ec7fb9870); only a
+            # saved resume has a Replace button.
+            if page.query_selector('[data-job-os-action="resume-replace"]'):
                 page.click('[data-job-os-action="resume-replace"]')
             page.wait_for_selector("#resume-file", state="attached", timeout=20000)
             page.set_input_files("#resume-file", str(cv))
@@ -67,6 +69,9 @@ def test_a_bare_job_offers_its_next_step_and_x_skips_it():
             found_step = page.inner_text(f'{card(found)} .pipe-card-actions .job-os-btn')
             page.click(f'{card(found)} .pipe-card-main')
             page.wait_for_selector("#job-os-detail", timeout=15000)
+            # The drawer paints its title first and its actions once the job's
+            # details have loaded.
+            page.wait_for_selector("#job-os-detail .job-drawer-actions", timeout=15000)
             has_fetch = bool(page.query_selector('#job-os-detail [data-job-os-action="job-details"]'))
             selected = page.evaluate(f"() => document.querySelector('{card(found)}').classList.contains('is-selected')")
             page.keyboard.press("x")
@@ -74,4 +79,4 @@ def test_a_bare_job_offers_its_next_step_and_x_skips_it():
         finally:
             browser.close()
     assert tracked_step.lower() == "add description" and found_step.lower() == "fetch details"  # shown in capitals on the card
-    assert has_fetch and selected
+    assert has_fetch and selected, {"has_fetch": has_fetch, "selected": selected}
