@@ -20478,6 +20478,9 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         "profile": profile,
         "workspace_path": project_path,
         "starter_template": starter["template"],
+        # The wizard made this folder, so deleting the project may remove it
+        # (api/project_cleanup.py); adopted folders never carry this.
+        "created_folder": True,
         "created_at": time.time(),
     }
     try:
@@ -20496,6 +20499,17 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
     from api.project_starter import register_in_lifecycle_registry
 
     registry_key = register_in_lifecycle_registry(name, Path(project_path))
+    if registry_key:
+        # Kept so deleting the project can remove exactly this entry again.
+        proj["registry_key"] = registry_key
+        try:
+            projects = load_projects()
+            for row in projects:
+                if row.get("project_id") == proj["project_id"]:
+                    row["registry_key"] = registry_key
+            save_projects(projects)
+        except Exception:
+            logger.warning("Could not record the registry key for project %s", proj["project_id"], exc_info=True)
     docs_job = _starter_docs_job(proj, adopt=False, template_key=starter["template"]) if body.get("docs_agent", True) else None
     from api.project_toolkit import kickoff_message
 
@@ -20660,6 +20674,14 @@ def _route_post_api_projects_delete(handler, parsed, body, diag):
     if body["project_id"] not in work_hub.deletable_project_ids([proj]):
         return bad(handler, "Only Work Hub projects, or projects with no chats or work items, can be deleted", 403)
 
+    # Its setup agent and the processes it started stop first, so nothing
+    # keeps writing into a folder that is about to go. With delete_folder, a
+    # folder the wizard created is removed with its registry entry.
+    from api.project_cleanup import delete_project_data, stop_work_in
+
+    delete_folder = bool(body.get("delete_folder")) and bool(proj.get("created_folder"))
+    if delete_folder:
+        stop_work_in(proj["workspace_path"], project_id=proj["project_id"])
     try:
         work_hub.delete_project_contents(body["project_id"])
     except work_hub.WorkHubError as exc:
@@ -20668,7 +20690,13 @@ def _route_post_api_projects_delete(handler, parsed, body, diag):
     save_projects(projects)
     # Unassign all sessions that belonged to this project.
     _reassign_project_sessions({body["project_id"]}, None)
-    return j(handler, {"ok": True})
+    try:
+        cleanup = delete_project_data(proj, delete_folder=delete_folder)
+    except OSError:
+        logger.exception("Could not delete the folder of project %s", proj["project_id"])
+        return j(handler, {"ok": True, "folder_deleted": False,
+                           "folder_error": "The project was deleted, but its folder could not be removed."})
+    return j(handler, {"ok": True, "folder_deleted": cleanup["folder_deleted"], "stopped": cleanup["jobs"]})
 
 
 def _route_post_api_projects_merge(handler, parsed, body, diag):
@@ -29446,7 +29474,11 @@ def _handle_file_delete(handler, body):
         if target.is_dir():
             if not body.get("recursive"):
                 return bad(handler, "Set recursive=true to delete directories")
+            from api.project_cleanup import folder_deleted, stop_work_in
+
+            stop_work_in(target)
             rmtree_anchored(ws_root, target)
+            folder_deleted(target)
         else:
             unlink_anchored(ws_root, target)
         return j(handler, {"ok": True, "path": body["path"]})

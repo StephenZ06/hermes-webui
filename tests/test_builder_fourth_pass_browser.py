@@ -77,14 +77,13 @@ def test_review_terminal_is_black_with_window_dots_and_the_skills_header_is_blac
 
 
 def test_a_scrollbar_fades_in_as_a_scroll_starts_and_out_before_it_hides(skills):
-    state = skills.evaluate("""async () => { const list = document.getElementById('skillsList'), a = () => parseFloat(getComputedStyle(list).getPropertyValue('--sb-a'));
-      list.scrollTop = 120; await new Promise(r => setTimeout(r, 40));
-      const rising = a();
-      await new Promise(r => setTimeout(r, 400));
-      const shown = a();
-      await new Promise(r => setTimeout(r, 640));
-      const falling = a(), still = list.classList.contains('is-scrolling');
-      await new Promise(r => setTimeout(r, 500));
-      return {rising, shown, falling, still, after: list.classList.contains('is-scrolling')}; }""")
-    assert 0 < state["rising"] < 1 and state["shown"] == 1, state
-    assert 0 < state["falling"] < 1 and state["still"] and not state["after"], state
+    # Sampled every frame, so a slow machine only stretches the timeline.
+    frames = skills.evaluate("""() => new Promise(res => { const list = document.getElementById('skillsList'), out = [], t0 = performance.now();
+      const tick = () => { out.push({a: parseFloat(getComputedStyle(list).getPropertyValue('--sb-a')), on: list.classList.contains('is-scrolling')});
+        if (performance.now() - t0 < 2500) requestAnimationFrame(tick); else res(out); };
+      list.scrollTop = 120; requestAnimationFrame(tick); })""")
+    full = next(i for i, f in enumerate(frames) if f["on"] and f["a"] == 1)
+    assert any(0 < f["a"] < 1 for f in frames[:full]), frames[:full + 1]  # it rose through the middle
+    off = next(i for i, f in enumerate(frames) if i > full and not f["on"])
+    assert any(0 < f["a"] < 1 and f["on"] for f in frames[full:off]), frames[full:off + 1]  # and fell before the bar hid
+    assert not frames[-1]["on"]

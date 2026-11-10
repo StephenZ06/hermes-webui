@@ -172,8 +172,8 @@ def start_analysis(*, name: str, brief: str, template: dict) -> str:
         name=name or "Untitled project",
         brief=brief[:20000],
     )
-    return _start_job("analysis", lambda report: parse_analysis(_run_ephemeral_turn(
-        prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, progress=report,
+    return _start_job("analysis", lambda report, on_run: parse_analysis(_run_ephemeral_turn(
+        prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, progress=report, on_run=on_run,
         answer_label="Writing up its questions", **_planner_run())), with_progress=True)
 
 
@@ -182,25 +182,43 @@ def _planner_run() -> dict:
             "model": PLANNER_MODEL, "model_provider": PLANNER_PROVIDER}
 
 
-def _start_job(kind: str, work, *, with_progress: bool = False) -> str:
+# Fields kept on a job for stopping it; never returned by ``get_job``.
+_PRIVATE_JOB_FIELDS = ("created", "workspace", "project_id", "session_id", "stream_id")
+
+
+def _start_job(kind: str, work, *, with_progress: bool = False, workspace: str | None = None,
+               project_id: str | None = None) -> str:
     """Run ``work`` in the background as a pollable job.
 
-    With ``with_progress`` the work is called with a ``report(line)`` callable
-    whose latest line is returned by ``get_job`` as ``progress`` while the job
-    runs, so the wizard can show what the agent is doing.
+    With ``with_progress`` the work is called with ``report(line)``, whose
+    latest line ``get_job`` returns as ``progress`` while the job runs (so the
+    wizard can show what the agent is doing), and ``on_run(session_id,
+    stream_id)``, which records the hidden turn so ``stop_jobs`` can stop
+    it. ``workspace``/``project_id`` name the folder and project the job works on.
     """
     job_id = uuid.uuid4().hex[:16]
     now = time.time()
     with _jobs_lock:
         _prune_jobs(now)
         _jobs[job_id] = {"status": "running", "kind": kind, "created": now}
+        if workspace:
+            _jobs[job_id]["workspace"] = str(workspace)
+        if project_id:
+            _jobs[job_id]["project_id"] = str(project_id)
     if with_progress:
         inner = work
 
         def work():
-            return inner(lambda line: _report_progress(job_id, line))
+            return inner(lambda line: _report_progress(job_id, line), lambda sid, stream: _note_run(job_id, sid, stream))
     threading.Thread(target=_job_worker, args=(job_id, work), daemon=True).start()
     return job_id
+
+
+def _note_run(job_id: str, session_id: str, stream_id: str) -> None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is not None:
+            job["session_id"], job["stream_id"] = session_id, stream_id
 
 
 def _report_progress(job_id: str, line: str) -> None:
@@ -276,13 +294,71 @@ def reasoning_progress_line(text: str) -> str:
 def get_job(job_id: str) -> dict | None:
     with _jobs_lock:
         job = _jobs.get(str(job_id or ""))
-        return {k: v for k, v in job.items() if k != "created"} if job else None
+        return {k: v for k, v in job.items() if k not in _PRIVATE_JOB_FIELDS} if job else None
 
 
 def _finish(job_id: str, **fields) -> None:
     with _jobs_lock:
-        if job_id in _jobs:
+        # A stopped job keeps its "cancelled" status: the turn it interrupted
+        # ends in an error that is not the reason it ended.
+        if job_id in _jobs and _jobs[job_id].get("status") != "cancelled":
             _jobs[job_id].update(fields)
+
+
+def _inside(path: str, root: Path) -> bool:
+    try:
+        Path(path).resolve().relative_to(root)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def stop_jobs(*, under: str | Path | None = None, project_id: str | None = None,
+              reason: str = "Stopped: the project was deleted.") -> list[dict]:
+    """Stop the running jobs that work inside ``under`` or on ``project_id``.
+
+    Each is marked cancelled first (so its poller stops and its result is
+    ignored), then its hidden turn is cancelled and every process that turn
+    started is killed. Returns what was stopped: ``{"job_id", "session_id",
+    "workspace"}`` per job.
+    """
+    root = Path(under).resolve() if under is not None else None
+    stopped = []
+    with _jobs_lock:
+        for job_id, job in _jobs.items():
+            if job.get("status") != "running":
+                continue
+            hit = (project_id and job.get("project_id") == str(project_id)) or (
+                root is not None and job.get("workspace") and _inside(job["workspace"], root))
+            if not hit:
+                continue
+            job.update(status="cancelled", error=reason)
+            job.pop("progress", None)
+            stopped.append({"job_id": job_id, "session_id": job.get("session_id"),
+                            "stream_id": job.get("stream_id"), "workspace": job.get("workspace")})
+    for item in stopped:
+        _stop_turn(item.pop("stream_id"), item["session_id"])
+    return stopped
+
+
+def _stop_turn(stream_id: str | None, session_id: str | None) -> None:
+    """Cancel one hidden turn and kill the processes it started."""
+    if stream_id:
+        try:
+            from api.streaming import cancel_stream
+
+            cancel_stream(stream_id)
+        except Exception:
+            logger.warning("Could not cancel project setup stream %s", stream_id, exc_info=True)
+    if session_id:
+        try:
+            from tools.process_registry import process_registry
+
+            process_registry.kill_all(session_id, source="project_deleted", consume_output=True)
+        except Exception:
+            # The agent's registry is optional here: processes left in the
+            # folder are still found by their working directory.
+            logger.warning("Could not stop the setup agent's processes for %s", session_id, exc_info=True)
 
 
 def _job_worker(job_id: str, work) -> None:
@@ -391,12 +467,13 @@ def _profile_model(session) -> tuple[str | None, str | None]:
 def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = None, title: str = "Docs-Git",
                         profile: str = DOCS_PROFILE, model: str | None = None,
                         model_provider: str | None = None, progress=None,
-                        answer_label: str = "Writing its answer") -> str:
+                        answer_label: str = "Writing its answer", on_run=None) -> str:
     """Run one hidden agent turn under ``profile`` and return its final answer.
 
     ``model``/``model_provider`` pin the model; otherwise the profile's own
     default is used. ``progress`` receives a one-line description of what the
-    turn is doing each time that changes.
+    turn is doing each time that changes; ``on_run(session_id, stream_id)`` is
+    called once the turn exists, so it can be stopped.
     """
     last_line = [""]
     reasoning = [""]
@@ -439,6 +516,8 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
     with STREAMS_LOCK:
         STREAMS[stream_id] = channel
     events = channel.subscribe()
+    if on_run is not None:
+        on_run(session.session_id, stream_id)
     worker = threading.Thread(
         target=_run_agent_streaming,
         args=(session.session_id, prompt, model, session.workspace, stream_id, None),
@@ -479,8 +558,10 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
-        # The ephemeral path removes the file only on success; a failed or
-        # timed-out run would otherwise leave an empty session behind.
+        # The ephemeral path removes the file only on success; a failed,
+        # cancelled or timed-out run would otherwise leave an empty session
+        # behind. A cancelled turn needs a moment to unwind first.
+        worker.join(timeout=5)
         if not worker.is_alive():
             try:
                 Path(session.path).unlink(missing_ok=True)
@@ -560,5 +641,9 @@ def start_docs_setup(project: dict, *, adopt: bool, template_label: str = "", fi
         project["name"], template_label or "Blank project", list(files or []))
     run = _planner_run()
     run["title"] = f"{AGENT_LABELS[profile]}: {'adopt' if adopt else 'set up'} {project['name']}"
-    return _start_job("setup", lambda: {"summary": _run_ephemeral_turn(
-        prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=project["workspace_path"], **run).strip()})
+    workspace = project["workspace_path"]
+    job_id = _start_job("setup", lambda report, on_run: {"summary": _run_ephemeral_turn(
+        prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=workspace, progress=report, on_run=on_run,
+        answer_label="Writing up what it set up", **run).strip()}, with_progress=True, workspace=workspace,
+        project_id=project.get("project_id"))
+    return job_id

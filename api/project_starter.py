@@ -8,6 +8,7 @@ without a running server and so filesystem safety has one clear home.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -21,6 +22,8 @@ from api.workspace import (
     rmtree_anchored,
     unlink_anchored,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectStarterError(ValueError):
@@ -665,3 +668,48 @@ def register_in_lifecycle_registry(display_name: str, path: Path, registry_file:
         return key
     except Exception:
         return None
+
+
+def unregister_from_lifecycle_registry(key: str, path: Path, registry_file: Path | None = None) -> bool:
+    """Remove the entry ``register_in_lifecycle_registry`` added for ``path``.
+
+    Only the block under ``key`` is removed, and only when its ``repo_path``
+    is still ``path``; anything else in the file is left byte for byte. An
+    entry someone edited to point elsewhere is kept. Returns True when removed.
+    """
+    if not key:
+        return False
+    if registry_file is None:
+        from api.project_registry import WORKSPACES_REGISTRY_FILE as registry_file  # noqa: N811
+    registry_file = Path(registry_file)
+    try:
+        import yaml
+
+        if not registry_file.is_file():
+            return False
+        text = registry_file.read_text(encoding="utf-8")
+        data = yaml.safe_load(text) or {}
+        entry = (data.get("projects") or {}).get(key) if isinstance(data, dict) else None
+        if not isinstance(entry, dict):
+            return False
+        if str(entry.get("repo_path") or "").rstrip("/") != str(Path(path).resolve()).rstrip("/"):
+            return False
+        lines = text.splitlines(keepends=True)
+        start = next((i for i, line in enumerate(lines) if line.rstrip("\r\n") == f"  {key}:"), None)
+        if start is None:
+            return False
+        end = start + 1
+        while end < len(lines) and (lines[end].startswith("    ") or not lines[end].strip()):
+            end += 1
+        # Keep a blank line that separates the next entry.
+        while end > start + 1 and not lines[end - 1].strip():
+            end -= 1
+        kept = "".join(lines[:start] + lines[end:])
+        check = yaml.safe_load(kept) or {}
+        if not isinstance(check, dict) or key in (check.get("projects") or {}):
+            return False  # unexpected layout: never guess
+        registry_file.write_text(kept, encoding="utf-8")
+        return True
+    except Exception:
+        logger.warning("Could not remove %s from the workspace registry", key, exc_info=True)
+        return False

@@ -2105,6 +2105,7 @@
   .ps-task.is-skipped{color:var(--muted);}
   .ps-task-note{grid-column:2;color:var(--muted);font-size:12px;overflow-wrap:anywhere;}
   .ps-task.is-error .ps-task-note{color:var(--error);}
+  .ps-task-log{grid-column:2;color:var(--muted);font-size:12px;}
   .ps-summary{max-height:220px;overflow:auto;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--input-bg);color:var(--text);font-size:13px;line-height:1.55;white-space:pre-wrap;}
   .ps-done-actions{display:flex;justify-content:flex-end;gap:10px;}
   @media (max-width:720px){

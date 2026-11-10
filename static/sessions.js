@@ -11064,7 +11064,13 @@ async function _openProjectStarterWizard(profile){
         return {run(){li.className='ps-task is-running';li.firstChild.innerHTML='<span class="ps-pulse"></span>';},
           ok(text){li.className='ps-task is-done';li.firstChild.innerHTML=_psIcon('check',14);if(text)li.append(_psEl('span','ps-task-note',text));},
           fail(text){li.className='ps-task is-error';li.firstChild.textContent='!';li.append(_psEl('span','ps-task-note',text));},
-          skip(text){li.className='ps-task is-skipped';li.firstChild.textContent='–';li.append(_psEl('span','ps-task-note',text));}};};
+          skip(text){li.className='ps-task is-skipped';li.firstChild.textContent='–';li.append(_psEl('span','ps-task-note',text));},
+          // While it runs, one line under the label says what the agent is doing now.
+          log(line){line=String(line||'').trim();if(!line||!li.classList.contains('is-running'))return;
+            let n=li.querySelector('.ps-task-log');if(n&&n.textContent===line)return;
+            if(!n){n=_psEl('span','ps-review-log ps-task-log');li.append(n);}
+            n.textContent=line;n.classList.remove('is-new');void n.offsetWidth;n.classList.add('is-new');},
+          unlog(){const n=li.querySelector('.ps-task-log');if(n)n.remove();}};};
       setNav({showPrev:false,hideNext:true});
       st.busy=true;
       const first=task(adopt?'Register the project':'Create the project folder and starter files');
@@ -11109,8 +11115,9 @@ async function _openProjectStarterWizard(profile){
       _followProjectDocsJob(response.docs_job,response.project,{
         agent,
         isOpen:()=>!done,
-        ok:(text)=>{docs.ok();if(text){summary.hidden=false;summary.textContent=text;}if(kickoff)setTimeout(launch,900);},
-        fail:(text)=>{docs.fail(text);if(kickoff){build_.skip('Waiting for you: setup did not finish.');chat.textContent='Send anyway';}},
+        progress:(line)=>docs.log(line),
+        ok:(text)=>{docs.unlog();docs.ok();if(text){summary.hidden=false;summary.textContent=text;}if(kickoff)setTimeout(launch,900);},
+        fail:(text)=>{docs.unlog();docs.fail(text);if(kickoff){build_.skip('Waiting for you: setup did not finish.');chat.textContent='Send anyway';}},
       });
     }
     let finishedProject=null;
@@ -11165,7 +11172,9 @@ function _followProjectDocsJob(jobId,project,view){
     let job;
     try{ job=await api('/api/projects/starter/job?job_id='+encodeURIComponent(jobId)); }
     catch(error){ if(view.isOpen()) view.fail(error.message||'Lost track of '+agent+'.'); return; }
-    if(job.status==='running'){ setTimeout(poll,3000); return; }
+    if(job.status==='running'){ if(view.isOpen()&&view.progress) view.progress(job.progress); setTimeout(poll,view.isOpen()?1200:3000); return; }
+    // Stopped because the project was deleted: nothing left to report.
+    if(job.status==='cancelled'){ if(view.isOpen()) view.fail(job.error||'Stopped.'); return; }
     if(job.status==='done'){
       const text=job.result&&job.result.summary||'';
       if(view.isOpen()) view.ok(text); else showToast(agent+' finished setting up "'+project.name+'".');
@@ -11360,14 +11369,20 @@ async function _showProjectWorkspacePicker(proj, chip){
 }
 
 async function _confirmDeleteProject(proj){
+  // A project the wizard created goes with its folder: its setup agent and
+  // anything running in the folder stop, then the folder is removed.
+  const withFolder=!!proj.created_folder;
   const ok=await showConfirmDialog({
-    message:'Delete project "'+proj.name+'"? Sessions will be unassigned but not deleted.',
+    message:withFolder
+      ?'Delete project "'+proj.name+'" and its folder? Anything still running in it stops, and '+proj.workspace_path+' is deleted with everything in it. Sessions will be unassigned but not deleted.'
+      :'Delete project "'+proj.name+'"? Sessions will be unassigned but not deleted.',
     confirmLabel:t('delete_title'),
     danger:true
   });
   if(!ok){return;}
   try {
-    await api('/api/projects/delete',{method:'POST',body:JSON.stringify({project_id:proj.project_id})});
+    const res=await api('/api/projects/delete',{method:'POST',body:JSON.stringify({project_id:proj.project_id,delete_folder:withFolder})});
+    if(res&&res.folder_error) showToast(res.folder_error,6000,'error');
     await animateRemoval(document.querySelector(`.project-chip[data-project-id="${CSS.escape(proj.project_id)}"]`));
     if(_activeProject===proj.project_id) _activeProject=null;
     await renderSessionList();

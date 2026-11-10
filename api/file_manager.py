@@ -443,7 +443,13 @@ def delete_path(workspace_id: str, path: str, recursive: bool = False) -> dict:
         raise FileManagerError("Set recursive=true to delete directories")
     try:
         if target.is_dir():
+            # Setup agents and processes working in the folder stop first, so
+            # nothing writes it back; projects the wizard made there go too.
+            from api.project_cleanup import folder_deleted, stop_work_in
+
+            stop_work_in(target)
             rmtree_anchored(root, target)
+            folder_deleted(target)
         else:
             unlink_anchored(root, target)
     except (FileNotFoundError, PermissionError, OSError, ValueError) as exc:

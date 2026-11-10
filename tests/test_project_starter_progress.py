@@ -28,7 +28,7 @@ def test_a_running_job_returns_its_latest_progress_line():
     release = threading.Event()
     reported = threading.Event()
 
-    def work(report):
+    def work(report, _on_run):
         report("Reading the brief")
         report("Weighing the stack")
         reported.set()
