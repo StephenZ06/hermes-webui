@@ -235,6 +235,20 @@ the Skills page the tabs, the labelled "Categories" divider and the search row
 are 12px apart; library filters match the search box's 32px height and are as
 wide as their labels. Category folding animates its height.
 
+The builder dialog reaches its new size before a step's content enters: when a
+step change makes the dialog glide (340ms), the step and its card staggers wait
+220ms (`--ps-enter-delay`), and the Details card's text shows only after its
+height has settled. The Location step fetches and decodes the Template step's
+art (`_psPreloadArt`). On wide screens the Build summary card runs to the bottom
+of the step. Review shows each part as a preview: the project as a small
+terminal (name, type, directory, then the command and the files it writes, as
+on the Jobs page's Scout panel), the chosen style and motion as the Look & feel
+step's own samples, skills in a rounded table, and component preview tiles.
+
+Scrollbars stay hidden until their element scrolls: `static/ui.js` adds
+`.is-scrolling` to whatever scrolls and removes it 900ms after the last scroll;
+pointing at a hidden thumb still shows it so it can be grabbed.
+
 Under Zeus 2.0 everything uses the skin's typeface: `--font-mono` follows
 `--font-ui`, and the Dashboard's pixel fonts are replaced by the same local
 faces scaled with `size-adjust` so its tuned sizes still fit.

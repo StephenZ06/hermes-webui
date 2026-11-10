@@ -1,6 +1,15 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (later): default profile name, hidden scrollbars, builder Review redesign
+
+- Profile: the root profile (`~/.hermes`, `display_name: conductor` in its profile.yaml) is internally `default` when no profile is sticky, so a fresh load reported `default` while the switcher listed `conductor`. `api/profiles.py::public_profile_name` now maps the root alias to its display name in `/api/profile/active`, `/api/profiles` `active`, and `switch_profile`'s response. No profile was deleted; `~/.hermes` is still the root.
+- Scrollbars app-wide show only while scrolling (`.is-scrolling` from a capture listener in `static/ui.js`).
+- Dashboard: achievement art shrinks to a narrow tile (side panel open) so the lock stays centred (was 5.4px right).
+- Skills page: tab labels 0.5px lower, Libraries list 12px under its divider, 2px between library filter options. New-chat menu plus 0.5px lower.
+- Builder: Build summary stretches to the bottom; Template art preloads on the Location step; content waits for the dialog's glide; Details card text shows after its resize; Review redesigned (terminal, look samples, skills table, component tiles).
+- Pre-existing failure left alone: `tests/test_issue3947_tasks_cross_profile_visibility.py::test_panels_read_only_rows_hide_actions_and_skip_unread_side_effects` (`_noteCronHighlight` missing from its node harness), fails on the previous commit too.
+
 ## 2026-11-10: builder and Skills page second pass, test skills isolation, Zeus 2.0 typeface
 
 - Test isolation bug: the test server's `skills/` was one symlink to the real `~/.hermes/skills`, so the Skills page browser test that creates a category left `cat-xxxxxx` folders in real state (8 found, removed at the user's request after checking each held only its generated DESCRIPTION.md). `tests/conftest.py::_seed_test_skills` now makes its own skills and category folders, links only skill folders, and copies loose files.
