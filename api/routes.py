@@ -16298,7 +16298,7 @@ def _route_get_api_profiles(handler, parsed):
         diag.stage("list_profiles_api") if diag else None
         profiles_payload = profiles_api.list_profiles_api()
         diag.stage("active_profile_lookup") if diag else None
-        active = profiles_api.get_active_profile_name()
+        active = profiles_api.public_profile_name(profiles_api.get_active_profile_name())
         diag.stage("isolated_mode_check") if diag else None
         return j(
             handler,
@@ -16348,7 +16348,7 @@ def _route_get_api_profile_active(handler, parsed):
     return j(
         handler,
         {
-            "name": active_profile_name,
+            "name": profiles_api.public_profile_name(active_profile_name),
             "path": str(profiles_api.get_active_hermes_home()),
             "is_default": profiles_api._is_root_profile(active_profile_name),
             "default_workspace": _profile_default_workspace,

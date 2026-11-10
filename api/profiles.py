@@ -1852,7 +1852,7 @@ def switch_profile(name: str, *, process_wide: bool = True) -> dict:
 
     return {
         'profiles': list_profiles_api(),
-        'active': name,
+        'active': public_profile_name(name),
         'is_default': _is_root_profile(name),
         'default_model': default_model,
         'default_model_provider': default_model_provider,
@@ -2348,6 +2348,21 @@ def _profile_row_name(name: str, is_default: bool, meta: dict) -> str:
     """Consume the optional root display name while preserving its identity."""
     display_name = meta.pop('_display_name', '')
     return display_name if is_default and display_name else name
+
+
+def public_profile_name(name: str) -> str:
+    """Name the browser sees for *name*: the root alias becomes its display name.
+
+    Internally the root profile stays ``default`` (no sticky ``active_profile``
+    means ``default``), but ``list_profiles_api()`` names the root row by its
+    ``profile.yaml`` ``display_name``. Responses that tell the browser which
+    profile is active must use the same name, or a fresh load shows a
+    ``default`` profile the switcher does not list.
+    """
+    if name not in ('', 'default') or _is_isolated_profile_mode():
+        return name
+    display = _profile_meta_fields(_DEFAULT_HERMES_HOME).get('_display_name', '')
+    return display or 'default'
 
 
 def _profile_row_is_active(name: str, is_default: bool, active: str) -> bool:
