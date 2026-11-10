@@ -936,6 +936,9 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
                             skill_md, search_dirs, local_skills_dir=skills_dir
                         ),
                         "disabled": name in disabled,
+                        # When the skill's folder was added (its last entry
+                        # change): the Skills page's "Recently added" filter.
+                        "added": int(skill_dir.stat().st_mtime),
                     }
                 )
             except (UnicodeDecodeError, PermissionError) as e:

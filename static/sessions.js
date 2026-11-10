@@ -10065,6 +10065,58 @@ function _psGlideHeight(el,from){
   el._psHeightAnim=anim;
   anim.onfinish=anim.oncancel=()=>{if(el._psHeightAnim===anim)el._psHeightAnim=null;};
 }
+// The lines of text in `box`, as bars relative to it (one per line box).
+function _psTextLines(box){
+  const b=box.getBoundingClientRect(),out=[],range=document.createRange();
+  const walker=document.createTreeWalker(box,NodeFilter.SHOW_TEXT,{acceptNode:(n)=>/\S/.test(n.nodeValue)&&!n.parentElement.closest('.ps-swap-skel')?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT});
+  let n;
+  while((n=walker.nextNode())){
+    range.selectNodeContents(n);
+    const size=parseFloat(getComputedStyle(n.parentElement).fontSize)||13;
+    for(const r of range.getClientRects()){
+      if(r.width<2||r.height<4) continue;
+      const h=Math.max(6,Math.round(size*0.62)),last=out[out.length-1];
+      if(last&&Math.abs(last.top-r.top)<3){const right=Math.max(last.x+last.w,r.right-b.left);last.x=Math.min(last.x,r.left-b.left);last.w=right-last.x;continue;}
+      out.push({x:r.left-b.left,y:r.top-b.top+(r.height-h)/2,w:r.width,h,top:r.top});
+    }
+  }
+  return out;
+}
+// Swap a card's text with the Notes page's placeholder motion: the old lines
+// turn into pulsing bars, the card glides to its new height while the bars
+// move onto the new lines, then the new text fades in over them. `fill`
+// writes the new content into the card. Reduced motion swaps at once.
+function _psSwapText(box,fill){
+  const token=(box._psSwap=(box._psSwap||0)+1);
+  box.querySelectorAll(':scope > .ps-swap-skel').forEach(n=>n.remove());
+  if(!box.isConnected||(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+    box.classList.remove('is-swapping');box.style.height='';box.replaceChildren();fill(box);return;
+  }
+  const h0=box.getBoundingClientRect().height;
+  const from=_psTextLines(box);
+  const skel=document.createElement('div');skel.className='ps-swap-skel';skel.setAttribute('aria-hidden','true');
+  const place=(i,l)=>{i.style.left=l.x+'px';i.style.top=l.y+'px';i.style.width=l.w+'px';i.style.height=l.h+'px';};
+  const bars=from.map(l=>{const i=document.createElement('i');place(i,l);skel.append(i);return i;});
+  box.style.height=h0+'px';
+  box.classList.add('is-swapping');box.append(skel);
+  setTimeout(()=>{
+    if(token!==box._psSwap||!box.isConnected) return;
+    [...box.children].forEach(c=>{if(c!==skel)c.remove();});
+    fill(box);box.append(skel);
+    box.style.height='';
+    const h1=box.getBoundingClientRect().height;
+    const to=_psTextLines(box);
+    box.style.height=h0+'px';void box.offsetHeight;box.style.height=h1+'px';
+    to.forEach((l,k)=>{if(bars[k])return;const i=document.createElement('i');place(i,from[from.length-1]||l);i.style.opacity='0';skel.append(i);bars.push(i);});
+    void skel.offsetWidth;skel.classList.add('is-morphing');
+    bars.forEach((i,k)=>{if(to[k]){place(i,to[k]);i.style.opacity='';}else i.style.opacity='0';});
+    setTimeout(()=>{
+      if(token!==box._psSwap) return;
+      box.classList.remove('is-swapping');skel.classList.add('is-out');
+      setTimeout(()=>{if(token!==box._psSwap)return;skel.remove();box.style.height='';},280);
+    },200);
+  },150);
+}
 // Re-glides the dialog whenever its body content changes size (rAF-batched).
 function _psFollowContentHeight(dialog,body){
   if(typeof ResizeObserver!=='function') return ()=>{};
@@ -10115,7 +10167,7 @@ async function _openProjectStarterWizard(profile){
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false,
     look:null,startBuilding:false,
-    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false}};
+    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false,q:'',filter:''}};
   const folderCache=new Map();
 
   return new Promise(resolve=>{
@@ -10179,7 +10231,7 @@ async function _openProjectStarterWizard(profile){
       const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
       resolve(value);};
-    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup:not(.popup-closing)')&&!st.busy){event.preventDefault();finish(null);}};
+    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup:not(.popup-closing),.filter-menu')&&!st.busy){event.preventDefault();finish(null);}};
     close.onclick=()=>{if(!st.busy)finish(null);};
     // Clicking outside never closes the wizard: a stray click would lose the
     // whole draft. Close with the × button, Cancel, or Escape.
@@ -10223,8 +10275,11 @@ async function _openProjectStarterWizard(profile){
       body.classList.add(direction>=0?'ps-enter-fwd':'ps-enter-back');
       paintStepper();
       setNav({});
+      const subBefore=sub.textContent;
       ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate,7:renderLook,8:renderToolkit,9:renderReview})[st.step]();
       paintBuild();
+      // The subtitle under the title fades to its new wording with the step.
+      if(sub.textContent!==subBefore){sub.classList.remove('ps-sub-in');void sub.offsetWidth;sub.classList.add('ps-sub-in');}
       _psWatchArt(body);
       _psGlideHeight(dialog,h0);
     };
@@ -10520,53 +10575,87 @@ async function _openProjectStarterWizard(profile){
       const total=st.questions.length;const item=st.questions[st.q];
       sub.textContent='Question '+(st.q+1)+' of '+total+' · '+P+' needs these to plan the project.';
       const wrap=section(item.question);
-      const progress=_psEl('div','ps-progress');const bar=_psEl('span');bar.style.width=((st.q+1)/total*100)+'%';progress.append(bar);
+      // The bar grows from where the previous question left it.
+      const progress=_psEl('div','ps-progress');const bar=_psEl('span');
+      const pct=(st.q+1)/total*100;bar.style.width=(st._progress==null?pct:st._progress)+'%';progress.append(bar);
+      st._progress=pct;requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.width=pct+'%';}));
       wrap.prepend(progress);
       const opts=_psEl('div','ps-options');opts.setAttribute('role','radiogroup');
       // The planner's recommendation is preselected once; the user can change it.
       if(item.recommended&&st.answers[item.id]===undefined) st.answers[item.id]=item.recommended;
       const current=st.answers[item.id]||'';
-      const choices=item.options.slice(0,3),details=item.details||[];
+      const choices=item.options.slice(0,3),details=item.details||[],hows=item.hows||[];
       // Keys 1-3 are the planner's choices; key 4 is the user's own answer, typed in place.
       const key=(n)=>{const k=_psEl('span','ps-option-key');k.setAttribute('aria-hidden','true');
         if(n<=4){const img=document.createElement('img');img.src='static/wizard/key-'+n+'.png';img.alt='';img.width=24;img.height=24;img.decoding='async';k.classList.add('has-art');k.append(img);}
         else k.textContent=String(n);return k;};
       const mark=(node,on)=>{node.classList.toggle('is-selected',on);node.setAttribute('aria-checked',on?'true':'false');};
-      choices.forEach((label,i)=>{
-        const opt=_psEl('button','ps-option'+(current===label?' is-selected':''));opt.type='button';opt.setAttribute('role','radio');
-        opt.setAttribute('aria-checked',current===label?'true':'false');
-        const text=_psEl('span','ps-option-text');text.append(_psEl('span','ps-option-label',label));
-        if(details[i]) text.append(_psEl('span','ps-option-detail',details[i]));
-        opt.append(key(i+1),text);
-        if(item.recommended===label){opt.classList.add('is-recommended');const star=document.createElement('img');star.className='ps-option-star';star.src='static/wizard/star.png';star.alt='Recommended';star.width=18;star.height=18;star.decoding='async';star.draggable=false;opt.append(star);}
-        opt.onclick=()=>{st.answers[item.id]=label;renderQuestions();};
-        opts.append(opt);
-      });
       const typedOn=!!current&&!choices.includes(current);
       const typed=_psEl('label','ps-option ps-option-typed'+(typedOn?' is-selected':''));typed.setAttribute('role','radio');
       typed.setAttribute('aria-checked',typedOn?'true':'false');
       const other=_psEl('input','ps-option-input');other.type='text';other.maxLength=300;
       other.placeholder=item.other||'Something else';other.setAttribute('aria-label',other.placeholder);
       if(typedOn) other.value=current;
+      // The card under the options explains whatever is chosen: why for the
+      // recommendation, how it would be built for any other option, and what
+      // happens with a typed answer. Its text morphs between choices.
+      const why=_psEl('div','ps-rec-why');why.setAttribute('aria-live','polite');
+      const whyKind=(answer)=>!answer?'':answer===item.recommended&&item.why?'rec':choices.includes(answer)?'opt:'+answer:'typed';
+      const fillWhy=(answer,box)=>{
+        const i=choices.indexOf(answer);
+        if(answer===item.recommended&&item.why){
+          box.append(_psEl('p','ps-rec-why-title','Why '+answer),_psEl('p','ps-rec-why-text',item.why));
+          if((item.examples||[]).length){const list=_psEl('ul','ps-rec-why-examples');item.examples.forEach(e=>list.append(_psEl('li',null,e)));box.append(list);}
+        }else if(i>=0){
+          box.append(_psEl('p','ps-rec-why-title','How '+answer+' would work'),
+            _psEl('p','ps-rec-why-text',hows[i]||((details[i]?details[i]+'. ':'')+P+' plans the project around '+answer+' and records it in the project docs.')));
+          if(item.recommended) box.append(_psEl('p','ps-rec-why-note','Recommended for this brief: '+item.recommended+'.'));
+        }else{
+          box.append(_psEl('p','ps-rec-why-title','Your own answer'),
+            _psEl('p','ps-rec-why-text',P+' plans the project around what you type here and writes it into the project docs, in place of the options above.'));
+        }
+      };
+      let shownKind=whyKind(current);
+      if(shownKind) fillWhy(current,why); else why.hidden=true;
+      const showWhy=(answer)=>{
+        const kind=whyKind(answer);
+        if(kind===shownKind) return;
+        shownKind=kind;
+        if(!kind){why.hidden=true;return;}
+        if(why.hidden){why.replaceChildren();fillWhy(answer,why);why.hidden=false;return;}
+        _psSwapText(why,(box)=>fillWhy(answer,box));
+      };
+      const choose=(answer)=>{
+        st.answers[item.id]=answer;
+        opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed?!choices.includes(answer)&&!!answer:n.dataset.answer===answer));
+        if(choices.includes(answer)) other.value='';
+        showWhy(answer);updateNav();
+      };
+      choices.forEach((label,i)=>{
+        const opt=_psEl('button','ps-option'+(current===label?' is-selected':''));opt.type='button';opt.setAttribute('role','radio');
+        opt.dataset.answer=label;opt.style.setProperty('--i',i);
+        opt.setAttribute('aria-checked',current===label?'true':'false');
+        const text=_psEl('span','ps-option-text');text.append(_psEl('span','ps-option-label',label));
+        if(details[i]) text.append(_psEl('span','ps-option-detail',details[i]));
+        opt.append(key(i+1),text);
+        if(item.recommended===label){opt.classList.add('is-recommended');const star=document.createElement('img');star.className='ps-option-star';star.src='static/wizard/star.png';star.alt='Recommended';star.width=18;star.height=18;star.decoding='async';star.draggable=false;opt.append(star);}
+        opt.onclick=()=>choose(label);
+        opts.append(opt);
+      });
+      typed.style.setProperty('--i',choices.length);
       typed.append(key(choices.length+1),other);
       opts.append(typed);
       other.onfocus=()=>{opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!other.value.trim()));typed.classList.add('is-typing');};
       other.onblur=()=>typed.classList.remove('is-typing');
       other.oninput=()=>{const v=other.value.trim();
         st.answers[item.id]=v;
-        opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!v));updateNav();};
+        opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!v));showWhy(v);updateNav();};
       other.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
-      wrap.append(opts);
-      if(item.recommended&&item.why){
-        const why=_psEl('div','ps-rec-why');
-        why.append(_psEl('p','ps-rec-why-title','Why '+item.recommended),_psEl('p','ps-rec-why-text',item.why));
-        if((item.examples||[]).length){const list=_psEl('ul','ps-rec-why-examples');item.examples.forEach(e=>list.append(_psEl('li',null,e)));why.append(list);}
-        wrap.append(why);
-      }
+      wrap.append(opts,why);
       function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
       updateNav();
-      opts.onkeydown=(event)=>{const n=Number(event.key);
-        if(n>=1&&n<=choices.length){event.preventDefault();st.answers[item.id]=choices[n-1];renderQuestions();}
+      opts.onkeydown=(event)=>{if(event.target===other)return;const n=Number(event.key);
+        if(n>=1&&n<=choices.length){event.preventDefault();choose(choices[n-1]);opts.querySelectorAll('.ps-option')[n-1].focus();}
         else if(n===choices.length+1){event.preventDefault();other.focus();}};
       setTimeout(()=>{const sel=opts.querySelector('.ps-option.is-selected:not(.ps-option-typed)')||(typedOn?other:opts.querySelector('.ps-option'));if(sel)sel.focus();},30);
     }
@@ -10689,66 +10778,118 @@ async function _openProjectStarterWizard(profile){
       paintBuild();
     }
     function _psCheck(on){return '<span class="ps-kit-check'+(on?' is-on':'')+'" aria-hidden="true">'+_psIcon('check',12)+'</span>';}
+    // The toolkit: a search box and a filter (skill categories, component
+    // types) over two sections. Ticking a card updates it in place; search and
+    // filter repaint only the lists, with a short fade instead of the cards'
+    // first entrance.
     function paintKit(holder){
       const data=st.kit.data;holder.innerHTML='';
-      const skillHead=_psEl('div','ps-kit-head');skillHead.append(_psEl('h4',null,'Skills'),_psEl('span','ps-kit-count',st.kit.skills.size+' chosen'));
-      holder.append(skillHead);
-      if(!data.skills.length) holder.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
-      const shown=st.kit.allSkills?data.skills:data.skills.filter((s,i)=>i<6||st.kit.skills.has(s.name));
-      const sgrid=_psEl('div','ps-kit-grid');
-      shown.forEach((s,i)=>{
-        const on=st.kit.skills.has(s.name);
-        const card=_psEl('button','ps-kit-card ps-kit-skill'+(on?' is-selected':''));card.type='button';card.dataset.skill=s.name;
-        card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',i);
-        card.innerHTML=_psCheck(on);
-        const text=_psEl('span','ps-kit-text');
-        const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,s.name));
-        if(s.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
-        text.append(top);
-        if(s.category) text.append(_psEl('span','ps-kit-meta',_psLabel(s.category)));
-        if(s.description) text.append(_psEl('span','ps-kit-desc',s.description));
-        card.append(text);
-        card.onclick=()=>{if(st.kit.skills.has(s.name))st.kit.skills.delete(s.name);else st.kit.skills.add(s.name);paintKit(holder);paintBuild();};
-        sgrid.append(card);
-      });
-      holder.append(sgrid);
-      if(data.skills.length>shown.length||st.kit.allSkills&&data.skills.length>6){
-        const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
-        more.onclick=()=>{st.kit.allSkills=!st.kit.allSkills;paintKit(holder);};holder.append(more);
-      }
-      if(!data.visual) return;
-      const compHead=_psEl('div','ps-kit-head');compHead.append(_psEl('h4',null,'Components'),_psEl('span','ps-kit-count',st.kit.comps.size+' chosen'));
-      holder.append(compHead);
+      const tools=_psEl('div','ps-kit-tools');
+      const search=_psEl('label','ps-kit-search sidebar-search');
+      search.innerHTML='<svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
+      const input=_psEl('input');input.type='search';input.placeholder=data.visual?'Search skills and components…':'Search skills…';
+      input.setAttribute('aria-label',input.placeholder);input.value=st.kit.q;input.autocomplete='off';
+      search.append(input);
+      tools.append(search);
+      tools.insertAdjacentHTML('beforeend',filterButtonHtml('psKitFilter','Filter skills and components'));
+      const filterBtn=tools.querySelector('.filter-btn');
+      holder.append(tools);
+      const lists=_psEl('div','ps-kit-lists');holder.append(lists);
       const roles=Object.keys(data.components||{});
-      if(!data.libraries){holder.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));return;}
-      if(!roles.length){holder.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));return;}
-      let n=0;
-      roles.forEach(role=>{
-        holder.append(_psEl('p','ps-kit-role',_psLabel(role)));
-        const grid=_psEl('div','ps-kit-grid ps-kit-comps');
-        data.components[role].forEach(c=>{
-          const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
-          const card=_psEl('button','ps-kit-card ps-kit-comp'+(on?' is-selected':''));card.type='button';card.dataset.comp=id;
-          card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',n++);
-          const thumb=_psEl('span','ps-kit-thumb');
-          if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
-            if(c.loop){const still=img.src,loop='api/libraries/preview?path='+encodeURIComponent(c.loop);
-              const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-              card.addEventListener('mouseenter',()=>{if(!reduce())img.src=loop;});card.addEventListener('mouseleave',()=>{img.src=still;});
-              card.addEventListener('focus',()=>{if(!reduce())img.src=loop;});card.addEventListener('blur',()=>{img.src=still;});}}
-          else thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));
-          thumb.insertAdjacentHTML('beforeend',_psCheck(on));
-          const text=_psEl('span','ps-kit-text');
-          const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
-          if(c.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
-          text.append(top,_psEl('span','ps-kit-meta',c.library_name+' · '+_psLabel(c.kind)));
-          const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
-          text.append(chips);card.append(thumb,text);
-          card.onclick=()=>{if(st.kit.comps.has(id))st.kit.comps.delete(id);else st.kit.comps.add(id);paintKit(holder);paintBuild();};
-          grid.append(card);
-        });
-        holder.append(grid);
-      });
+      const categories=[...new Set(data.skills.map(s=>s.category).filter(Boolean))];
+      const paintFilter=()=>{filterBtn.classList.toggle('is-active',!!st.kit.filter);
+        const label=st.kit.filter?'Filter: '+_psLabel(st.kit.filter.split(':').slice(1).join(':')):'Filter skills and components';filterBtn.setAttribute('aria-label',label);};
+      paintFilter();
+      filterBtn.onclick=(event)=>{event.stopPropagation();
+        openFilterMenu(filterBtn,[
+          {items:[{value:'',label:'Everything'}]},
+          {label:'Skill categories',items:categories.map(c=>({value:'skill:'+c,label:_psLabel(c),count:data.skills.filter(s=>s.category===c).length}))},
+          {label:'Component types',items:data.visual?roles.map(r=>({value:'role:'+r,label:_psLabel(r),count:data.components[r].length})):[]},
+        ],st.kit.filter,(value)=>{st.kit.filter=value;paintFilter();paintLists(true);});};
+      let typing=0;
+      input.oninput=()=>{clearTimeout(typing);typing=setTimeout(()=>{st.kit.q=input.value.trim();paintLists(true);},90);};
+      input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';paintLists(true);}};
+      const counts=()=>{lists.querySelectorAll('[data-count]').forEach(n=>{n.textContent=(n.dataset.count==='skills'?st.kit.skills.size:st.kit.comps.size)+' chosen';});};
+      const toggle=(card,set,id)=>{const on=!set.has(id);if(on)set.add(id);else set.delete(id);
+        card.classList.toggle('is-selected',on);card.setAttribute('aria-pressed',String(on));
+        const box=card.querySelector('.ps-kit-check');if(box)box.classList.toggle('is-on',on);counts();paintBuild();};
+      const words=()=>st.kit.q.toLowerCase().split(/\s+/).filter(Boolean);
+      const hit=(text)=>{const w=words();const t=text.toLowerCase();return w.every(x=>t.includes(x));};
+      function paintLists(quiet){
+        lists.innerHTML='';lists.classList.toggle('is-quiet',!!quiet);
+        if(quiet){lists.classList.remove('is-refresh');void lists.offsetWidth;lists.classList.add('is-refresh');}
+        const f=st.kit.filter,narrowed=!!(st.kit.q||f);
+        if(!f||f.startsWith('skill:')){
+          const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
+          head.append(_psEl('h4',null,'Skills'),count);lists.append(head);
+          if(!data.skills.length) lists.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
+          const matches=data.skills.filter(s=>(!f||s.category===f.slice(6))&&hit([s.name,s.category,s.description].join(' ')));
+          const shown=narrowed||st.kit.allSkills?matches:matches.filter((s,i)=>i<6||st.kit.skills.has(s.name));
+          if(data.skills.length&&!matches.length) lists.append(_psEl('p','ps-kit-empty','No skills match.'));
+          const sgrid=_psEl('div','ps-kit-grid');
+          shown.forEach((s,i)=>{
+            const on=st.kit.skills.has(s.name);
+            const card=_psEl('button','ps-kit-card ps-kit-skill'+(on?' is-selected':''));card.type='button';card.dataset.skill=s.name;
+            card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',i);
+            card.innerHTML=_psCheck(on);
+            const text=_psEl('span','ps-kit-text');
+            const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,s.name));
+            if(s.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
+            text.append(top);
+            if(s.category) text.append(_psEl('span','ps-kit-meta',_psLabel(s.category)));
+            if(s.description) text.append(_psEl('span','ps-kit-desc',s.description));
+            card.append(text);
+            card.onclick=()=>toggle(card,st.kit.skills,s.name);
+            sgrid.append(card);
+          });
+          if(shown.length) lists.append(sgrid);
+          if(!narrowed&&(data.skills.length>shown.length||st.kit.allSkills&&data.skills.length>6)){
+            const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
+            more.onclick=()=>{st.kit.allSkills=!st.kit.allSkills;paintLists(true);};lists.append(more);
+          }
+        }
+        if(data.visual&&(!f||f.startsWith('role:'))){
+          const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
+          head.append(_psEl('h4',null,'Components'),count);lists.append(head);
+          if(!data.libraries) lists.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));
+          else if(!roles.length) lists.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));
+          else{
+            let n=0,any=false;
+            roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
+              const items=data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' ')));
+              if(!items.length) return;
+              any=true;
+              lists.append(_psEl('p','ps-kit-role',_psLabel(role)));
+              const grid=_psEl('div','ps-kit-grid ps-kit-comps');
+              items.forEach(c=>{
+                const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
+                const card=_psEl('button','ps-kit-card ps-kit-comp'+(on?' is-selected':''));card.type='button';card.dataset.comp=id;
+                card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',n++);
+                const thumb=_psEl('span','ps-kit-thumb');
+                if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
+                  if(c.loop){const still=img.src,loop='api/libraries/preview?path='+encodeURIComponent(c.loop);
+                    const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    card.addEventListener('mouseenter',()=>{if(!reduce())img.src=loop;});card.addEventListener('mouseleave',()=>{img.src=still;});
+                    card.addEventListener('focus',()=>{if(!reduce())img.src=loop;});card.addEventListener('blur',()=>{img.src=still;});}}
+                else thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));
+                thumb.insertAdjacentHTML('beforeend',_psCheck(on));
+                const text=_psEl('span','ps-kit-text');
+                const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
+                if(c.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
+                text.append(top,_psEl('span','ps-kit-meta',c.library_name+' · '+_psLabel(c.kind)));
+                const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
+                text.append(chips);card.append(thumb,text);
+                card.onclick=()=>toggle(card,st.kit.comps,id);
+                grid.append(card);
+              });
+              lists.append(grid);
+            });
+            if(!any) lists.append(_psEl('p','ps-kit-empty','No components match.'));
+          }
+        }
+        counts();
+      }
+      paintLists(false);
     }
     function chosenComponents(){
       const data=st.kit.data;if(!data||!data.visual) return [];
@@ -10768,9 +10909,9 @@ async function _openProjectStarterWizard(profile){
     // Step 9 — Review & create
     function renderReview(){
       sub.textContent='Check everything, then create it. Start building sends Hermes straight to work on version 1.';
-      const wrap=section('Review and create:');
+      const wrap=section('Review and create:');wrap.classList.add('ps-section-review');
       const grid=_psEl('div','ps-review-grid');
-      const card=(title,rows)=>{const c=_psEl('div','ps-review-card');c.append(_psEl('h4',null,title));
+      const card=(title,rows)=>{const c=_psEl('div','ps-review-card');c.style.setProperty('--i',grid.children.length);c.append(_psEl('h4',null,title));
         const list=_psEl('ul');rows.forEach(r=>list.append(_psEl('li',null,r)));if(!rows.length)list.append(_psEl('li','is-empty','None'));c.append(list);return c;};
       const tpl=templates.find(t=>t.key===st.template)||{label:'Blank Project'};
       const where=st.workspace?(st.workspace.name||st.workspace.path)+(st.parent?' / '+st.parent:'')+' / '+st.name.trim():st.name.trim();

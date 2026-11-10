@@ -23497,3 +23497,62 @@ const SlideOnChange=(()=>{
   return {start:beginSlide,end,around};
 })();
 window.SlideOnChange=SlideOnChange;
+
+// ── Filter button menu ───────────────────────────────────────────────────────
+// The menu under a filter button (Skills page, the project builder's Toolkit
+// step): groups of choices, one picked at a time. `groups` is
+// [{label, items:[{value, label, count?}]}]; `onPick(value)` runs on a pick.
+// Clicking the button again, Escape, or a click outside closes it (the exit
+// fade comes from motion-ui's popup ghost).
+const FILTER_ICON='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25V8.5z"/></svg>';
+function filterButtonHtml(id,label){
+  return '<button type="button" class="filter-btn" id="'+id+'" aria-label="'+label+'" aria-haspopup="menu" aria-expanded="false">'+FILTER_ICON+'<span class="filter-btn-dot" aria-hidden="true"></span></button>';
+}
+function openFilterMenu(anchor,groups,value,onPick){
+  const open=document.querySelector('.filter-menu');
+  if(open){const same=open._anchor===anchor;open._close();if(same)return;}
+  const menu=document.createElement('div');
+  menu.className='filter-menu';menu.setAttribute('role','menu');menu._anchor=anchor;
+  const check='<svg class="filter-menu-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+  groups.forEach((group)=>{
+    if(!group.items||!group.items.length) return;
+    if(group.label){const head=document.createElement('div');head.className='filter-menu-label';head.textContent=group.label;menu.append(head);}
+    group.items.forEach((item)=>{
+      const on=item.value===value;
+      const row=document.createElement('button');row.type='button';
+      row.className='filter-menu-item'+(on?' is-on':'');row.setAttribute('role','menuitemradio');row.setAttribute('aria-checked',String(on));
+      row.innerHTML=check;
+      const text=document.createElement('span');text.className='filter-menu-text';text.textContent=item.label;row.append(text);
+      if(item.count!=null){const count=document.createElement('span');count.className='filter-menu-count';count.textContent=String(item.count);row.append(count);}
+      row.onclick=(event)=>{event.stopPropagation();close();onPick(item.value);};
+      menu.append(row);
+    });
+  });
+  document.body.append(menu);
+  const r=anchor.getBoundingClientRect(),w=menu.offsetWidth,h=menu.offsetHeight; // layout size: the entrance scale would shrink a measured box
+  const below=window.innerHeight-r.bottom-8;
+  menu.style.left=Math.max(8,Math.min(window.innerWidth-w-8,r.right-w))+'px';
+  if(below<Math.min(h,240)&&r.top>below){menu.style.bottom=(window.innerHeight-r.top+4)+'px';menu.classList.add('is-up');menu.style.maxHeight=(r.top-12)+'px';}
+  else{menu.style.top=(r.bottom+4)+'px';menu.style.maxHeight=below+'px';}
+  anchor.setAttribute('aria-expanded','true');
+  const outside=(event)=>{if(!menu.contains(event.target)&&!anchor.contains(event.target))close();};
+  const keys=(event)=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();anchor.focus();return;}
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      const rows=[...menu.querySelectorAll('.filter-menu-item')];if(!rows.length)return;
+      event.preventDefault();const i=rows.indexOf(document.activeElement);
+      rows[(i+(event.key==='ArrowDown'?1:-1)+rows.length)%rows.length].focus();
+    }
+  };
+  function close(){
+    if(!menu.isConnected) return;
+    menu.remove();anchor.setAttribute('aria-expanded','false');
+    document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',keys,true);
+  }
+  menu._close=close;
+  setTimeout(()=>{document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',keys,true);},0);
+  (menu.querySelector('.filter-menu-item.is-on')||menu.querySelector('.filter-menu-item')||menu).focus({preventScroll:true});
+  return menu;
+}
+window.openFilterMenu=openFilterMenu;
+window.filterButtonHtml=filterButtonHtml;

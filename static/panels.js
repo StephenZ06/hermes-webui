@@ -6496,6 +6496,12 @@ function switchSkillsTab(name) {
   $('skillsList').hidden = libs;
   document.querySelector('#panelSkills .skills-search').hidden = libs;
   $('librariesPane').hidden = !libs;
+  const heading = $('skillsSectionHeading');
+  if (heading) heading.querySelector('span').textContent = libs ? 'LIBRARIES' : 'CATEGORIES';
+  // The pane that appears fades up; the other is already gone.
+  const shown = libs ? $('librariesPane') : $('skillsList');
+  shown.classList.remove('is-tab-in'); void shown.offsetWidth; shown.classList.add('is-tab-in');
+  const openMenu = document.querySelector('.filter-menu'); if (openMenu && openMenu._close) openMenu._close();
   if (libs) loadLibraries();
 }
 
@@ -6619,6 +6625,26 @@ async function _openLibraryTagForm(lib, comp) {
 
 let _collapsedCats = new Set(); // persisted collapsed state across re-renders
 
+// A category's skills fold up or open with an eased height change (at once
+// under reduced motion). A fold still under way is reversed from where it is.
+function _slideSkillRows(rows, open) {
+  if (!rows) return;
+  let reduce = false;
+  try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
+  const running = rows._fold;
+  const from = running ? rows.getBoundingClientRect().height : (open ? 0 : rows.getBoundingClientRect().height);
+  if (running) running.cancel();
+  rows._fold = null;
+  rows.hidden = false;
+  if (reduce || !rows.animate) { rows.hidden = !open; return; }
+  const to = open ? rows.scrollHeight : 0;
+  rows.style.overflow = 'hidden';
+  const anim = rows.animate([{height: from + 'px', opacity: open ? 0.4 : 1}, {height: to + 'px', opacity: open ? 1 : 0}],
+    {duration: Math.min(320, 160 + Math.abs(to - from) / 6), easing: 'cubic-bezier(.16,1,.3,1)'});
+  rows._fold = anim;
+  anim.onfinish = () => { if (rows._fold !== anim) return; rows._fold = null; rows.style.overflow = ''; rows.hidden = !open; };
+}
+
 function _toggleCatCollapse(cat) {
   if (_collapsedCats.has(cat)) _collapsedCats.delete(cat);
   else _collapsedCats.add(cat);
@@ -6629,32 +6655,44 @@ function _toggleCatCollapse(cat) {
       const collapsed = _collapsedCats.has(cat);
       sec.classList.toggle('collapsed', collapsed);
       header.querySelector('.cat-chevron').style.transform = collapsed ? '' : 'rotate(90deg)';
-      sec.querySelectorAll('.skill-item').forEach(el => el.style.display = collapsed ? 'none' : '');
+      _slideSkillRows(sec.querySelector('.skills-cat-items'), !collapsed);
     }
   });
 }
 
-function renderSkills(skills) {
+function renderSkills(skills, opts = {}) {
   const query = ($('skillsSearch').value || '').toLowerCase();
-  const filtered = query ? skills.filter(s =>
+  const f = _skillsFilter;
+  let filtered = query ? skills.filter(s =>
     (s.name||'').toLowerCase().includes(query) ||
     (s.description||'').toLowerCase().includes(query) ||
     (s.category||'').toLowerCase().includes(query)
   ) : skills;
-  // Group by category
+  if (f === 'enabled') filtered = filtered.filter(s => !s.disabled);
+  else if (f === 'disabled') filtered = filtered.filter(s => s.disabled);
+  else if (f.startsWith('cat:')) filtered = filtered.filter(s => (s.category || '(general)') === f.slice(4));
+  // Group by category; "Recently added" is one group, newest first.
   const cats = {};
-  for (const s of filtered) {
-    const cat = s.category || '(general)';
-    if (!cats[cat]) cats[cat] = [];
-    cats[cat].push(s);
+  if (f === 'recent') {
+    const recent = [...filtered].sort((a, b) => (b.added || 0) - (a.added || 0) || a.name.localeCompare(b.name)).slice(0, _SKILLS_RECENT);
+    if (recent.length) cats['Recently added'] = recent;
+  } else {
+    for (const s of filtered) {
+      const cat = s.category || '(general)';
+      if (!cats[cat]) cats[cat] = [];
+      cats[cat].push(s);
+    }
+    // A category made from the "+" menu shows before it has any skills (not while searching or filtering).
+    if (!query && !f) for (const c of _skillCategories) if (!cats[c]) cats[c] = [];
+    if (!query && f.startsWith('cat:') && !cats[f.slice(4)]) cats[f.slice(4)] = [];
   }
-  // A category made from the "+" menu shows before it has any skills (not while searching).
-  if (!query) for (const c of _skillCategories) if (!cats[c]) cats[c] = [];
   const box = $('skillsList');
   box.innerHTML = '';
+  if (opts.quiet) { box.classList.remove('is-refresh'); void box.offsetWidth; box.classList.add('is-refresh'); }
   if (!Object.keys(cats).length) { box.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(t('skills_no_match'))}</div>`; return; }
-  for (const [cat, items] of Object.entries(cats).sort()) {
-    const collapsed = _collapsedCats.has(cat);
+  const order = f === 'recent' ? Object.entries(cats) : Object.entries(cats).sort();
+  for (const [cat, items] of order) {
+    const collapsed = f !== 'recent' && _collapsedCats.has(cat);
     const sec = document.createElement('div');
     sec.className = 'skills-category' + (collapsed ? ' collapsed' : '');
     const hdr = document.createElement('div');
@@ -6663,11 +6701,15 @@ function renderSkills(skills) {
     hdr.innerHTML = `<span class="cat-chevron" style="display:inline-flex;transition:transform .15s;${collapsed ? '' : 'transform:rotate(90deg)'}">${li('chevron-right',12)}</span> ${esc(cat)} <span style="opacity:.5">(${items.length})</span>`;
     hdr.onclick = () => _toggleCatCollapse(cat);
     sec.appendChild(hdr);
-    for (const skill of items.sort((a,b) => a.name.localeCompare(b.name))) {
+    if (f === 'recent') hdr.onclick = null;
+    const rows = document.createElement('div');
+    rows.className = 'skills-cat-items';
+    rows.hidden = collapsed;
+    sec.appendChild(rows);
+    for (const skill of (f === 'recent' ? items : items.sort((a,b) => a.name.localeCompare(b.name)))) {
       const el = document.createElement('div');
       el.className = 'skill-item' + (skill.disabled ? ' disabled' : '');
       el.dataset.skillName = skill.name;
-      el.style.display = collapsed ? 'none' : '';
       const isDisabled = skill.disabled || false;
       const toggle = document.createElement('span');
       toggle.className = 'skill-toggle' + (isDisabled ? '' : ' enabled');
@@ -6684,14 +6726,41 @@ function renderSkills(skills) {
       descEl.textContent = skill.description || '';
       el.append(toggle, nameEl, descEl);
       el.onclick = () => openSkill(skill.name, el);
-      sec.appendChild(el);
+      rows.appendChild(el);
     }
     box.appendChild(sec);
   }
 }
 
 function filterSkills() {
-  if (_skillsData) renderSkills(_skillsData);
+  if (_skillsData) renderSkills(_skillsData, {quiet: true});
+}
+
+// The filter beside "Search skills…": a category, recently added, enabled or
+// turned off. '' shows every skill by category.
+let _skillsFilter = '';
+const _SKILLS_RECENT = 12;
+function _skillsFilterLabel(value) {
+  if (!value) return 'Filter skills';
+  if (value.startsWith('cat:')) return 'Filter: ' + value.slice(4);
+  return 'Filter: ' + ({recent: 'Recently added', enabled: 'Turned on', disabled: 'Turned off'}[value] || value);
+}
+function _paintSkillsFilterBtn() {
+  const btn = $('skillsFilterBtn'); if (!btn) return;
+  btn.classList.toggle('is-active', !!_skillsFilter);
+  btn.setAttribute('aria-label', _skillsFilterLabel(_skillsFilter));
+}
+function openSkillsFilter(event) {
+  if (event) event.stopPropagation();
+  const skills = _skillsData || [];
+  const cats = [...new Set([..._skillCategories, ...skills.map(s => s.category || '(general)')])].filter(Boolean).sort();
+  openFilterMenu($('skillsFilterBtn'), [
+    {items: [{value: '', label: 'All skills', count: skills.length},
+             {value: 'recent', label: 'Recently added', count: Math.min(_SKILLS_RECENT, skills.length)},
+             {value: 'enabled', label: 'Turned on', count: skills.filter(s => !s.disabled).length},
+             {value: 'disabled', label: 'Turned off', count: skills.filter(s => s.disabled).length}]},
+    {label: 'Categories', items: cats.map(c => ({value: 'cat:' + c, label: c, count: skills.filter(s => (s.category || '(general)') === c).length}))},
+  ], _skillsFilter, (value) => { _skillsFilter = value; _paintSkillsFilterBtn(); if (_skillsData) renderSkills(_skillsData, {quiet: true}); });
 }
 
 
@@ -7029,7 +7098,7 @@ async function openSkillAddMenu() {
   _renderSkillAddChoices(overlay, 0);
 }
 
-// Artwork for the three choices (static/skills/), 32px centred in a 36px slot.
+// Artwork for the three choices (static/skills/), 24px centred in a 28px slot.
 const _SKILL_ADD_ICONS = {
   create: 'static/skills/new-skill.png',
   import: 'static/skills/import-skill.png',
@@ -7046,6 +7115,11 @@ function _skillAddSwap(overlay, dir, render) {
   const first = !body.childElementCount;
   const from = dialog.getBoundingClientRect().height;
   render();
+  // Selects become themed selects in a MutationObserver callback, after this
+  // function returns; their height differs from the native control's. Enhance
+  // them now so the height measured below is the final one (otherwise the
+  // dialog eased to the wrong height and snapped at the end).
+  if (typeof window.enhanceAllThemedSelects === 'function') window.enhanceAllThemedSelects(body);
   let reduce = false;
   try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
   if (first || reduce || !dialog.animate) return;
@@ -7076,7 +7150,7 @@ function _paintSkillAddChoices(overlay) {
     ['import', 'Import', 'A skill or UI library, from any link.'],
     ['category', 'New category', 'A folder to keep skills in.'],
   ];
-  body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon"><img src="${_SKILL_ADD_ICONS[key]}" width="32" height="32" alt="" decoding="async" draggable="false"></span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
+  body.innerHTML = `<div class="skill-add-choices">${choices.map(([key, label, desc]) => `<button type="button" class="skill-add-choice" data-choice="${key}"><span class="skill-add-choice-icon"><img src="${_SKILL_ADD_ICONS[key]}" width="24" height="24" alt="" decoding="async" draggable="false"></span><span class="skill-add-choice-text"><strong>${label}</strong><small>${desc}</small></span></button>`).join('')}</div>`;
   body.querySelectorAll('.skill-add-choice').forEach(btn => btn.onclick = () => {
     const key = btn.dataset.choice;
     if (key === 'create') { _closeSkillAddMenu(); openSkillCreate(); return; }

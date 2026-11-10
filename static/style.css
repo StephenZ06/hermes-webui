@@ -17897,8 +17897,10 @@ textarea#msg::-webkit-scrollbar{display:none;}
    artwork keeps its own colours. */
 .new-chat-menu-item{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 8px;line-height:16px;}
 .new-chat-menu-icon{display:block;flex:none;width:16px;height:16px;}
-.new-chat-menu-icon.is-conversation{background:currentColor;-webkit-mask:url("sidepanel/conversation.png") center/contain no-repeat;mask:url("sidepanel/conversation.png") center/contain no-repeat;}
-.new-chat-menu-icon.is-project{background:url("sidepanel/project.png") center/contain no-repeat;}
+.new-chat-menu-icon{color:var(--muted);transition:color .16s ease,transform .22s cubic-bezier(.16,1,.3,1);}
+.new-chat-menu-icon svg{display:block;}
+.new-chat-menu-item:hover .new-chat-menu-icon,.new-chat-menu-item:focus-visible .new-chat-menu-icon{color:var(--accent-text,var(--accent));transform:rotate(90deg);}
+@media (prefers-reduced-motion:reduce){.new-chat-menu-icon{transition:color .16s ease;}.new-chat-menu-item:hover .new-chat-menu-icon{transform:none;}}
 .new-chat-menu-label{display:block;}
 /* It slides down out of the + button and fades in; it slides back up while
    fading out (the exit is played by PopupPresence in motion-ui.js). */
@@ -18142,3 +18144,114 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .ps-builder .ps-step:not(.is-current) .ps-step-label{display:none;}
   .ps-builder .ps-step.is-current{flex:2.4 1 0;}
 }
+
+/* ── Project builder, second pass (2026-11-10) ──────────────────────────────
+   Cards sit on the page's own background; one even margin all round the
+   dialog; a divider with equal space either side between the step and the
+   build summary; smoother step, question and toolkit motion. */
+.project-starter-dialog.ps-wizard.ps-builder{padding:24px;}
+.ps-builder .ps-actions{margin-top:16px;padding-top:16px;}
+.ps-builder .ps-main{position:relative;column-gap:49px;}
+.ps-builder .ps-main::after{content:"";position:absolute;top:0;bottom:0;right:272px;width:1px;background:var(--border);pointer-events:none;}
+.ps-builder :is(.ps-choice,.ps-template,.ps-option,.ps-look-card,.ps-motion-card,.ps-kit-card,.ps-review-card,.ps-build,.ps-files,.ps-rec-why,.ps-tree,.ps-target){background:var(--bg);}
+.ps-builder :is(.ps-choice,.ps-template,.ps-option,.ps-look-card,.ps-motion-card,.ps-kit-card).is-selected{background:var(--accent-bg);}
+.ps-builder :is(.ps-choice,.ps-template,.ps-option):hover:not(.is-selected){background:color-mix(in srgb,var(--accent) 6%,var(--bg));}
+@media (max-width:899px){
+  .ps-builder .ps-main{column-gap:0;}
+  .ps-builder .ps-main::after{display:none;}
+}
+@media (max-width:640px){
+  .project-starter-dialog.ps-wizard.ps-builder{padding:16px;}
+}
+
+/* Steps: the new step fades and slides in from a soft blur; the subtitle
+   follows; the question bar grows from where the last question left it. */
+.ps-builder .ps-body.ps-enter-fwd{animation:ps-step-in-fwd .34s cubic-bezier(.16,1,.3,1);}
+.ps-builder .ps-body.ps-enter-back{animation:ps-step-in-back .34s cubic-bezier(.16,1,.3,1);}
+@keyframes ps-step-in-fwd{from{opacity:0;transform:translateX(16px);filter:blur(3px);}to{opacity:1;transform:none;filter:none;}}
+@keyframes ps-step-in-back{from{opacity:0;transform:translateX(-16px);filter:blur(3px);}to{opacity:1;transform:none;filter:none;}}
+.ps-wizard .project-starter-header p.ps-sub-in{animation:ps-sub-in .3s ease-out;}
+@keyframes ps-sub-in{from{opacity:0;}to{opacity:1;}}
+.ps-progress span{transition:width .42s cubic-bezier(.16,1,.3,1);}
+.ps-options .ps-option{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 30ms);}
+
+/* The reasoning card: its text morphs through placeholder bars between choices. */
+.ps-rec-why{position:relative;overflow:hidden;box-sizing:border-box;transition:height .22s cubic-bezier(.16,1,.3,1),border-color .2s ease;}
+.ps-rec-why>:not(.ps-swap-skel){transition:opacity .16s ease,filter .16s ease;}
+.ps-rec-why.is-swapping>:not(.ps-swap-skel){opacity:0;filter:blur(2px);}
+.ps-rec-why-note{margin-top:8px!important;font-size:12px;color:var(--muted);}
+.ps-swap-skel{position:absolute;inset:0;pointer-events:none;transition:opacity .26s ease,filter .26s ease;}
+.ps-swap-skel i{position:absolute;display:block;border-radius:6px;background:color-mix(in srgb,var(--text) 10%,transparent);animation:skel-pulse 1s ease-in-out infinite;}
+.ps-swap-skel.is-morphing i{transition:left .2s cubic-bezier(.2,.8,.2,1),top .2s cubic-bezier(.2,.8,.2,1),width .2s cubic-bezier(.2,.8,.2,1),height .2s cubic-bezier(.2,.8,.2,1),opacity .2s ease;}
+.ps-swap-skel.is-out{opacity:0;filter:blur(2px);}
+
+/* Toolkit: search and filter over the lists. */
+.ps-kit-tools{display:flex;align-items:center;gap:8px;margin:0 0 16px;}
+.ps-kit-search.sidebar-search{flex:1 1 auto;min-width:0;margin:0;padding:0;}
+.ps-kit-lists.is-refresh{animation:ps-kit-refresh .22s ease-out;}
+.ps-kit-lists.is-quiet .ps-kit-card{animation:none;}
+@keyframes ps-kit-refresh{from{opacity:.35;}to{opacity:1;}}
+.ps-kit-lists>.ps-kit-head:first-child{margin-top:0;}
+
+/* Review: larger card titles; the step scrolls without a visible bar. */
+.ps-review-card h4{font-size:13px;letter-spacing:.04em;margin-bottom:10px;color:var(--text);}
+.ps-review-card{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 40ms);}
+.ps-body:has(.ps-section-review){scrollbar-width:none;}
+.ps-body:has(.ps-section-review)::-webkit-scrollbar{display:none;}
+@media (prefers-reduced-motion:reduce){
+  .ps-builder .ps-body.ps-enter-fwd,.ps-builder .ps-body.ps-enter-back,.ps-wizard .project-starter-header p.ps-sub-in,.ps-options .ps-option,.ps-review-card,.ps-kit-lists.is-refresh{animation:none;}
+  .ps-progress span,.ps-rec-why,.ps-rec-why>*,.ps-swap-skel,.ps-swap-skel i{transition:none;}
+}
+
+/* Filter button (beside a search box) and its menu: ui.js openFilterMenu. */
+.filter-btn{position:relative;flex:none;display:inline-grid;place-items:center;box-sizing:border-box;width:32px;height:32px;padding:0;border:1px solid color-mix(in srgb,var(--accent) 60%,var(--border2));border-radius:8px;background:transparent;color:var(--accent-text,var(--accent));cursor:pointer;transition:background .16s ease,border-color .16s ease,transform .12s ease;}
+.filter-btn:hover,.filter-btn[aria-expanded="true"]{background:var(--accent-bg);border-color:var(--accent);}
+.filter-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.filter-btn:active{transform:scale(.95);}
+.filter-btn svg{display:block;}
+.filter-btn-dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--accent);transform:scale(0);transition:transform .2s cubic-bezier(.3,1.5,.5,1);}
+.filter-btn.is-active .filter-btn-dot{transform:scale(1);}
+.filter-menu{position:fixed;z-index:10060;min-width:200px;max-width:280px;overflow-y:auto;box-sizing:border-box;padding:6px;border:1px solid var(--border2);border-radius:10px;background:var(--bg);box-shadow:0 8px 24px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:2px;transform-origin:100% 0;animation:filter-menu-in .2s cubic-bezier(.16,1,.3,1);}
+.filter-menu.is-up{transform-origin:100% 100%;}
+@keyframes filter-menu-in{from{opacity:0;translate:0 -6px;scale:.97;}}
+.filter-menu-label{padding:8px 8px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.filter-menu-item{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;text-align:left;cursor:pointer;transition:background .14s ease;}
+.filter-menu-item:hover,.filter-menu-item:focus-visible{background:var(--accent-bg);outline:none;}
+.filter-menu-check{flex:none;color:var(--accent-text,var(--accent));opacity:0;transform:scale(.6);transition:opacity .16s ease,transform .2s cubic-bezier(.3,1.5,.5,1);}
+.filter-menu-item.is-on .filter-menu-check{opacity:1;transform:none;}
+.filter-menu-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.filter-menu-count{flex:none;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+@media (prefers-reduced-motion:reduce){.filter-menu{animation:none;}.filter-btn,.filter-btn-dot,.filter-menu-check{transition:none;}}
+
+/* ── Skills page, second pass (2026-11-10) ───────────────────────────────────
+   Even space around the Skills / Libraries tabs and the "Categories" divider;
+   a filter button beside the search; library filters as tall as the search
+   box; smaller add-menu art on cards that share the page background. */
+#panelSkills .skills-tabs{padding:12px 12px 12px;}
+#panelSkills .skills-section-heading{margin:0 12px 12px;gap:10px;padding:0;}
+#panelSkills .skills-section-heading::before,#panelSkills .skills-section-heading::after{content:"";height:1px;flex:1;background:var(--border);}
+#panelSkills .skills-search{display:flex;align-items:center;gap:8px;padding:0 12px 8px;}
+#panelSkills .skills-search[hidden]{display:none;}
+#panelSkills .skills-search input{flex:1 1 auto;min-width:0;height:32px;box-sizing:border-box;}
+#panelSkills .skills-search .filter-btn{width:32px;height:32px;}
+#panelSkills .lib-filters{padding:0 12px 8px;}
+#panelSkills .lib-filters .themed-select-wrap,#panelSkills .lib-filters .themed-select-trigger{height:32px;box-sizing:border-box;}
+#panelSkills .lib-filters .themed-select-trigger{width:100%;padding:0 6px 0 10px;border-radius:8px;font-size:12px;}
+.skills-cat-items[hidden]{display:none;}
+#skillsList.is-refresh,#librariesPane.is-tab-in,#skillsList.is-tab-in{animation:skills-pane-in .24s cubic-bezier(.16,1,.3,1);}
+@keyframes skills-pane-in{from{opacity:0;translate:0 4px;}to{opacity:1;translate:0 0;}}
+#skillsList.is-refresh{animation-name:skills-pane-refresh;animation-duration:.2s;}
+@keyframes skills-pane-refresh{from{opacity:.4;}to{opacity:1;}}
+.skills-tab{transition:background .2s ease,color .2s ease,border-color .2s ease,transform .12s ease;}
+.skills-tab:active{transform:scale(.97);}
+.skill-add-choice{background:var(--bg);}
+.skill-add-choice:hover{background:color-mix(in srgb,var(--accent) 6%,var(--bg));}
+.skill-add-choice-icon{width:28px;height:28px;}
+.skill-add-choice-icon img{width:24px;height:24px;}
+@media (prefers-reduced-motion:reduce){#skillsList.is-refresh,#librariesPane.is-tab-in,#skillsList.is-tab-in{animation:none;}.skills-tab:active{transform:none;}}
+.ps-kit-search .sidebar-search-icon{left:10px;}
+.ps-kit-search input{height:32px;box-sizing:border-box;}
+#panelSkills .skills-search .sidebar-search-icon{top:16px;}
+/* Each filter as wide as its label; spare width shared between them. */
+#panelSkills .lib-filters{grid-template-columns:repeat(3,auto);}
+#panelSkills .lib-filters .themed-select-trigger{gap:2px;}

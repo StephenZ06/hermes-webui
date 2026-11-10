@@ -40,11 +40,12 @@ def test_chat_new_menu_has_icons_with_even_margins_slides_in_and_leaves_no_selec
     rows = page.evaluate("""() => [...document.querySelectorAll('.new-chat-menu-item')].map(it => {
       const r = it.getBoundingClientRect(), icon = it.querySelector('.new-chat-menu-icon'), i = icon.getBoundingClientRect();
       return {top: i.top - r.top, bottom: r.bottom - i.bottom, left: i.left - r.left, w: i.width, kind: icon.className,
-              art: getComputedStyle(icon).maskImage + getComputedStyle(icon).backgroundImage}; })""")
+              art: icon.querySelector('svg circle') ? 'circle-plus' : ''}; })""")
     assert [r["kind"] for r in rows] == ["new-chat-menu-icon is-conversation", "new-chat-menu-icon is-project"], rows
     for r in rows:
         assert r["w"] == 16 and r["top"] == r["bottom"] == r["left"] == 8, r
-    assert "sidepanel/conversation.png" in rows[0]["art"] and "sidepanel/project.png" in rows[1]["art"], rows
+    # Both choices show the same circled plus, not a picture.
+    assert [r["art"] for r in rows] == ["circle-plus", "circle-plus"], rows
     page.mouse.click(900, 700)
     after = page.evaluate("""() => { const g = document.querySelector('[data-popup-ghost]');
       return {menus: document.querySelectorAll('.new-chat-menu').length, ghost: !!g, cls: g && g.getAttribute('class'),
@@ -102,7 +103,7 @@ def test_skills_add_menu_shows_artwork_and_animates_between_steps(page):
     art = page.evaluate("""() => [...document.querySelectorAll('.skill-add-choice')].map(c => {
       const r = c.querySelector('.skill-add-choice-icon').getBoundingClientRect(), card = c.getBoundingClientRect();
       return [new URL(c.querySelector('img').src).pathname, c.querySelector('img').getAttribute('width'), Math.round((r.top - card.top) - (card.bottom - r.bottom))]; })""")
-    assert art == [["/static/skills/new-skill.png", "32", 0], ["/static/skills/import-skill.png", "32", 0], ["/static/skills/new-category.png", "32", 0]], art
+    assert art == [["/static/skills/new-skill.png", "24", 0], ["/static/skills/import-skill.png", "24", 0], ["/static/skills/new-category.png", "24", 0]], art
     page.evaluate("() => document.querySelector('.skill-add-choice[data-choice=import]').click()")
     moving = page.evaluate("() => [document.querySelector('.skill-add-body').getAnimations().length, document.getElementById('skillAddTitle').textContent]")
     assert moving == [1, "Import skill"], moving

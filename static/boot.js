@@ -3753,6 +3753,7 @@ function _toggleNewChatMenu(anchorBtn){
     const icon=document.createElement('span');
     icon.className='new-chat-menu-icon is-'+iconKind;
     icon.setAttribute('aria-hidden','true');
+    icon.innerHTML='<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6.6"/><path d="M8 5.2v5.6M5.2 8h5.6"/></svg>';
     const text=document.createElement('span');
     text.className='new-chat-menu-label';
     text.textContent=label;

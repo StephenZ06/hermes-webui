@@ -260,6 +260,20 @@ def test_an_other_option_becomes_the_typed_answer_and_reasons_carry_examples():
     assert q["examples"] == ["Vercel hosts it free", "Shopify Hydrogen uses React", "a"]
 
 
+def test_each_option_carries_how_it_would_be_built_so_any_choice_can_be_explained():
+    from api.project_starter_agent import _ANALYSIS_PROMPT, parse_analysis
+
+    assert '"how"' in _ANALYSIS_PROMPT
+    result = parse_analysis('{"complete": false, "questions": [{"id": "stack", "question": "Stack?", "options": ['
+                            '{"label": "Astro", "detail": "static", "how": "Astro pages with content collections."},'
+                            '{"label": "Next.js", "detail": "React", "how": "' + "y" * 500 + '"},'
+                            '{"label": "Plain HTML", "detail": "none"}], "recommended": "Astro", "why": "Fast."}]}')
+    [q] = result["questions"]
+    assert q["hows"] == ["Astro pages with content collections.", "y" * 400, ""]
+    plain = parse_analysis('{"complete": false, "questions": [{"id": "s", "question": "S?", "options": ["A", "B", "C"]}]}')
+    assert "hows" not in plain["questions"][0]
+
+
 def test_every_starter_document_links_to_the_others(tmp_path: Path):
     import re
 

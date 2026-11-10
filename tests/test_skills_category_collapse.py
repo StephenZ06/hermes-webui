@@ -41,38 +41,39 @@ class TestRenderSkillsCollapse:
     def test_chevron_icon_used_instead_of_folder(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
+        body = p[idx:idx + 5000]
         assert 'chevron-right' in body, 'Must use chevron-right icon instead of folder'
         assert "li('folder'" not in body, 'Must not use folder icon anymore'
 
     def test_cat_header_has_dataset_cat(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
+        body = p[idx:idx + 5000]
         assert 'dataset.cat' in body, 'Header must store category in data-cat attribute'
 
     def test_cat_header_has_click_handler(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
+        body = p[idx:idx + 5000]
         assert 'hdr.onclick' in body or 'onclick' in body, 'Header must have onclick handler'
 
     def test_collapsed_class_toggled(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
+        body = p[idx:idx + 5000]
         assert 'collapsed' in body, 'Must apply collapsed class based on state'
 
     def test_skill_items_hidden_when_collapsed(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
-        assert "'none'" in body and "style.display" in body, 'Skill items must be hidden when category is collapsed'
+        body = p[idx:idx + 5000]
+        # The skills sit in one rows container per category, hidden while collapsed.
+        assert "rows.hidden = collapsed" in body, 'Skill items must be hidden when category is collapsed'
 
     def test_chevron_rotation_on_collapse(self):
         p = _readpanels()
         idx = p.find('function renderSkills(')
-        body = p[idx:idx + 2000]
+        body = p[idx:idx + 5000]
         assert 'rotate(90deg)' in body, 'Chevron must rotate 90deg when expanded'
 
     def test_renderSkills_preserves_search_query(self):
@@ -113,8 +114,8 @@ class TestToggleCatCollapse:
         p = _readpanels()
         idx = p.find('function _toggleCatCollapse(')
         body = p[idx:idx + 800]
-        assert '.skill-item' in body, 'Must query .skill-item elements'
-        assert "display = collapsed ? 'none'" in body or "style.display" in body, 'Must toggle display property'
+        # The category's rows container folds with an eased height change.
+        assert '.skills-cat-items' in body and '_slideSkillRows' in body, 'Must fold the rows container'
 
     def test_toggles_chevron_rotation(self):
         p = _readpanels()

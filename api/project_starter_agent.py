@@ -112,7 +112,8 @@ _ANALYSIS_PROMPT = """You are helping set up a new software project's instructio
 Do not use any tools and do not create files. Reply with ONLY one JSON object:
 {{"complete": true|false, "summary": "one sentence", "questions": [
   {{"id": "short_snake_id", "question": "...",
-    "options": [{{"label": "...", "detail": "what it is, in under 12 words"}}, ...exactly 3],
+    "options": [{{"label": "...", "detail": "what it is, in under 12 words",
+                 "how": "1-2 sentences: how this project would be built with it"}}, ...exactly 3],
     "other": "placeholder for a typed answer, e.g. Other stack (type it)",
     "recommended": "one of the option labels, copied exactly",
     "why": "2-4 sentences tied to the brief",
@@ -135,7 +136,10 @@ an "Other" option: the user types their own answer in a fourth field, whose
 placeholder you write as "other". For every question, pick the option you would
 recommend for THIS project (its users, scale, platform and constraints in the
 brief) as "recommended". In "why", explain in 2-4 sentences why it fits this
-brief better than the other two, naming the trade-off you accept. In
+brief better than the other two, naming the trade-off you accept. In each
+option's "how", say in 1-2 sentences how THIS project would be built if the
+user picks that option (what changes in the stack, the work or the delivery),
+so the user can compare any choice, not only the recommended one. In
 "examples", give 2-3 short concrete illustrations (a well-known product built
 that way, a library or service it pairs with, or what it means for this
 project's first milestone). Prefer mainstream, well-supported choices unless
@@ -231,16 +235,17 @@ def parse_analysis(text: str) -> dict:
         other = str(item.get("other") or "").strip()[:80]
         choices = []
         for raw_option in item.get("options") or []:
-            label, detail = (raw_option.get("label"), raw_option.get("detail")) if isinstance(raw_option, dict) else (raw_option, "")
-            label, detail = str(label or "").strip()[:120], str(detail or "").strip()[:160]
+            label, detail, how = (raw_option.get("label"), raw_option.get("detail"), raw_option.get("how")) \
+                if isinstance(raw_option, dict) else (raw_option, "", "")
+            label, detail, how = str(label or "").strip()[:120], str(detail or "").strip()[:160], str(how or "").strip()[:400]
             if not label:
                 continue
             if re.match(r"(other|something else)\b", label, re.I):
                 other = other or label[:80]
                 continue
-            choices.append((label, detail))
+            choices.append((label, detail, how))
         choices = choices[:3]
-        options = [label for label, _ in choices]
+        options = [label for label, _, _ in choices]
         qid = re.sub(r"[^a-z0-9_]+", "_", str(item.get("id") or question).lower()).strip("_")[:40] or f"q{len(questions) + 1}"
         if not question or qid in seen:
             continue
@@ -248,7 +253,9 @@ def parse_analysis(text: str) -> dict:
         recommended = str(item.get("recommended") or "").strip()
         match = next((o for o in options if o.casefold() == recommended.casefold()), "")
         entry = {"id": qid, "question": question, "options": options,
-                 "details": [detail for _, detail in choices], "other": other or "Something else"}
+                 "details": [detail for _, detail, _ in choices], "other": other or "Something else"}
+        if any(how for _, _, how in choices):
+            entry["hows"] = [how for _, _, how in choices]
         if match:
             entry["recommended"] = match
             entry["why"] = str(item.get("why") or "").strip()[:600]
