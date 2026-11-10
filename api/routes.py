@@ -12073,15 +12073,33 @@ _account_usage_last_lock = threading.Lock()
 _ACCOUNT_USAGE_LAST_TTL_SECONDS = 30 * 60
 
 
+def _account_usage_reset_iso(value) -> str | None:
+    """A window's reset time as ISO text. The agent's own fetch gives a
+    datetime; the per-profile probe (used while a scheduled job holds the cron
+    lock) and the credential pool give ISO text. Unreadable values drop only
+    the reset time, never the whole answer."""
+    if not value:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, str):
+        try:
+            from datetime import datetime
+
+            return datetime.fromisoformat(value.strip().replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            return None
+    return None
+
+
 def _render_account_usage_response(handler, snapshot) -> None:
     """Serialize an AccountUsageSnapshot (or compatible namespace) to JSON."""
     windows = []
     for window in getattr(snapshot, "windows", ()) or ():
-        reset_at = getattr(window, "reset_at", None)
         windows.append({
             "label": getattr(window, "label", None),
             "used_percent": getattr(window, "used_percent", None),
-            "reset_at": reset_at.isoformat() if reset_at else None,
+            "reset_at": _account_usage_reset_iso(getattr(window, "reset_at", None)),
             "detail": getattr(window, "detail", None),
         })
     j(handler, {

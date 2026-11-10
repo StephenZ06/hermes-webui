@@ -2212,6 +2212,7 @@ let _accountUsageTimer=null;
 const _accountUsageRefreshInFlight=new Map();
 let _accountUsageRequestGeneration=0;
 let _accountUsageData=null;
+let _accountUsageGood=null;  // {profile}: the profile whose last answer had a reading
 let _accountUsageWindow='session';
 let _accountUsageWindowAnimationTimer=null;
 let _accountUsageWindowBarAnimationFrame=null;
@@ -2436,17 +2437,24 @@ async function loadAccountUsage(profile, options={}){
   const profileName=String(profile||((typeof S!=='undefined'&&S&&S.activeProfile)||'default'));
   const requestGeneration=++_accountUsageRequestGeneration;
   let data;
+  // A refresh that fails or comes back without a reading keeps the card on
+  // this profile's last good reading instead of hiding it; only a profile
+  // with no reading yet (or none at all, like a local server) hides it.
+  const keepLast=()=>_accountUsageGood&&_accountUsageGood.profile===profileName&&!widget.hidden;
   try{
     const refresh=options&&options.refresh===true?'&refresh=1':'';
     data=await api(`/api/account_usage?profile=${encodeURIComponent(profileName)}${refresh}`,{cache:options&&options.refresh?'no-store':undefined,timeoutToast:false});
   }catch(e){
     if(requestGeneration!==_accountUsageRequestGeneration) return;
-    widget.hidden=true;
+    if(!keepLast()) widget.hidden=true;
     return;
   }
   // A profile switch can finish while this provider request is in flight.
   // Never paint the previous profile's quota over the newly selected profile.
   if(requestGeneration!==_accountUsageRequestGeneration) return;
+  const hasReading=!!(data&&(data.local||data.rate_limited||(data.available&&Array.isArray(data.windows)&&data.windows.some(w=>w&&w.used_percent!=null))));
+  if(!hasReading&&keepLast()) return;
+  _accountUsageGood=hasReading?{profile:profileName}:null;
   _accountUsageData=data;
   _renderAccountUsage(data);
 }
