@@ -1,6 +1,15 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (later still): page scripts load on demand (audit item 5)
+
+- Executed `docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md` (commits 0c717013f, a42fc87b4, 0ff40ba3e, 6191b2c3d). Details in ARCHITECTURE.md, "Static asset delivery".
+- Deviations from the plan: job-os/state.js, job-os/api.js and notebook/api.js stay in index.html (other pages read them); the loader skips scripts already on the page; the build token is appended as served (already URL-encoded); `switchPanel` starts the load alongside the fade, not after it; the Dashboard also loads in idle time to keep its "no loader on first open" prefetch; Jobs' Manage Skills now calls `openCareerDashboard()`.
+- Measured (isolated instances, warm cache, median of 5, old = 9281cb9e8): reload in Chat ready at 478 ms (was 968 ms); Dashboard landing shows cards at 935 ms (was 1406 ms); first Chat visit downloads 9 fewer scripts at start-up (417 KB less transferred, 1.4 MB less to parse); the Dashboard's then arrive in idle time.
+- Tests: tests/test_page_modules_browser.py (9). Tests that used page globals straight after boot now call `loadPageModule()` first (the new contract).
+- Pre-existing failures, same on 9281cb9e8: test_job_os_pipeline_browser (resume upload, bare job), test_zeus2_hovers_use_the_active_tint_including_office_history, test_delete_confirm_is_compact_with_a_red_outline_button; order-dependent in large batches only: test_coming_back_to_the_dashboard_fades_in_once, test_settings_page_saves_and_reloads, several Work Hub browser tests.
+- Offline: checked on an isolated instance; after a page's scripts loaded once (cached by the service worker), loadPageModule() for it succeeds with the browser offline. Not verified: real-device timings.
+
 ## 2026-11-10 (late night): performance checklist audit, fixes 1-4, plan for 5
 
 Audited against the user's performance checklist (~/.claude/PERFORMANCE-CHECKLIST.md). Measured on an isolated instance (HERMES_HOME/HERMES_WEBUI_STATE_DIR in a scratch dir, port 8789; the live UI is behind a login).
@@ -11,7 +20,7 @@ Audited against the user's performance checklist (~/.claude/PERFORMANCE-CHECKLIS
 - Start-up API calls 26 -> 22: settings fetched once (boot's own answer runs the version-skew check), the sidebar's all-profiles project list warms the new-chat picker cache, and gateway snapshots no longer refetch a WebUI-only sidebar unless the CLI count changed. Kept: the second sidebar load after the saved chat is restored, and the `/api/models` retry when the catalog is empty.
 - i18n.js: the server slices it (`api/i18n_bundle.py`): the page gets English + its language + stubs (40 KB gzipped vs 541 KB); `setLocale()` fetches a stubbed language on demand. `i18n.js` without `lang`/`locale` is still the whole file.
 - Pre-existing: `tests/test_update_banner_fixes.py` fails (13) when run after the i18n-related test files in one batch, on the old code too; passes alone.
-- Next: item 5, load page scripts on demand, planned in `docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md` (not started).
+- Next: item 5, load page scripts on demand, planned in `docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md` (done, see the entry above).
 
 ## 2026-11-10 (night): setup progress line, deleting a new project stops its work, usage card fix
 

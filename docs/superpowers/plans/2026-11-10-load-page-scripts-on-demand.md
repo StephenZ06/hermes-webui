@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-11-10):** executed in commits 0c717013f, a42fc87b4, 0ff40ba3e and 6191b2c3d, with the deviations listed in `.agent/PROJECT_STATUS.md`. The task text below is the plan as written.
+
 **Goal:** Stop loading the Jobs, Notebook, Files, Work Hub, Goal Planner and Dashboard scripts on every visit; load each one the first time its page (or a feature that needs it) is opened.
 
 **Architecture:** A small classic-script loader, `static/page-modules.js`, maps a page name to its ordered script list and injects those scripts once, returning a promise. `switchPanel()` (static/panels.js) awaits the loader before it calls the page's `mount()`. The handful of cross-page callers (for example `window.Notebook.openFrom` from chat and the workspace panel) go through the same loader. The pages' own code does not change: each script still publishes its `window.X = {mount, ...}` object when it runs.
