@@ -3476,7 +3476,9 @@ function _startWebUIVersionSkewMonitor(){
       _check();
     },60000);
   }
-  _check();
+  // No check at load: boot.js fetches /api/settings once and runs
+  // checkWebUIVersionSkew() on that answer. Checking here too sent a second,
+  // identical request at start-up. Focus, visibility and the poll still check.
   document.addEventListener('visibilitychange',function(){
     if(!document.hidden){ _check(); _startPoll(); }
     else if(_pollTimer){ clearInterval(_pollTimer); _pollTimer=null; }

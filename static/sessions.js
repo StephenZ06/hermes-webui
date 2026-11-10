@@ -5947,7 +5947,11 @@ async function _loadSidebarSessionListPayload(sessionListQS, sessionRequestOpts)
       // PROFILES' SESSIONS are visible). A project created under one profile
       // still only shows that profile's own chats inside it -- /api/sessions
       // stays profile-scoped as normal; only the folder itself is global.
-      return await api('/api/projects?all_profiles=1',{timeoutToast:false});
+      const data=await api('/api/projects?all_profiles=1',{timeoutToast:false});
+      // The same list warms the new-chat picker's cache (boot.js), which used
+      // to send its own identical request at start-up.
+      if(data&&Array.isArray(data.projects)&&typeof _allProjectsAllProfiles!=='undefined') _allProjectsAllProfiles=data.projects.slice();
+      return data;
     }catch(projectError){
       console.warn('renderProjectsList',projectError);
       return {projects:_allProjects||[]};
@@ -6521,7 +6525,16 @@ function _isDuplicateGatewaySessionSnapshot(sessions){
   const incoming=(Array.isArray(sessions)?sessions:[]).filter(_isGatewaySessionForSnapshot);
   const currentGatewaySessions=(Array.isArray(_allSessions)?_allSessions:[]).filter(_isGatewaySessionForSnapshot);
   if(!incoming.length&&!currentGatewaySessions.length) return true;
-  return _gatewaySessionSnapshotKey(incoming)===_gatewaySessionSnapshotKey(currentGatewaySessions);
+  if(_gatewaySessionSnapshotKey(incoming)===_gatewaySessionSnapshotKey(currentGatewaySessions)) return true;
+  // A list loaded for the WebUI source holds no gateway rows at all, so the
+  // comparison above always failed and every snapshot (including the one the
+  // stream sends on connect) refetched the sidebar. In that view gateway
+  // sessions only show up as the CLI count; refetch when that count differs.
+  if(typeof _requestedSessionSidebarSource==='function'&&_requestedSessionSidebarSource()==='webui'
+     &&typeof _serverCliSessionCount==='number'&&!currentGatewaySessions.length){
+    return incoming.length===_serverCliSessionCount;
+  }
+  return false;
 }
 
 async function probeGatewaySSEStatus(){

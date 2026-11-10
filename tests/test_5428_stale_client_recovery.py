@@ -226,10 +226,14 @@ def test_node_rejected_settings_fetch_no_banner():
         _make_stub(
             "v1",
             "let _apiCalls = 0; "
-            "global.api = () => { _apiCalls += 1; return Promise.reject(new Error('network error')); };",
+            "global.api = () => { _apiCalls += 1; return Promise.reject(new Error('network error')); }; "
+            # boot.js runs the first check on its own /api/settings answer; the
+            # monitor polls on focus, visibility and its interval.
+            "let _onFocus = null; global.window.addEventListener = (type, fn) => { if (type === 'focus') _onFocus = fn; };",
         ),
         helpers,
-        "await Promise.resolve(); if (_apiCalls !== 1) throw new Error('monitor did not poll settings');",
+        "if (_apiCalls !== 0) throw new Error('monitor fetched settings at load'); "
+        "_onFocus(); await Promise.resolve(); if (_apiCalls !== 1) throw new Error('monitor did not poll settings');",
     )
     assert result["display"] != "flex", (
         f"Banner wrongly shown for rejected settings fetch: {result}"

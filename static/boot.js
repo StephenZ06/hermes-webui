@@ -3681,10 +3681,10 @@ async function _refreshAllProjectsAllProfiles(){
   return _allProjectsAllProfiles;
 }
 
-// Warm the unfiltered project cache on boot so the new-chat picker is
-// immediately responsive; the sidebar cache is profile-scoped, so it may hide
-// projects that belong to other profiles.
-_refreshAllProjectsAllProfiles();
+// The unfiltered project cache is warmed at boot by the sidebar's first load,
+// which fetches the same /api/projects?all_profiles=1 list (sessions.js,
+// _loadSidebarSessionListPayload), so the new-chat picker is responsive
+// without a second identical request.
 
 function _createNewConversationWithPicker(anchorEl){
   // Prefer the all-profiles cache so every project the user owns is reachable
