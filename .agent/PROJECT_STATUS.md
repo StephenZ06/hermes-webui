@@ -1,6 +1,13 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10: builder and Skills page second pass, test skills isolation, Zeus 2.0 typeface
+
+- Test isolation bug: the test server's `skills/` was one symlink to the real `~/.hermes/skills`, so the Skills page browser test that creates a category left `cat-xxxxxx` folders in real state (8 found, removed at the user's request after checking each held only its generated DESCRIPTION.md). `tests/conftest.py::_seed_test_skills` now makes its own skills and category folders, links only skill folders, and copies loose files.
+- Builder: Details reasoning card follows any choice (planner returns per-option `how`), morphs via placeholder bars; Toolkit search + filter, in-place ticks; page-background cards, 24px margins, divider with equal gaps, larger Review titles, hidden Review scrollbar; smoother step/subtitle/progress motion. New-chat menu icons are a circled plus.
+- Skills page: even 12px spacing, "Categories" divider, filter button (all / recently added / on / off / categories; listing now returns `added`), 32px library filters, smaller add-menu art, animated folding, tab fade. The add dialog's resize snap came from selects being themed after the height was measured; they are now themed first.
+- Zeus 2.0: `--font-mono` follows `--font-ui`; Dashboard pixel fonts replaced by size-adjusted local faces. Not checked on Windows Chrome (headless Linux lacks Courier New); the stand-ins fall back to DejaVu Sans Mono there.
+
 ## 2026-11-09 (late night): project builder (catalog, builder wizard, previews, docs check)
 
 - Spec `docs/superpowers/specs/2026-11-09-project-builder-design.md`; part 1 plan `docs/superpowers/plans/2026-11-09-project-builder-part1-catalog.md`. Parts 2-4 were built from the spec directly in the same session (no separate plan files).

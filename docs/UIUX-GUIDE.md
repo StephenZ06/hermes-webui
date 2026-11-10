@@ -219,6 +219,26 @@ Needs details badge; clicking a card opens its tag form, which can also replace
 the picture. The "Docs not updated" chip under a reply uses the warning colour,
 fades in, and never sends anything unless Update now is pressed.
 
+Builder cards sit on the page background (`var(--bg)`); the dialog keeps a 24px
+margin on every side, and a 1px divider sits in the 49px gap before the build
+summary so the space on each side is equal. On the Details step the card under
+the options explains whichever option is chosen (why for the recommendation,
+how it would be built for the others, using the planner's per-option `how`),
+and its text changes through the Notes page's placeholder-bar motion
+(`_psSwapText` in `static/sessions.js`). Choosing an option updates in place;
+it does not re-render the question.
+
+A filter sits beside a search box as a 32px square with an accent outline
+(`.filter-btn`); its menu (`openFilterMenu` in `static/ui.js`) offers one choice
+at a time in labelled groups. The Toolkit step and the Skills page use it. On
+the Skills page the tabs, the labelled "Categories" divider and the search row
+are 12px apart; library filters match the search box's 32px height and are as
+wide as their labels. Category folding animates its height.
+
+Under Zeus 2.0 everything uses the skin's typeface: `--font-mono` follows
+`--font-ui`, and the Dashboard's pixel fonts are replaced by the same local
+faces scaled with `size-adjust` so its tuned sizes still fit.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with
