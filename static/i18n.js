@@ -2,6 +2,14 @@
 // To add a new language: add an entry to LOCALES below with all keys translated.
 // The language code must match a valid BCP 47 tag (used for speech recognition).
 // Keys missing in a non-English locale fall back to English automatically.
+//
+// The page does not load this whole file: the server (api/i18n_bundle.py)
+// sends English, the user's language, and a `{ _label, _lazy: true }` stub for
+// every other language. setLocale() fetches a stubbed language on demand.
+
+// Where this file was loaded from (with its ?v= build version), so a stubbed
+// language can be fetched from the same build.
+const _I18N_SCRIPT_SRC = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) || '';
 
 const LOCALES = {
   en: {
@@ -30017,13 +30025,59 @@ function t(key, ...args) {
 /**
  * Switch locale by language code (e.g. 'en', 'zh').
  * Persists to localStorage and updates the <html lang> attribute.
+ * Returns a promise that settles once the language's strings are in place:
+ * at once for a loaded language, after a fetch for a stubbed one (until then
+ * every string falls back to English).
  * @param {string} lang
+ * @returns {Promise<string>}
  */
+let _i18nWanted = 'en';
+const _i18nPending = {};
 function setLocale(lang) {
   const resolved = resolveLocale(lang) || 'en';
+  _i18nWanted = resolved;
   _locale = LOCALES[resolved];
   try { localStorage.setItem('hermes-lang', resolved); } catch (_) {}
   document.documentElement.lang = _locale._speech || resolved;
+  return _locale._lazy ? _i18nLoadLocale(resolved) : Promise.resolve(resolved);
+}
+
+// Fetch one stubbed language (i18n.js?locale=xx, same build). The response
+// merges it into LOCALES and calls _i18nLocaleArrived().
+function _i18nLoadLocale(code) {
+  if (_i18nPending[code]) return _i18nPending[code].promise;
+  let settle;
+  const promise = new Promise((resolve) => { settle = resolve; });
+  _i18nPending[code] = { promise, settle };
+  try {
+    const url = new URL(_I18N_SCRIPT_SRC || 'static/i18n.js', document.baseURI || location.href);
+    url.searchParams.delete('lang');
+    url.searchParams.set('locale', code);
+    const script = document.createElement('script');
+    script.src = url.href;
+    script.async = true;
+    // A failed fetch leaves the stub, so strings stay English; a later
+    // setLocale() of the same language tries again.
+    script.onerror = () => { delete _i18nPending[code]; settle(code); script.remove(); };
+    script.onload = () => script.remove();
+    document.head.appendChild(script);
+  } catch (_) {
+    delete _i18nPending[code];
+    settle(code);
+  }
+  return promise;
+}
+
+function _i18nLocaleArrived(code) {
+  const pending = _i18nPending[code];
+  delete _i18nPending[code];
+  if (_i18nWanted === code && LOCALES[code] && !LOCALES[code]._lazy) {
+    _locale = LOCALES[code];
+    document.documentElement.lang = _locale._speech || code;
+    if (typeof applyLocaleToDOM === 'function') applyLocaleToDOM();
+    try { document.dispatchEvent(new CustomEvent('hermes:locale-loaded', { detail: { code } })); } catch (_) {}
+  }
+  if (pending) pending.settle(code);
 }
 
 /**

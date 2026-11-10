@@ -41,7 +41,10 @@ const SHELL_ASSETS = [
   './static/notebook/index.js' + VQ,
   './static/commands.js' + VQ,
   './static/icons.js' + VQ,
-  './static/i18n.js' + VQ,
+  // The page asks for i18n.js sliced to its language (&lang=xx, see
+  // api/i18n_bundle.py); English is pre-cached, other slices are cached the
+  // first time they load (isI18nSlice below).
+  './static/i18n.js' + VQ + '&lang=en',
   './static/workspace.js' + VQ,
   './static/terminal.js' + VQ,
   './static/onboarding.js' + VQ,
@@ -55,6 +58,12 @@ const SHELL_ASSETS = [
   './static/favicon-32.png',
   './manifest.json',
 ];
+
+// i18n.js for one language (&lang=xx) or one extra language (&locale=xx), from
+// this build only.
+function isI18nSlice(shellPath) {
+  return shellPath.startsWith('./static/i18n.js' + VQ + '&');
+}
 
 function deleteOldShellCaches() {
   return caches.keys().then((keys) =>
@@ -163,7 +172,7 @@ self.addEventListener('fetch', (event) => {
     ? url.pathname.slice(scopePath.length)
     : url.pathname.replace(/^\/+/, '');
   const shellPath = './' + relPath.replace(/^\/+/, '') + url.search;
-  if (!SHELL_ASSETS.includes(shellPath)) return;
+  if (!SHELL_ASSETS.includes(shellPath) && !isI18nSlice(shellPath)) return;
 
   // Shell assets: network-first with cache fallback. This keeps offline support
   // but avoids executing stale JS/CSS after a local hotfix when WEBUI_VERSION

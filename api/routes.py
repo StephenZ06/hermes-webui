@@ -13708,6 +13708,7 @@ def _route_get_root(handler, parsed):
         html = _render_index_shell_base().replace(
             "__CSRF_TOKEN_JSON__", json.dumps(csrf_token)
         )
+        html = _index_with_ui_language(html)
         return t(
             handler,
             inject_extension_tags(html),
@@ -13715,6 +13716,17 @@ def _route_get_root(handler, parsed):
         )
     except Exception as exc:
         return _serve_shell_unavailable(handler, exc)
+
+
+def _index_with_ui_language(html: str) -> str:
+    """Ask for i18n.js sliced to English plus the saved UI language (api/i18n_bundle.py)."""
+    try:
+        language = str(load_settings().get("language") or "en")
+    except Exception:
+        language = "en"
+    if not re.fullmatch(r"[A-Za-z][\w-]{0,15}", language):
+        language = "en"
+    return re.sub(r'(src="static/i18n\.js\?v=[^"&]*)"', lambda m: f'{m.group(1)}&amp;lang={language}"', html, count=1)
 
 
 def _route_get_share(handler, parsed):
@@ -21586,6 +21598,41 @@ _STATIC_CACHE: dict = {}
 _STATIC_CACHE_LOCK = threading.Lock()
 
 
+def _i18n_variant(rel: str, parsed):
+    """("lang", code) or ("locale", code) for a sliced i18n.js request, else None."""
+    if rel != "i18n.js":
+        return None
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    for kind in ("locale", "lang"):
+        values = query.get(kind)
+        if values and values[0]:
+            return kind, values[0][:16]
+    return None
+
+
+def _i18n_variant_body(cache_key: str, sig, raw: bytes, variant):
+    """(raw, gzip, etag) for a sliced i18n.js, cached per file version; None to serve the whole file."""
+    from api import i18n_bundle
+
+    key = (cache_key, variant)
+    with _STATIC_CACHE_LOCK:
+        cached = _STATIC_CACHE.get(key)
+        if cached and cached[0] == sig:
+            return cached[1]
+    text = raw.decode("utf-8")
+    kind, code = variant
+    body = (i18n_bundle.locale_patch(text, code, signature=sig) if kind == "locale"
+            else i18n_bundle.page_bundle(text, code, signature=sig))
+    built = None
+    if body is not None:
+        data = body.encode("utf-8")
+        tag = re.sub(r"[^A-Za-z0-9-]", "", code)
+        built = (data, gzip.compress(data, compresslevel=6), f'W/"{sig[0]:x}-{sig[1]:x}-{kind}-{tag}"')
+    with _STATIC_CACHE_LOCK:
+        _STATIC_CACHE[key] = (sig, built)
+    return built
+
+
 def _serve_static(handler, parsed):
     static_root = api_config.get_static_root().resolve()
     # Strip the leading '/static/' prefix, then resolve and sandbox
@@ -21625,6 +21672,15 @@ def _serve_static(handler, parsed):
               else None)
         with _STATIC_CACHE_LOCK:
             _STATIC_CACHE[cache_key] = (sig, raw, gz, etag)
+
+    # i18n.js?lang=xx / ?locale=xx: one language at a time (api/i18n_bundle.py).
+    variant = _i18n_variant(rel, parsed)
+    if variant:
+        built = _i18n_variant_body(cache_key, sig, raw, variant)
+        if built is not None:
+            raw, gz, etag = built
+        elif variant[0] == "locale":
+            return j(handler, {"error": "not found"}, status=404)
 
     # The page template substitutes __WEBUI_VERSION__ at request time (see the
     # `/`/`/index.html`/`/session/` branch above), and static/sw.js's
