@@ -1,6 +1,15 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (evening): builder live review line, card resize order, black Review terminal, scrollbar fades
+
+- Cron test fixed: the node harness for `openCronDetail` now loads `_noteCronHighlight` and `_playCronHighlight` (the read-only detail test passes again).
+- Step 4: `api/project_starter_agent.py` turns the hidden turn's stream events into one-line progress (`tool_progress_line`, `reasoning_progress_line`, the answer label). `_start_job(..., with_progress=True)` hands the work a `report` callable and `get_job` returns the latest line as `progress`. The wizard polls every 900ms and slides each new line in. Setup (`start_docs_setup`) does not report progress yet.
+- Step 5: `_psSwapText` measured the new card height with the height transition still on. With `interpolate-size: allow-keywords` on the root, that read a mid-glide value, so the card glided to the wrong size and snapped after the text showed. Measured with the transition off now.
+- Step 8: black terminal with mac window dots, black skills table header; phone footer puts the main button on its own row.
+- Scrollbars fade in and out (`--sb-a` registered property, `.sb-fading`).
+- Wizard efficiency: page animations under the open wizard pause (`html.ps-wizard-open`). Headless software rendering still drops frames at 1440px with the backdrop blur; not checked on real GPU hardware.
+
 ## 2026-11-10 (later): default profile name, hidden scrollbars, builder Review redesign
 
 - Profile: the root profile (`~/.hermes`, `display_name: conductor` in its profile.yaml) is internally `default` when no profile is sticky, so a fresh load reported `default` while the switcher listed `conductor`. `api/profiles.py::public_profile_name` now maps the root alias to its display name in `/api/profile/active`, `/api/profiles` `active`, and `switch_profile`'s response. No profile was deleted; `~/.hermes` is still the root.
@@ -8,7 +17,7 @@
 - Dashboard: achievement art shrinks to a narrow tile (side panel open) so the lock stays centred (was 5.4px right).
 - Skills page: tab labels 0.5px lower, Libraries list 12px under its divider, 2px between library filter options. New-chat menu plus 0.5px lower.
 - Builder: Build summary stretches to the bottom; Template art preloads on the Location step; content waits for the dialog's glide; Details card text shows after its resize; Review redesigned (terminal, look samples, skills table, component tiles).
-- Pre-existing failure left alone: `tests/test_issue3947_tasks_cross_profile_visibility.py::test_panels_read_only_rows_hide_actions_and_skip_unread_side_effects` (`_noteCronHighlight` missing from its node harness), fails on the previous commit too.
+- Pre-existing failure left alone at the time: `tests/test_issue3947_tasks_cross_profile_visibility.py::test_panels_read_only_rows_hide_actions_and_skip_unread_side_effects` (`_noteCronHighlight` missing from its node harness); fixed in the evening entry above.
 
 ## 2026-11-10: builder and Skills page second pass, test skills isolation, Zeus 2.0 typeface
 

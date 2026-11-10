@@ -244,10 +244,24 @@ of the step. Review shows each part as a preview: the project as a small
 terminal (name, type, directory, then the command and the files it writes, as
 on the Jobs page's Scout panel), the chosen style and motion as the Look & feel
 step's own samples, skills in a rounded table, and component preview tiles.
+The Review terminal is black in both themes with red, amber and green window
+dots, and the skills table's header row is black. While Architecture reviews
+the brief, the line under it shows what the planner is doing now (its latest
+tool call, reasoning heading or "Writing up its questions"), one line, from the
+job's `progress` field. Text swaps in a card (`_psSwapText`) measure the new
+height with the height transition off, because the root's `interpolate-size`
+would otherwise report a mid-glide height. While the wizard is open the page
+under its blurred backdrop pauses its animations (`html.ps-wizard-open`), so the
+blur is not redrawn every frame. On phones Review's main button takes its own
+row above Back and Create project.
 
 Scrollbars stay hidden until their element scrolls: `static/ui.js` adds
 `.is-scrolling` to whatever scrolls and removes it 900ms after the last scroll;
-pointing at a hidden thumb still shows it so it can be grabbed.
+pointing at a hidden thumb still shows it so it can be grabbed. The thumb
+fades in over 160ms and out over 280ms: the listener eases the registered
+`--sb-a` property while `.sb-fading` is on the element, and the thumb uses it
+as its opacity. Firefox, which has no thumb pseudo-element, shows and hides at
+once.
 
 Under Zeus 2.0 everything uses the skin's typeface: `--font-mono` follows
 `--font-ui`, and the Dashboard's pixel fonts are replaced by the same local
