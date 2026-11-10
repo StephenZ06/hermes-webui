@@ -34,7 +34,7 @@ def test_seed_test_skills_uses_symlink_path_when_available(monkeypatch, tmp_path
 
     seen = {}
 
-    def fake_symlink(self, target):
+    def fake_symlink(self, target, target_is_directory=False):
         seen["args"] = (self, target)
         self.mkdir(parents=True)
         (self / "marker.txt").write_text("symlink path", encoding="utf-8")
@@ -44,8 +44,9 @@ def test_seed_test_skills_uses_symlink_path_when_available(monkeypatch, tmp_path
 
     _conftest._seed_test_skills(real_skills, test_skills)
 
-    assert seen["args"] == (test_skills, real_skills)
-    assert (test_skills / "marker.txt").read_text(encoding="utf-8") == "symlink path"
+    assert seen["args"] == (test_skills / "demo-skill", real_skills / "demo-skill")
+    assert not test_skills.is_symlink()
+    assert (test_skills / "demo-skill" / "marker.txt").read_text(encoding="utf-8") == "symlink path"
 
 
 def test_seed_test_skills_windows_symlink_error_falls_back_to_copy(monkeypatch, tmp_path):
@@ -55,7 +56,7 @@ def test_seed_test_skills_windows_symlink_error_falls_back_to_copy(monkeypatch, 
     source_skill = real_skills / "demo-skill" / "SKILL.md"
     source_mode = source_skill.stat().st_mode
 
-    def fail_symlink(self, target):
+    def fail_symlink(self, target, target_is_directory=False):
         exc = OSError("[WinError 1314] A required privilege is not held by the client")
         exc.winerror = 1314
         raise exc
@@ -80,7 +81,7 @@ def test_seed_test_skills_windows_non_privilege_error_reraises(monkeypatch, tmp_
     test_skills = tmp_path / "test-skills"
     _make_skill_tree(real_skills)
 
-    def fail_symlink(self, target):
+    def fail_symlink(self, target, target_is_directory=False):
         exc = OSError("unexpected symlink failure")
         exc.winerror = 5
         raise exc
@@ -97,7 +98,7 @@ def test_seed_test_skills_reraises_symlink_error_off_windows(monkeypatch, tmp_pa
     test_skills = tmp_path / "test-skills"
     _make_skill_tree(real_skills)
 
-    def fail_symlink(self, target):
+    def fail_symlink(self, target, target_is_directory=False):
         raise OSError("symlink blocked")
 
     monkeypatch.setattr(pathlib.Path, "symlink_to", fail_symlink)

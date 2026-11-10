@@ -940,14 +940,38 @@ def _rmtree_retry(path):
 
 
 def _seed_test_skills(real_skills: pathlib.Path, test_skills: pathlib.Path) -> None:
+    """Show the real skills in the test home while keeping writes in it.
+
+    The test home gets its own skills folder and its own category folders;
+    only each skill folder is linked to the real one, and loose files (usage
+    and curator state, category descriptions) are copied. A category or skill
+    a test creates then lands in the test home, never in the real
+    ``~/.hermes/skills`` (one linked folder once let the Skills page tests
+    leave ``cat-xxxxxx`` categories there).
+    """
     if not real_skills.exists() or test_skills.exists():
         return
+    test_skills.mkdir(parents=True)
+    for entry in sorted(real_skills.iterdir()):
+        dest = test_skills / entry.name
+        if entry.is_dir() and not entry.name.startswith('.') and not (entry / 'SKILL.md').exists():
+            dest.mkdir()
+            for child in sorted(entry.iterdir()):
+                _seed_test_skill_entry(child, dest / child.name)
+        else:
+            _seed_test_skill_entry(entry, dest)
+
+
+def _seed_test_skill_entry(source: pathlib.Path, dest: pathlib.Path) -> None:
+    if not source.is_dir():
+        shutil.copy2(source, dest)
+        return
     try:
-        test_skills.symlink_to(real_skills)
+        dest.symlink_to(source, target_is_directory=True)
     except OSError as exc:
         if not WINDOWS or getattr(exc, "winerror", None) != 1314:
             raise
-        shutil.copytree(real_skills, test_skills, copy_function=_copy2_readonly)
+        shutil.copytree(source, dest, copy_function=_copy2_readonly)
 
 
 def _copy2_readonly(source: str, destination: str) -> str:

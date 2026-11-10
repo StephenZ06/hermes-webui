@@ -32,12 +32,18 @@ class _IsolatedSkillsDirs:
         self.profile_skills = self.profile_home / "skills"
         self._root_was_symlink = False
         self._root_symlink_target = None
+        self._root_aside = self.state / "skills.aside"
 
     def __enter__(self):
         self._root_was_symlink = self.root_skills.is_symlink()
         if self._root_was_symlink:
             self._root_symlink_target = self.root_skills.resolve()
-        _remove_path(self.root_skills)
+            _remove_path(self.root_skills)
+        elif self.root_skills.exists():
+            # The seeded skills folder (its own folder of links to the real
+            # skills): set it aside and put it back afterwards.
+            _remove_path(self._root_aside)
+            self.root_skills.rename(self._root_aside)
         _remove_path(self.profile_home)
         self.root_skills.mkdir(parents=True, exist_ok=True)
         self.profile_skills.mkdir(parents=True, exist_ok=True)
@@ -48,6 +54,8 @@ class _IsolatedSkillsDirs:
         _remove_path(self.root_skills)
         if self._root_was_symlink and self._root_symlink_target is not None:
             self.root_skills.symlink_to(self._root_symlink_target)
+        elif self._root_aside.exists():
+            self._root_aside.rename(self.root_skills)
 
 
 def _write_skill(skills_dir: pathlib.Path, name: str, description: str, body: str) -> pathlib.Path:
