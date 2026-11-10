@@ -33,7 +33,7 @@ def _locales_in_node(*sources):
     script = (
         "const vm=require('vm');const ctx={localStorage:{getItem(){return null},setItem(){}},"
         "document:{documentElement:{},querySelectorAll(){return []}},window:{},console};vm.createContext(ctx);"
-        "let src='';process.stdin.on('data',d=>src+=d).on('end',()=>{vm.runInContext(src+';this.__L=LOCALES;',ctx);"
+        "let src='';process.stdin.setEncoding('utf8');process.stdin.on('data',d=>src+=d).on('end',()=>{vm.runInContext(src+';this.__L=LOCALES;',ctx);"
         "process.stdout.write(JSON.stringify(ctx.__L));});"
     )
     out = subprocess.run(["node", "-e", script], input="\n".join(sources), capture_output=True, text=True, timeout=60)
