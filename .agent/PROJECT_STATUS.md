@@ -1,6 +1,15 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (latest): remaining checklist items, pre-existing test failures fixed
+
+- Dashboard pixel font (Press Start 2P) is served as WOFF2 (30 KB) with the TTF as fallback (b4caebefb); tests/test_pixel_font_woff2_browser.py checks the browser fetches the WOFF2.
+- Checked, no change needed: every server-calling search box is debounced (sessions, notebook, project bind path, workspace path suggestions); the achievement grid uses `loading="lazy"`; the Dashboard's idle image prefetch is deliberate (cards appear with their art).
+- Open decision for the user: achievement webp files are 288 px pixel art shown at 108 px; resampling saves about 0.5 MB but would blur them.
+- Test fixes, all test-side drift unless noted: Jobs pipeline resume/bare-job tests follow the page (52f745e8b); Zeus 2.0 hover tint and Work Hub delete-confirm tests follow the transparent dialog buttons (edb7b7fd6); `page_load_failed` now exists in all 15 locales (718196574, the locale tests caught it).
+- Order-dependent failures, root causes: test_provider_mismatch and test_profile_switch_1200 left chat streams in `api.config.STREAMS`, which blocked updates in test_update_banner_fixes; tests/conftest.py now drops streams a test registered and left behind (600bddec9). The Jobs fade test's 250 ms window failed when an earlier test left funnel data (six staggered bars run to about 350 ms); it now fails only when an element animates twice (eea7d575c).
+- Verified: 262 targeted tests pass together; deployed eea7d575c (healthy, sw.js carries the sha). Not investigated: test_settings_page_saves_and_reloads batch-only failure (passed in this run).
+
 ## 2026-11-10 (later still): page scripts load on demand (audit item 5)
 
 - Executed `docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md` (commits 0c717013f, a42fc87b4, 0ff40ba3e, 6191b2c3d). Details in ARCHITECTURE.md, "Static asset delivery".
