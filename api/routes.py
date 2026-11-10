@@ -11244,7 +11244,7 @@ button:hover{background:color-mix(in srgb,var(--accent-bg) 70%,var(--accent) 30%
 .err{color:var(--err);font-size:12px;margin-top:10px;display:none}
 </style></head><body>
 <div class="card">
-  <img class="logo" src="static/favicon-512.png?v={{WEBUI_VERSION}}" alt="{{BOT_NAME}}">
+  <img class="logo" src="static/logo-200.webp?v={{WEBUI_VERSION}}" width="56" height="56" alt="{{BOT_NAME}}">
   <h1>{{BOT_NAME}}</h1>
   <p class="sub">{{LOGIN_SUBTITLE}}</p>
   <form id="login-form" data-invalid-pw="{{LOGIN_INVALID_PW}}" data-conn-failed="{{LOGIN_CONN_FAILED}}">
