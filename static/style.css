@@ -12913,7 +12913,7 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash-btn.is-gold{background:linear-gradient(180deg,#ffd75e,#e0a91c);color:#3a2600;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.4);}
 
 /* ==== Character page: an RPG character sheet in the app's theme ==== */
-@font-face{font-family:"Press Start 2P";src:url("vendor/fonts/press-start-2p/PressStart2P-Regular.ttf") format("truetype");font-display:swap;}
+@font-face{font-family:"Press Start 2P";src:url("vendor/fonts/press-start-2p/PressStart2P-Regular.woff2") format("woff2"),url("vendor/fonts/press-start-2p/PressStart2P-Regular.ttf") format("truetype");font-display:swap;}
 .dash.is-rpg{--rpg-gold:#f4c542;--rpg-gold-deep:#b7861b;--rpg-violet:#a78bfa;--rpg-frame:color-mix(in srgb,var(--rpg-violet) 34%,var(--border2));--rpg-panel:color-mix(in srgb,var(--card) 92%,#1b1032);--rpg-pixel:"Press Start 2P",var(--font-mono);}
 :root:not(.dark) .dash.is-rpg{--rpg-panel:color-mix(in srgb,var(--card) 94%,#ede6ff);--rpg-gold-deep:#8a6110;}
 #mainDashboard:has(.dash.is-rpg){background:radial-gradient(1200px 600px at 20% -10%,color-mix(in srgb,var(--rpg-violet,#a78bfa) 12%,transparent),transparent 60%),radial-gradient(900px 500px at 110% 10%,color-mix(in srgb,#f4c542 7%,transparent),transparent 60%),var(--bg);}
