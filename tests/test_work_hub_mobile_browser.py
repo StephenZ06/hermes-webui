@@ -150,7 +150,10 @@ def test_delete_confirm_is_compact_with_a_red_outline_button(phone, seeded):
     delete = next(b for b in buttons if b["text"] == "Delete")
     assert cancel["top"] == delete["top"], "side by side, not stacked"
     assert delete["width"] < 200 and delete["height"] <= 40
-    assert delete["color"] != "rgb(255, 255, 255)" and delete["bg"] != "rgba(0, 0, 0, 0)"
+    # A red outline with red text, not a solid red button. (Zeus 2.0 puts dialog
+    # buttons on the page colour, 4c1d094e7, so the fill may be transparent.)
+    assert delete["color"] == "rgb(239, 83, 80)", delete
+    assert "0.937" in delete["border"] or "239, 83, 80" in delete["border"], delete
 
 
 def test_phone_top_bar_is_sticky_for_ios_status_bar_tinting(phone, seeded):

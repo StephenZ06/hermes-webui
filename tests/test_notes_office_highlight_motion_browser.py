@@ -206,7 +206,10 @@ def test_zeus2_hovers_use_the_active_tint_including_office_history(zeus_page):
         root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
         node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": ".office-session-row[data-parent-id='hist1']"})["nodeId"]
         cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["hover"]})
-        page.wait_for_timeout(800)
+        # The 0.18 s fade can start late while the Office scene mounts; read the
+        # colour once it has finished rather than after a fixed wait.
+        page.wait_for_timeout(100)
+        page.wait_for_function("() => !document.querySelector(\".office-session-row[data-parent-id='hist1']\").getAnimations().length", timeout=10000)
         out = page.evaluate("""() => {
             const probe = document.createElement('div'); document.body.appendChild(probe);
             probe.style.background = 'var(--accent-bg)'; const tint = getComputedStyle(probe).backgroundColor;
