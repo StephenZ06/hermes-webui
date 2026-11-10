@@ -1,6 +1,14 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (night): setup progress line, deleting a new project stops its work, usage card fix
+
+- Setup step: the setup job reports the same one-line progress as the brief review (`start_docs_setup` passes `progress` and `on_run`); the wizard shows it under the setup task while it runs.
+- Deleting a wizard-created project (`created_folder: true`, set by `create_starter`, which now also records `registry_key`) from the sidebar sends `delete_folder`. The server stops the project's setup jobs (`project_starter_agent.stop_jobs`: job marked `cancelled`, `cancel_stream`, agent `process_registry.kill_all` for the hidden session), SIGTERM/SIGKILLs any same-user process whose cwd is inside the folder, removes the folder, and removes the registry block (`project_starter.unregister_from_lifecycle_registry`, only when `repo_path` still matches). Files page directory deletes (both `/api/file/delete` and `/api/file-manager/delete`) stop work first and then drop wizard-created projects whose folder is gone (if deletable). Adopted projects keep their folder. Work Hub's project delete does not send `delete_folder` and keeps the folder.
+- Usage card disappeared after a while: while a scheduled job holds the cron lock, Codex usage comes from the per-profile probe, whose `reset_at` is ISO text; `_render_account_usage_response` called `.isoformat()` on it and the request 500'd (seen in the live log at 08:58Z), and the client hid the card on any error. Fixed at the response builder (`_account_usage_reset_iso`), and the client keeps the profile's last good reading when a refresh fails or is empty.
+- Files delete bar: Done styled like All.
+- Red check note: a worktree sharing the main `.venv` imports brand-new modules from the main checkout, so a test of a new module can pass there; behaviour tests were all red.
+
 ## 2026-11-10 (evening): builder live review line, card resize order, black Review terminal, scrollbar fades
 
 - Cron test fixed: the node harness for `openCronDetail` now loads `_noteCronHighlight` and `_playCronHighlight` (the read-only detail test passes again).

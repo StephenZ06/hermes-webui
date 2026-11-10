@@ -248,7 +248,18 @@ The Review terminal is black in both themes with red, amber and green window
 dots, and the skills table's header row is black. While Architecture reviews
 the brief, the line under it shows what the planner is doing now (its latest
 tool call, reasoning heading or "Writing up its questions"), one line, from the
-job's `progress` field. Text swaps in a card (`_psSwapText`) measure the new
+job's `progress` field. The setup step does the same under its "installs
+dependencies" task until the agent finishes.
+
+Deleting a project the wizard created deletes its folder too, and the confirm
+dialog names the folder. Before the folder goes, the setup agent's turn is
+cancelled, the processes it registered are killed, and any other process
+working inside the folder is stopped (`api/project_cleanup.py`), so an install
+still running cannot write the folder back. The registry entry the wizard added
+is removed. Deleting that folder on the Files page does the same and drops the
+project when it has no chats or work items. Adopted projects never lose their
+folder. In the Files page's delete bar, Done is a plain text button like All;
+only Delete stands out. Text swaps in a card (`_psSwapText`) measure the new
 height with the height transition off, because the root's `interpolate-size`
 would otherwise report a mid-glide height. While the wizard is open the page
 under its blurred backdrop pauses its animations (`html.ps-wizard-open`), so the
