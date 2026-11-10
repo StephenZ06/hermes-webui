@@ -82,7 +82,7 @@ actions. The topbar remains focused on conversation context and the workspace/fi
       commands.js          Slash command registry, parser, autocomplete dropdown
       boot.js              Event wiring, mobile nav, voice input, theme/skin boot, bfcache handler
       onboarding.js        First-run wizard overlay, provider setup flow
-      i18n.js              Localization catalog (en, es, de, zh, zh-Hant, ru, …)
+      i18n.js              Localization catalog (en, es, de, zh, zh-Hant, ru, …); served sliced per language by api/i18n_bundle.py
       login.js             Login page + open-redirect guard
       icons.js             Lucide icon path registry
       sw.js                Service worker: offline shell cache, version-pinned assets
@@ -1807,3 +1807,10 @@ Routes: `GET /api/libraries`, `/api/libraries/preview`, `/api/libraries/job`;
 `POST /api/libraries/import`, `/save`, `/component`, `/previews`, `/preview_upload`, `/draft`,
 `/delete`; `POST /api/projects/starter/toolkit`. `create_starter` accepts `toolkit` and returns
 `kickoff`.
+
+## Static asset delivery (2026-11)
+
+- Versioned assets (`?v=<build>`) are served `immutable` for a year with a weak ETag; byte-range media (video, audio) gets a strong ETag because browsers only cache 206 responses with a strong validator.
+- The service worker is network-first for shell assets but fetches them with `cache: 'no-cache'`, so each visit revalidates (304) instead of re-downloading.
+- `static/i18n.js` is the single translation source. `api/i18n_bundle.py` slices it at request time: `?lang=xx` gives English, `xx` and a `{ _label, _lazy: true }` stub per other language (what `index.html` asks for, using the saved UI language); `?locale=xx` gives one language as a patch that `setLocale()` loads on demand; no parameter gives the whole file. An unexpected layout falls back to the whole file.
+- Planned: page scripts loaded on first open (`docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md`).

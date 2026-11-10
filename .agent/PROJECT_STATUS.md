@@ -1,6 +1,18 @@
 # Project status — hermes-webui
 
 
+## 2026-11-10 (late night): performance checklist audit, fixes 1-4, plan for 5
+
+Audited against the user's performance checklist (~/.claude/PERFORMANCE-CHECKLIST.md). Measured on an isolated instance (HERMES_HOME/HERMES_WEBUI_STATE_DIR in a scratch dir, port 8789; the live UI is behind a login).
+
+- Repeat visits: the service worker fetched shell scripts with `cache: 'no-store'`, re-downloading ~7.7 MB raw every visit. Now `no-cache` (still revalidated each visit, hotfixes still show at once): second visit 24 full downloads -> 0, page-level transfer 85 KB.
+- Dashboard hero video re-downloaded every visit: browsers only cache 206 responses with a strong validator; range-served media now gets a strong ETag, and the video URL carries `?v=`.
+- Icons: in-page logos load `static/logo-200.webp` (21 KB) instead of the 250 KB 512px PNG; `favicon.svg` wraps a WebP (142 KB, was 341 KB).
+- Start-up API calls 26 -> 22: settings fetched once (boot's own answer runs the version-skew check), the sidebar's all-profiles project list warms the new-chat picker cache, and gateway snapshots no longer refetch a WebUI-only sidebar unless the CLI count changed. Kept: the second sidebar load after the saved chat is restored, and the `/api/models` retry when the catalog is empty.
+- i18n.js: the server slices it (`api/i18n_bundle.py`): the page gets English + its language + stubs (40 KB gzipped vs 541 KB); `setLocale()` fetches a stubbed language on demand. `i18n.js` without `lang`/`locale` is still the whole file.
+- Pre-existing: `tests/test_update_banner_fixes.py` fails (13) when run after the i18n-related test files in one batch, on the old code too; passes alone.
+- Next: item 5, load page scripts on demand, planned in `docs/superpowers/plans/2026-11-10-load-page-scripts-on-demand.md` (not started).
+
 ## 2026-11-10 (night): setup progress line, deleting a new project stops its work, usage card fix
 
 - Setup step: the setup job reports the same one-line progress as the brief review (`start_docs_setup` passes `progress` and `on_run`); the wizard shows it under the setup task while it runs.
