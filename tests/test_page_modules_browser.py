@@ -61,3 +61,21 @@ def test_a_page_whose_scripts_fail_says_so_and_retries(page):
     page.unroute("**/static/file-manager.js*")
     page.evaluate("async () => { await switchPanel('chat'); await switchPanel('files'); }")
     page.wait_for_function("() => window.HermesFileManager", timeout=15000)
+
+
+def test_notebook_and_work_hub_load_when_something_needs_them(page):
+    moved = ("notebook/index.js", "work-hub.js", "goal-planner.js")
+    assert [s for s in page.scripts if s in moved] == [], page.scripts
+    # Opening a note from chat, the workspace panel or the Dashboard goes through withNotebook.
+    assert page.evaluate("() => withNotebook(n => typeof n.openFrom)") == "function"
+    page.evaluate("async () => { await switchPanel('notes'); }")
+    page.wait_for_function("() => typeof window.loadWorkHubPanel === 'function' && document.getElementById('workHub')", timeout=15000)
+    assert page.evaluate("() => typeof window.GoalPlanner") != "undefined"
+    assert [s for s in page.scripts if s in moved] == ["notebook/index.js", "work-hub.js", "goal-planner.js"]
+
+
+def test_the_workspace_work_hub_pane_loads_work_hub_when_it_is_first(page):
+    assert "work-hub.js" not in page.scripts
+    page.evaluate("() => switchRightPanelPane('plane')")
+    page.wait_for_function("() => typeof window.renderWorkspaceWorkHub === 'function'", timeout=15000)
+    assert page.scripts.count("work-hub.js") == 1

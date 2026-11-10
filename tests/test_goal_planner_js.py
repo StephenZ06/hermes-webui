@@ -16,11 +16,9 @@ class TestGoalPlannerScript:
     """Tests for static/goal-planner.js source structure."""
 
     def test_goal_planner_script_included_in_index_html(self):
-        page = read("static/index.html")
-        assert "static/goal-planner.js" in page
-        assert "static/work-hub.js" in page
-        # goal-planner.js should load after work-hub.js
-        assert page.index("static/work-hub.js") < page.index("static/goal-planner.js")
+        # Work Hub's scripts load the first time it opens (static/page-modules.js).
+        page = read("static/page-modules.js")
+        assert "notes: ['static/work-hub.js', 'static/goal-planner.js']" in page
 
     def test_goal_planner_exports_plan_parse_goal_default_actions(self):
         script = read("static/goal-planner.js")

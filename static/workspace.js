@@ -644,7 +644,10 @@ registerChatPane({
 registerChatPane({
   id: 'plane',
   mount: () => {
+    // Work Hub's code loads with its page (static/page-modules.js); load it
+    // first if this pane is the first thing to need it.
     if(typeof renderWorkspaceWorkHub === 'function') renderWorkspaceWorkHub();
+    else if(typeof withWorkHub === 'function') withWorkHub(w => w.renderWorkspaceWorkHub && w.renderWorkspaceWorkHub()).catch(()=>{});
   },
   unmount: () => {
     // The full Work Hub owns editing and durable state.
@@ -688,16 +691,16 @@ async function renderWorkspaceNotes(){
     row.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span class="workspace-nb-note-copy"><strong></strong><small></small></span>';
     row.querySelector('strong').textContent = note.title || 'Untitled';
     row.querySelector('small').textContent = (note.pinned ? 'Pinned · ' : '') + when(note.updated_at);
-    row.onclick = () => window.Notebook && window.Notebook.openFrom(note.id, projectId);
+    row.onclick = () => withNotebook(n => n.openFrom(note.id, projectId)).catch(()=>{});
     list.appendChild(row);
   });
   const open = $('workspaceNotesOpen');
-  if(open) open.onclick = () => window.Notebook && window.Notebook.openFrom(null, projectId);
+  if(open) open.onclick = () => withNotebook(n => n.openFrom(null, projectId)).catch(()=>{});
   const make = $('workspaceNotesNew');
   if(make) make.onclick = async () => {
     try{
       const {note} = await window.NotebookApi.create(Object.assign({title:''}, projectId ? {project_id:projectId} : {}));
-      if(window.Notebook){ await window.Notebook.refresh(); window.Notebook.openFrom(note.id, projectId); }
+      await withNotebook(async n => { await n.refresh(); n.openFrom(note.id, projectId); });
     }catch(e){ if(typeof showToast === 'function') showToast('The note could not be created', 3000, 'error'); }
   };
 }

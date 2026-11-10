@@ -59,4 +59,13 @@
     }
     return pending[name];
   };
+
+  // For features outside a page that need its code: opening a note from chat,
+  // the workspace panel or the Dashboard, and the workspace panel's Work Hub list.
+  window.withNotebook = function (fn) {
+    return window.loadPageModule('notebook').then(function () { return fn(window.Notebook); });
+  };
+  window.withWorkHub = function (fn) {
+    return window.loadPageModule('notes').then(function () { return fn(window); });
+  };
 }());

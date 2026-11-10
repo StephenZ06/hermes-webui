@@ -1659,10 +1659,10 @@
       try { history.replaceState(history.state, '', location.pathname + location.search + '#jobs/' + d.jobsView); } catch (_) {}
       if (window.JobOSState) window.JobOSState.activeView = d.jobsView;
     }
-    if (d.notesScope && window.Notebook && typeof window.Notebook.openScope === 'function') return window.Notebook.openScope(d.notesScope);
+    if (d.notesScope && typeof window.withNotebook === 'function') return window.withNotebook((n) => n.openScope(d.notesScope));
     if (d.dashGo && typeof switchPanel === 'function') return switchPanel(d.dashGo);
-    if (d.dashItem && typeof window.openWorkHubItem === 'function') return window.openWorkHubItem(d.dashItem, d.project || null, d.board || null);
-    if (d.dashNote && window.Notebook && typeof window.Notebook.openFrom === 'function') return window.Notebook.openFrom(d.dashNote, null);
+    if (d.dashItem && typeof window.withWorkHub === 'function') return window.withWorkHub((w) => w.openWorkHubItem(d.dashItem, d.project || null, d.board || null));
+    if (d.dashNote && typeof window.withNotebook === 'function') return window.withNotebook((n) => n.openFrom(d.dashNote, null));
   }
 
   // A stat tile points at the card it summarises: bring it into view and pulse it.

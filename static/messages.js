@@ -991,14 +991,14 @@ function _renderSelectionChips(){
     name.title=linkedNote?'Open linked note':_selectedTextReplyT('context_block_rename_hint','Click or press Enter to rename');
     name.setAttribute('aria-label', linkedNote?`Open linked note: ${s.name}`:`${_selectedTextReplyT('context_block_rename_aria','Rename context block')}: ${s.name}`);
     name.addEventListener('click',()=>{
-      if(linkedNote&&window.Notebook&&typeof window.Notebook.openFrom==='function') window.Notebook.openFrom(s.noteId);
+      if(linkedNote&&typeof withNotebook==='function') withNotebook(n=>n.openFrom(s.noteId)).catch(()=>{});
       else _editSelectionChipName(s.id,card);
     });
     name.addEventListener('dblclick',()=>{if(!linkedNote)_editSelectionChipName(s.id,card);});
     name.addEventListener('keydown',e=>{
       if(e.key==='Enter'||e.key===' '||(!linkedNote&&e.key==='F2')){
         e.preventDefault();
-        if(linkedNote&&window.Notebook&&typeof window.Notebook.openFrom==='function') window.Notebook.openFrom(s.noteId);
+        if(linkedNote&&typeof withNotebook==='function') withNotebook(n=>n.openFrom(s.noteId)).catch(()=>{});
         else _editSelectionChipName(s.id,card);
       }
     });

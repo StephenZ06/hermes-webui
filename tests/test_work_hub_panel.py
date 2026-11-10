@@ -17,7 +17,7 @@ def test_work_hub_uses_native_panel_and_curated_mx_icons():
 
     assert 'id="panelNotes"' in page
     assert "Work Hub" in page
-    assert "static/work-hub.js" in page
+    assert "'static/work-hub.js'" in read("static/page-modules.js")  # loads when Work Hub opens
     assert "mx-icons" in script
     assert "react" not in script.lower()
 

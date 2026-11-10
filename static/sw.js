@@ -36,7 +36,6 @@ const SHELL_ASSETS = [
   './static/job-os/state.js' + VQ,
   './static/job-os/api.js' + VQ,
   './static/notebook/api.js' + VQ,
-  './static/notebook/index.js' + VQ,
   './static/commands.js' + VQ,
   './static/icons.js' + VQ,
   // The page asks for i18n.js sliced to its language (&lang=xx, see
@@ -70,6 +69,9 @@ const PAGE_MODULE_ASSETS = [
   './static/job-os/render.js' + VQ,
   './static/job-os/index.js' + VQ,
   './static/file-manager.js' + VQ,
+  './static/notebook/index.js' + VQ,
+  './static/work-hub.js' + VQ,
+  './static/goal-planner.js' + VQ,
 ];
 
 function deleteOldShellCaches() {
