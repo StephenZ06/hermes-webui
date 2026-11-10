@@ -524,6 +524,10 @@ def test_panels_read_only_rows_hide_actions_and_skip_unread_side_effects():
     job_key = _extract_function(PANELS_JS, "_cronJobKey")
     set_buttons = _extract_function(PANELS_JS, "_setCronHeaderButtons")
     open_detail = _extract_function(PANELS_JS, "openCronDetail")
+    # openCronDetail glides the row highlight through these two helpers; without
+    # the ui.js glide functions loaded they do nothing.
+    note_highlight = _extract_function(PANELS_JS, "_noteCronHighlight")
+    play_highlight = _extract_function(PANELS_JS, "_playCronHighlight")
     script = f"""
 const results = {{}};
 const buttons = Object.create(null);
@@ -558,6 +562,8 @@ const document = {{
 {owner_name}
 {job_key}
 {set_buttons}
+{note_highlight}
+{play_highlight}
 {open_detail}
 _setCronHeaderButtons('read', {{ read_only: true }});
 openCronDetail('job-1', activeEl);
