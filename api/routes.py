@@ -21614,7 +21614,12 @@ def _serve_static(handler, parsed):
     if raw is None:
         raw = static_file.read_bytes()
         # Weak ETag: equality semantics, derived from filesystem identity.
-        etag = f'W/"{sig[0]:x}-{sig[1]:x}"'
+        # Range-served media is never compressed, so its bytes are exactly the
+        # file's and the tag can be strong. Browsers only keep 206 responses
+        # (video, audio) in their cache when the validator is strong; with a
+        # weak one the dashboard's hero video downloaded again on every visit.
+        etag = (f'"{sig[0]:x}-{sig[1]:x}"' if ct in _RANGE_MIME
+                else f'W/"{sig[0]:x}-{sig[1]:x}"')
         gz = (gzip.compress(raw, compresslevel=6)
               if ct in _COMPRESSIBLE_MIME and len(raw) > 1024
               else None)

@@ -168,8 +168,12 @@ self.addEventListener('fetch', (event) => {
   // Shell assets: network-first with cache fallback. This keeps offline support
   // but avoids executing stale JS/CSS after a local hotfix when WEBUI_VERSION
   // has not changed yet (e.g. before a guarded restart updates the ?v token).
+  // 'no-cache' still asks the server every time, but conditionally: an
+  // unchanged file comes back as a 304 and the browser reuses its copy, while
+  // a patched file (new ETag) comes back in full. 'no-store' skipped the HTTP
+  // cache entirely and re-downloaded every shell script on every visit.
   event.respondWith(
-    fetch(new Request(event.request, { cache: 'no-store' })).then((response) => {
+    fetch(new Request(event.request, { cache: 'no-cache' })).then((response) => {
       if (
         event.request.method === 'GET' &&
         response.status === 200

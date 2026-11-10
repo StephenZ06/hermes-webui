@@ -120,7 +120,9 @@ class TestServiceWorker:
         """
         src = SW.read_text(encoding="utf-8")
         assert "Shell assets: network-first with cache fallback" in src
-        assert "fetch(new Request(event.request, { cache: 'no-store' })).then((response)" in src
+        # Revalidate on every visit (a hotfix shows at once) without
+        # re-downloading unchanged files.
+        assert "fetch(new Request(event.request, { cache: 'no-cache' })).then((response)" in src
         assert "caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))" in src
         assert ".catch(() => caches.match(event.request)" in src
         assert "if (cached) return cached;" not in src, (
@@ -273,8 +275,8 @@ class TestIndexHtmlIntegration:
         src = SW.read_text(encoding="utf-8")
         marker = "// Shell assets: network-first with cache fallback"
         assert marker in src
-        block = src[src.find(marker):src.find(marker) + 900]
-        assert "fetch(new Request(event.request, { cache: 'no-store' })).then" in block
+        block = src[src.find(marker):src.find(marker) + 1400]
+        assert "fetch(new Request(event.request, { cache: 'no-cache' })).then" in block
         assert "caches.match(event.request)" in block
         assert "caches.match(event.request).then((cached)" not in block[:250]
 
