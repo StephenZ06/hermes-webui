@@ -16,6 +16,7 @@ PATH DISCOVERY:
 import json
 import inspect
 import multiprocessing
+import contextlib
 import copy
 import os
 import threading
@@ -228,6 +229,29 @@ def _isolate_hermes_config_path():
     os.environ['HERMES_CONFIG_PATH'] = isolated_config_path
     yield
     os.environ['HERMES_CONFIG_PATH'] = isolated_config_path
+
+
+@pytest.fixture(autouse=True)
+def _drop_chat_streams_left_by_the_test():
+    """Unregister chat streams a test registered in this process and left behind.
+
+    Tests that call /api/chat/start in-process with a fake worker thread never
+    run the worker that unregisters the stream. The leftover entry in
+    api.config.STREAMS then made later tests see "1 active chat stream" (the
+    update banner's apply_update refused to run). Only streams added during
+    the test are removed; api.config is not imported here if no test has.
+    """
+    config = sys.modules.get('api.config')
+    before = set(getattr(config, 'STREAMS', {}) or {}) if config else set()
+    yield
+    config = sys.modules.get('api.config')
+    streams = getattr(config, 'STREAMS', None) if config else None
+    if not streams:
+        return
+    lock = getattr(config, 'STREAMS_LOCK', None)
+    with (lock if lock is not None else contextlib.nullcontext()):
+        for stream_id in set(streams) - before:
+            streams.pop(stream_id, None)
 
 
 @pytest.fixture(autouse=True)
