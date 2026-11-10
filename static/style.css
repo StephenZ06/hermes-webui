@@ -18047,7 +18047,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .ps-look-sample[data-style=bold] .ps-look-sample-head{font-weight:900;text-transform:uppercase;letter-spacing:-.02em;color:var(--bg);}
 .ps-look-sample[data-style=bold] .ps-look-sample-line{background:color-mix(in srgb,var(--bg) 55%,transparent);height:6px;}
 .ps-look-sample[data-style=technical]{background:repeating-linear-gradient(0deg,transparent 0 7px,color-mix(in srgb,var(--text) 6%,transparent) 7px 8px),color-mix(in srgb,var(--text) 4%,transparent);}
-.ps-look-sample[data-style=technical] .ps-look-sample-head{font-family:var(--font-mono,ui-monospace),monospace;font-size:20px;}
+.ps-look-sample[data-style=technical] .ps-look-sample-head{font-family:var(--font-mono);font-size:20px;}
 .ps-look-sample[data-style=editorial] .ps-look-sample-head{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:28px;border-bottom:1px solid color-mix(in srgb,var(--text) 30%,transparent);padding-bottom:4px;}
 .ps-motion-card{flex-direction:row;align-items:center;padding:8px 12px 8px 8px;}
 .ps-motion-card .ps-look-text{padding:0;}
@@ -18255,3 +18255,15 @@ textarea#msg::-webkit-scrollbar{display:none;}
 /* Each filter as wide as its label; spare width shared between them. */
 #panelSkills .lib-filters{grid-template-columns:repeat(3,auto);}
 #panelSkills .lib-filters .themed-select-trigger{gap:2px;}
+
+/* ── Zeus 2.0: one typeface everywhere (2026-11-10) ──────────────────────────
+   Code and the Dashboard's pixel fonts use the skin's own face too. The
+   Dashboard's sizes are tuned for Press Start 2P (wide, fills its em) and
+   VT323 (narrow), so their stand-ins are the same local faces as --font-ui,
+   scaled with size-adjust to keep its layout: titles 150%, body text 85%. */
+@font-face{font-family:"Zeus2 Pixel Title";src:local("SF Mono Bold"),local("Roboto Mono Bold"),local("Courier New Bold"),local("CourierNewPS-BoldMT"),local("Courier New"),local("DejaVu Sans Mono Bold"),local("Liberation Mono Bold"),local("DejaVu Sans Mono");size-adjust:150%;}
+@font-face{font-family:"Zeus2 Pixel Text";src:local("SF Mono"),local("Roboto Mono"),local("Courier New"),local("CourierNewPSMT"),local("DejaVu Sans Mono"),local("Liberation Mono");size-adjust:85%;}
+:root[data-skin="zeus-2"]{--font-mono:var(--font-ui);--zeus2-pixel-title:"Zeus2 Pixel Title",var(--font-ui);--zeus2-pixel-text:"Zeus2 Pixel Text",var(--font-ui);}
+:root[data-skin="zeus-2"] .dash.is-rpg{--rpg-pixel:var(--zeus2-pixel-title);--rpg-text:var(--zeus2-pixel-text);}
+:root[data-skin="zeus-2"] :is(.dash-picker header h3,.dash-cal header strong,.rpg-levelup-kicker,.rpg-levelup-levels,.rpg-levelup-class,.dash-unlock-copy small,.dash-unlock-copy strong,.dash-loader-text){font-family:var(--zeus2-pixel-title)!important;}
+:root[data-skin="zeus-2"] :is(.dash-picker,.dash-picker-search input,.dash-picker-group h4,.themed-select-popup.is-dash .themed-select-option,.themed-select-popup.is-dash .themed-select-group-label,.dash-picker-tools .themed-select-trigger,.dash-picker footer .dash-btn,.dash-cal,.dash-picker-row strong,.dash-picker-row small,.rpg-levelup-card,.rpg-levelup-card .dash-btn,.rpg-levelup-btn,.dash-unlock,.dash-unlock-more){font-family:var(--zeus2-pixel-text)!important;}
