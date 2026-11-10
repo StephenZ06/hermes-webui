@@ -96,7 +96,7 @@
   // ── helpers ──────────────────────────────────────────────────────────────
   // The page's build version, so large media (the hero videos) can be cached
   // for a year: a new build changes the URL instead of the browser re-asking.
-  const _assetQuery = () => { const v = window.__HERMES_WEBUI_BUNDLE_VERSION__; return v && v.indexOf('__') !== 0 ? `?v=${encodeURIComponent(v)}` : ''; };
+  const _assetQuery = () => { const v = window.__HERMES_WEBUI_BUNDLE_VERSION__; return v && v.indexOf('__') !== 0 ? `?v=${v}` : ''; };
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
   const svg = (name, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;

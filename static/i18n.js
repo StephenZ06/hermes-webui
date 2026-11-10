@@ -103,6 +103,7 @@ const LOCALES = {
     mcp_deleted: 'MCP server deleted.',
     mcp_delete_failed: 'Failed to delete MCP server.',
     mcp_load_failed: 'Failed to load MCP servers.',
+    page_load_failed: 'This page could not load. Check your connection and open it again.',
     mcp_restart_hint: 'Server changes are read-only here for now. Edit config.yaml and restart Hermes for changes to take effect.',
     mcp_toggle_followup: 'Enable/disable controls are intentionally deferred until MCP reload semantics are explicit.',
     mcp_status_active: 'Active',

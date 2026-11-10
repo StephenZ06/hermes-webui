@@ -17,9 +17,11 @@
   };
   var pending = {};
 
+  // The server substitutes the build token already URL-encoded, the same
+  // string index.html and sw.js use, so it is appended as it is.
   function version() {
     var v = window.__HERMES_WEBUI_BUNDLE_VERSION__;
-    return v && v.indexOf('__') !== 0 ? '?v=' + encodeURIComponent(v) : '';
+    return v && v.indexOf('__') !== 0 ? '?v=' + v : '';
   }
 
   function alreadyOnPage(path) {

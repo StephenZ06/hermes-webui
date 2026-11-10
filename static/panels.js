@@ -488,6 +488,20 @@ function _isFreshLaunchToStartPage() {
   } catch (_) { return false; }
   return true;
 }
+// The page module (static/page-modules.js) each on-demand panel needs.
+const _PANEL_PAGE_MODULE = { jobs: 'jobs', files: 'files', notebook: 'notebook', dashboard: 'dashboard', notes: 'notes' };
+async function _ensurePanelModule(panel) {
+  const name = _PANEL_PAGE_MODULE[panel];
+  if (!name || typeof loadPageModule !== 'function') return true;
+  try {
+    await loadPageModule(name);
+    return true;
+  } catch (_) {
+    if (typeof showToast === 'function') showToast(t('page_load_failed'), 5000, 'error');
+    return false;
+  }
+}
+
 async function restorePanelFromRoute() {
   let hash = (typeof window !== 'undefined' && window.location) ? window.location.hash : '';
   if (!_panelFromRouteHash(hash)) {
@@ -704,6 +718,9 @@ async function switchPanel(name, opts = {}) {
   const switchSeq = ++_panelSwitchSeq;
   const panelTicketIsCurrent = () => switchSeq === _panelSwitchSeq && (!panelTicket || HermesPerformance.isCurrent(panelTicket));
   const mountsAfterMotion = ['jobs', 'dashboard', 'files', 'notebook', 'office'].includes(nextPanel);
+  // These pages' scripts load the first time they open (static/page-modules.js);
+  // the load runs alongside the fade, and the page mounts once both are done.
+  const pageModuleReady = _ensurePanelModule(nextPanel);
   // The Office side panel is cheap to draw, so it is filled before the fade.
   if (nextPanel === 'office' && window.HermesOffice && typeof window.HermesOffice.renderSidebar === 'function') window.HermesOffice.renderSidebar();
   if (mountsAfterMotion) {
@@ -719,6 +736,8 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'memory') { await loadMemory(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'knowledge') { await loadKnowledgeItems(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'workspaces') { await loadWorkspacesPanel(); if (!panelTicketIsCurrent()) return false; }
+  if (!(await pageModuleReady)) return false;
+  if (!panelTicketIsCurrent()) return false;
   // Keep `notes` as the persisted panel key, but render the replacement Work
   // Hub. The old Notes script stays loaded only for its legacy workspace pane.
   if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }

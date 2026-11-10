@@ -181,6 +181,7 @@ def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_li
     with sync_api.sync_playwright() as pw:
         browser, page = _page(pw)
         try:
+            page.evaluate("() => loadPageModule('jobs')")  # Jobs scripts load with their page
             out = page.evaluate("""() => {
               document.getElementById('composerReasoningWrap').style.display = '';
               _applyReasoningChip('low');

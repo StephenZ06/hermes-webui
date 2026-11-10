@@ -545,6 +545,7 @@ def test_career_pairs_quests_with_skills_and_funnel_with_this_week(browser):
 
 def test_resume_studio_lists_skills_gained_and_tailoring_shows_what_it_added(browser):
     page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("() => loadPageModule('jobs')")  # Jobs scripts load with their page
     html = page.evaluate("""() => window.JobOSRender.skillsGainedView({resume: {text: 'x'}, skillsGained: [
         {name: 'Docker', kind: 'course'}, {name: 'AWS Cloud Practitioner', kind: 'certification'}]})""")
     # Card titles wrap each i in a span so capitals sit evenly (capI in render.js).

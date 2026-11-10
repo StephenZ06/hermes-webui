@@ -35,8 +35,6 @@ const SHELL_ASSETS = [
   './static/panels.js' + VQ,
   './static/job-os/state.js' + VQ,
   './static/job-os/api.js' + VQ,
-  './static/job-os/render.js' + VQ,
-  './static/job-os/index.js' + VQ,
   './static/notebook/api.js' + VQ,
   './static/notebook/index.js' + VQ,
   './static/commands.js' + VQ,
@@ -64,6 +62,15 @@ const SHELL_ASSETS = [
 function isI18nSlice(shellPath) {
   return shellPath.startsWith('./static/i18n.js' + VQ + '&');
 }
+
+// Page scripts that load the first time their page opens (static/page-modules.js).
+// Not pre-cached; cached from this build when they load, so a page opened once
+// also opens offline.
+const PAGE_MODULE_ASSETS = [
+  './static/job-os/render.js' + VQ,
+  './static/job-os/index.js' + VQ,
+  './static/file-manager.js' + VQ,
+];
 
 function deleteOldShellCaches() {
   return caches.keys().then((keys) =>
@@ -172,7 +179,7 @@ self.addEventListener('fetch', (event) => {
     ? url.pathname.slice(scopePath.length)
     : url.pathname.replace(/^\/+/, '');
   const shellPath = './' + relPath.replace(/^\/+/, '') + url.search;
-  if (!SHELL_ASSETS.includes(shellPath) && !isI18nSlice(shellPath)) return;
+  if (!SHELL_ASSETS.includes(shellPath) && !isI18nSlice(shellPath) && !PAGE_MODULE_ASSETS.includes(shellPath)) return;
 
   // Shell assets: network-first with cache fallback. This keeps offline support
   // but avoids executing stale JS/CSS after a local hotfix when WEBUI_VERSION

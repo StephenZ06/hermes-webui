@@ -26,8 +26,11 @@ def test_jobs_panel_loads_its_lifecycle_modules_and_mx_icon():
     panels = (ROOT / "static" / "panels.js").read_text(encoding="utf-8")
     icons = (ROOT / "static" / "vendor" / "mx-icons" / "work-hub-icons.js").read_text(encoding="utf-8")
 
-    for asset in ("static/job-os/state.js", "static/job-os/api.js", "static/job-os/render.js", "static/job-os/index.js"):
+    # state.js and api.js load with the shell; the page itself loads when Jobs opens.
+    for asset in ("static/job-os/state.js", "static/job-os/api.js"):
         assert asset in html
+    loader = (ROOT / "static" / "page-modules.js").read_text(encoding="utf-8")
+    assert "jobs: ['static/job-os/render.js', 'static/job-os/index.js']" in loader
     assert "window.JobOS.mount" in panels
     assert "jobs" in icons
 

@@ -9,7 +9,8 @@ from tests._pytest_port import BASE
 
 def _render(page, script):
     page.goto(BASE + "/", wait_until="domcontentloaded")
-    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true && window.JobOSRender", polling=100, timeout=30000)
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => loadPageModule('jobs')")  # Jobs scripts load with their page
     return page.evaluate(script)
 
 

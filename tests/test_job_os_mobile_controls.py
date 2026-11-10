@@ -39,7 +39,8 @@ def test_resume_preview_zoom_controls_update_the_live_mobile_preview():
         try:
             page = browser.new_page(viewport={"width": 430, "height": 932}, is_mobile=True, has_touch=True)
             page.goto(BASE + "/", wait_until="domcontentloaded")
-            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true && window.JobOSRender && window.JobOS")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true")
+            page.evaluate("() => loadPageModule('jobs')")  # Jobs scripts load with their page
             page.evaluate("""async () => {
               document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach((node) => node.remove());
               await switchPanel('jobs');

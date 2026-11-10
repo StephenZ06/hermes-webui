@@ -40,3 +40,24 @@ def test_asking_twice_loads_each_script_once(page):
     page.evaluate("async () => { await Promise.all([loadPageModule('files'), loadPageModule('files')]); }")
     assert page.scripts.count("file-manager.js") == 1, page.scripts
     assert page.evaluate("() => typeof window.HermesFileManager.mount") == "function"
+
+
+def test_jobs_and_files_load_only_when_their_page_opens(page):
+    at_boot = [s for s in page.scripts if s in ("job-os/render.js", "job-os/index.js", "file-manager.js")]
+    assert at_boot == [], at_boot
+    page.evaluate("async () => { await switchPanel('jobs'); }")
+    page.wait_for_function("() => window.JobOS && document.querySelector('#mainJobs .job-os, #jobOsRoot, [id^=jobOs], .job-os-shell')", timeout=15000)
+    # state.js and api.js stay in index.html (Settings and routes use them).
+    assert [s for s in page.scripts if s in ("job-os/render.js", "job-os/index.js")] == ["job-os/render.js", "job-os/index.js"]
+    page.evaluate("async () => { await switchPanel('files'); }")
+    page.wait_for_function("() => window.HermesFileManager", timeout=15000)
+    assert page.scripts.count("file-manager.js") == 1
+
+
+def test_a_page_whose_scripts_fail_says_so_and_retries(page):
+    page.route("**/static/file-manager.js*", lambda route: route.abort())
+    result = page.evaluate("async () => { const ok = await switchPanel('files'); return {ok, toast: (document.querySelector('.toast, #toast, [role=status]') || {}).textContent || ''}; }")
+    assert result["ok"] is False, result
+    page.unroute("**/static/file-manager.js*")
+    page.evaluate("async () => { await switchPanel('chat'); await switchPanel('files'); }")
+    page.wait_for_function("() => window.HermesFileManager", timeout=15000)

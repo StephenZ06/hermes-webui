@@ -192,7 +192,8 @@ def test_cards_share_one_height_and_a_column_shows_ten_before_it_scrolls():
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.goto(BASE + "/", wait_until="domcontentloaded")
-            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true && window.JobOSRender", polling=100, timeout=30000)
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => loadPageModule('jobs')")  # Jobs scripts load with their page
             out = page.evaluate("""() => {
               const jobs = Array.from({length: 12}, (_, i) => ({id: 'j' + i, title: i % 2 ? 'A rather long job title that wraps over two lines' : 'Short',
                 company: 'Acme', status: 'analyzed', has_description: true, revision: 1, source: 'indeed', updated_at: 100 - i,
