@@ -103,3 +103,14 @@ def test_the_filter_has_as_much_room_above_it_as_on_its_sides(files_page):
       const col = document.querySelector('.files-list-toolbar').getBoundingClientRect();
       return {above: f.top - path.bottom, left: f.left - col.left, right: col.right - f.right}; }""")
     assert room["above"] == room["left"] == room["right"] == 14, room
+
+
+def test_done_is_a_plain_text_button_like_all(files_page):
+    page, _ = files_page
+    page.click("[data-action='delete-mode']")
+    page.wait_for_selector(".files-select-bar")
+    page.mouse.move(0, 0)
+    look = page.evaluate("""() => ['[data-action="pick-all"]', '.files-select-done'].map(sel => {
+      const s = getComputedStyle(document.querySelector('.files-select-bar ' + sel));
+      return [s.color, s.backgroundColor, s.fontWeight, s.fontSize, s.paddingTop, s.paddingLeft, s.borderRadius]; })""")
+    assert look[0] == look[1], look

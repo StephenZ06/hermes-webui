@@ -17788,10 +17788,10 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .files-select-row{display:flex;align-items:center;gap:4px;min-width:0;}
 .files-select-count{flex:1;min-width:0;padding-left:2px;overflow:hidden;color:var(--muted);font-size:12px;white-space:nowrap;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
 .files-select-link,.files-select-done{flex:none;padding:5px 9px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12px;line-height:1.2;cursor:pointer;transition:background .15s ease,color .15s ease;}
-.files-select-link{color:var(--muted);}
-.files-select-link:hover{color:var(--text);background:var(--hover-bg);}
-.files-select-done{color:var(--accent-text,var(--accent));background:var(--accent-bg);font-weight:650;}
-.files-select-done:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
+/* Done is a plain text button like All: the Delete button below is the one
+   that stands out. */
+.files-select-link,.files-select-done{color:var(--muted);}
+.files-select-link:hover,.files-select-done:hover{color:var(--text);background:var(--hover-bg);}
 .files-select-delete{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:30px;padding:0 10px;border:1px solid color-mix(in srgb,var(--error,#e5484d) 60%,transparent);border-radius:7px;background:transparent;color:var(--error,#e5484d);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease,opacity .2s ease;}
 .files-select-delete svg{width:13px;height:13px;}
 .files-select-delete:hover:not(:disabled){border-color:var(--error,#e5484d);background:color-mix(in srgb,var(--error,#e5484d) 12%,transparent);}
