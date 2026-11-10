@@ -23506,16 +23506,37 @@ window.SlideOnChange=SlideOnChange;
 // fade comes from motion-ui's popup ghost).
 // Scrollbars stay hidden until something scrolls: whatever scrolls gets
 // .is-scrolling (the CSS shows its thumb) and loses it a moment after it stops.
+// The thumb fades in as the scroll starts and out before the class goes, by
+// easing --sb-a (the thumb's opacity in style.css); reduced motion skips it.
 (function(){
   if(typeof document==='undefined'||document.__autoHideScrollbars) return;
   document.__autoHideScrollbars=true;
-  const timers=new WeakMap();
+  const timers=new WeakMap(),fades=new WeakMap();
+  const still=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const fade=(el,to,ms)=>{
+    const prev=fades.get(el);
+    const from=prev?(parseFloat(getComputedStyle(el).getPropertyValue('--sb-a'))||0):(to?0:1);
+    if(prev) prev.cancel();
+    if(still()||typeof el.animate!=='function'){fades.delete(el);el.classList.remove('sb-fading');return null;}
+    const anim=el.animate([{'--sb-a':from},{'--sb-a':to}],{duration:ms,easing:'ease-out',fill:'forwards'});
+    fades.set(el,anim);el.classList.add('sb-fading');
+    return anim;
+  };
   document.addEventListener('scroll',(event)=>{
     const el=event.target===document?document.documentElement:event.target;
     if(!el||!el.classList) return;
-    if(!el.classList.contains('is-scrolling')) el.classList.add('is-scrolling');
     clearTimeout(timers.get(el));
-    timers.set(el,setTimeout(()=>el.classList.remove('is-scrolling'),900));
+    if(!el.classList.contains('is-scrolling')||el._sbLeaving){
+      el._sbLeaving=false;el.classList.add('is-scrolling');
+      const anim=fade(el,1,160);
+      if(anim) anim.onfinish=()=>{if(fades.get(el)===anim){anim.cancel();fades.delete(el);el.classList.remove('sb-fading');}};
+    }
+    timers.set(el,setTimeout(()=>{
+      el._sbLeaving=true;
+      const anim=fade(el,0,280);
+      const done=()=>{if(!el._sbLeaving)return;el._sbLeaving=false;el.classList.remove('is-scrolling');if(anim&&fades.get(el)===anim){anim.cancel();fades.delete(el);el.classList.remove('sb-fading');}};
+      if(anim) anim.onfinish=done; else done();
+    },900));
   },{capture:true,passive:true});
 })();
 const FILTER_ICON='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25V8.5z"/></svg>';

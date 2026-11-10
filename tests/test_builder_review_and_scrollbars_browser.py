@@ -73,7 +73,7 @@ def test_a_scrollbar_shows_only_while_its_element_scrolls(skills):
       const before = list.classList.contains('is-scrolling');
       list.scrollTop = 120; await new Promise(r => setTimeout(r, 60));
       const during = list.classList.contains('is-scrolling');
-      await new Promise(r => setTimeout(r, 1100));
+      await new Promise(r => setTimeout(r, 1500));
       return {before, during, after: list.classList.contains('is-scrolling')}; }""")
     assert state == {"before": False, "during": True, "after": False}, state
 

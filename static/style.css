@@ -2084,6 +2084,10 @@
   .ps-review.is-ok .ps-icon{color:var(--accent-text);}
   .ps-review.is-error{border-color:color-mix(in srgb,var(--error) 45%,transparent);background:color-mix(in srgb,var(--error) 9%,transparent);color:var(--error);}
   .ps-link{border:0;background:none;padding:0;color:var(--accent-text);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+  .ps-review.is-busy{flex-wrap:nowrap;}
+  .ps-review-log{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ps-review-log.is-new{animation:ps-log-in .24s cubic-bezier(.2,.7,.2,1);}
+  @keyframes ps-log-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
   .ps-pulse{flex:none;display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in srgb,var(--accent) 30%,transparent);border-top-color:var(--accent);animation:ps-spin .8s linear infinite;}
   @keyframes ps-spin{to{transform:rotate(360deg);}}
   .ps-progress{height:3px;border-radius:3px;background:var(--border);overflow:hidden;margin-bottom:2px;}
@@ -2156,7 +2160,7 @@
   .ps-setup-code{font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:.12em;padding:2px 8px;margin:0 6px;border-radius:6px;background:var(--accent-bg);color:var(--accent-text);}
   .ps-setup-wait{display:flex;align-items:center;gap:8px;color:var(--muted);}
   @media (prefers-reduced-motion:reduce){
-    .ps-choice,.ps-template,.ps-task,.ps-review,.ps-summary,.ps-tree-children,.project-starter-overlay.is-leaving,.project-starter-overlay.is-leaving .project-starter-dialog{animation:none!important;}
+    .ps-choice,.ps-template,.ps-task,.ps-review,.ps-review-log,.ps-summary,.ps-tree-children,.project-starter-overlay.is-leaving,.project-starter-overlay.is-leaving .project-starter-dialog{animation:none!important;}
     .ps-wizard .ps-close:hover{transform:none;}
   }
   @keyframes project-starter-fade-in{from{opacity:0;}to{opacity:1;}}
@@ -16082,6 +16086,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    scrollbar-color is set, so both are reset where ::-webkit-scrollbar can
    draw one quiet grey 4px bar on every page instead. Elements that hide their bar
    (scrollbar-width:none) keep hiding it; Firefox keeps the thin bar. */
+@property --sb-a{syntax:'<number>';inherits:true;initial-value:1;}
 @supports selector(::-webkit-scrollbar){
   :root{--scrollbar-thumb:rgba(255,255,255,.14);--scrollbar-thumb-hover:rgba(255,255,255,.26);}
   :root:not(.dark){--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.3);}
@@ -16099,6 +16104,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
      still shows it, so it can be grabbed. */
   :root:root:root:root:not(.is-scrolling)::-webkit-scrollbar-thumb,:root:root:root:root :not(.is-scrolling)::-webkit-scrollbar-thumb,#jobOsRoot .action-centre .action-list:not(.is-scrolling)::-webkit-scrollbar-thumb{background:transparent;}
   :root:root:root:root:not(.is-scrolling)::-webkit-scrollbar-thumb:hover,:root:root:root:root :not(.is-scrolling)::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover);}
+  /* While a bar fades in or out (.sb-fading, set by ui.js) its thumb takes
+     --sb-a as its opacity. */
+  :root:root:root:root.sb-fading::-webkit-scrollbar-thumb,:root:root:root:root .sb-fading::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--scrollbar-thumb) calc(var(--sb-a)*100%),transparent);}
 }
 @supports not selector(::-webkit-scrollbar){
   *:not(.is-scrolling){scrollbar-color:transparent transparent;}
@@ -17889,6 +17897,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .app-dialog-overlay,.cmdk-overlay{background:rgba(0,0,0,.31);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
 :root.dark:is([data-skin="zeus"],[data-skin="zeus-2"]) :is(.app-dialog-overlay,.kanban-modal-overlay){background:rgba(0,0,0,.36);}
 .project-starter-overlay{background:rgba(0,0,0,.34);backdrop-filter:blur(3.5px);-webkit-backdrop-filter:blur(3.5px);}
+html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animation-play-state:paused!important;}
 .onboarding-overlay{background:rgba(0,0,0,.39);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
 .kanban-modal-overlay{background:rgba(0,0,0,.39);}
 .goal-planner-overlay{background:rgba(0,0,0,.275);}
@@ -18304,21 +18313,25 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .ps-review-empty{margin:0;font-size:12.5px;line-height:18px;color:var(--muted);}
 
 /* Project: a small terminal (the Jobs page's Scout run panel). */
-.ps-term{border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--text) 3%,var(--bg));overflow:hidden;font-family:var(--font-mono);font-size:12px;line-height:18px;}
-.ps-term-bar{display:flex;align-items:center;gap:10px;padding:5px 12px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;line-height:14px;}
-.ps-term-dots{display:inline-flex;gap:4px;}
-.ps-term-dots i{width:6px;height:6px;border-radius:50%;background:color-mix(in srgb,var(--muted) 45%,transparent);}
+/* A dark terminal in both themes, with its own text tokens; the title bar
+   carries the red, amber and green window dots. */
+.ps-term{--text:#e8e8e8;--muted:#9b9b9b;--border2:rgba(255,255,255,.1);color:var(--text);border:1px solid #000;border-radius:10px;background:#0a0a0a;overflow:hidden;font-family:var(--font-mono);font-size:12px;line-height:18px;}
+.ps-term-bar{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid #000;background:#1c1c1c;color:var(--muted);font-size:11px;line-height:14px;}
+.ps-term-dots{display:inline-flex;gap:6px;}
+.ps-term-dots i{width:9px;height:9px;border-radius:50%;background:#ff5f57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25);}
+.ps-term-dots i:nth-child(2){background:#febc2e;}
+.ps-term-dots i:nth-child(3){background:#28c840;}
 .ps-term-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ps-term-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 16px;margin:0;padding:12px 12px 0;}
 .ps-term-fact{display:contents;}
 .ps-term-fact dt{color:var(--muted);}
 .ps-term-fact dd{margin:0;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ps-term-cmd{margin-top:12px;padding:8px 12px 0;border-top:1px dashed var(--border2);color:var(--muted);overflow-wrap:anywhere;}
-.ps-term-cmd b{color:var(--success,#4ade80);font-weight:700;}
+.ps-term-cmd b{color:#4ade80;font-weight:700;}
 .ps-builder .ps-files.ps-term-out{min-height:0;margin:0;padding:6px 12px 12px;border:0;border-radius:0;background:transparent;}
 .ps-term-out .ps-files-list{grid-template-columns:minmax(0,1fr);gap:2px;}
 .ps-term-out .ps-file{gap:8px;font-size:12px;line-height:18px;}
-.ps-term-plus{flex:none;color:var(--success,#4ade80);}
+.ps-term-plus{flex:none;color:#4ade80;}
 
 /* Look and feel: the step's own style sample and motion demo, side by side. */
 .ps-review-look-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
@@ -18336,7 +18349,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
 
 /* Skills: a table with rounded corners. */
 .ps-review-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;border:1px solid var(--border2);border-radius:10px;overflow:hidden;font-size:12.5px;line-height:18px;}
-.ps-review-table th{padding:8px 12px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:color-mix(in srgb,var(--text) 4%,transparent);}
+.ps-review-table th{padding:8px 12px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#e8e8e8;background:#0a0a0a;}
 .ps-review-table th:nth-child(1){width:32%;}
 .ps-review-table th:nth-child(2){width:22%;}
 .ps-review-table td{padding:8px 12px;border-top:1px solid var(--border2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -18364,4 +18377,10 @@ textarea#msg::-webkit-scrollbar{display:none;}
   .ps-review-table th:nth-child(3),.ps-review-table td:nth-child(3){display:none;}
   .ps-review-table th:nth-child(1){width:58%;}
   .ps-review-table th:nth-child(2){width:auto;}
+  /* Three buttons do not fit one phone row: the main action takes its own
+     full-width row on top, Back and Create project share the one below. */
+  .ps-actions:has(.ps-extra:not([hidden])){flex-wrap:wrap;row-gap:10px;}
+  .ps-actions:has(.ps-extra:not([hidden])) .ps-next{order:-1;flex:1 0 100%;}
+  .ps-actions:has(.ps-extra:not([hidden])) .ps-extra{margin-right:0;}
+  .ps-actions button{white-space:nowrap;}
 }

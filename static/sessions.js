@@ -10115,10 +10115,13 @@ function _psSwapText(box,fill){
     if(token!==box._psSwap||!box.isConnected) return;
     [...box.children].forEach(c=>{if(c!==skel)c.remove();});
     fill(box);box.append(skel);
-    box.style.height='';
+    // Measure the new height with the height transition off: the root sets
+    // interpolate-size, so clearing the height would start gliding toward
+    // auto and the reading would be a mid-glide size, not the real one.
+    box.style.transition='none';box.style.height='';
     const h1=box.getBoundingClientRect().height;
     const to=_psTextLines(box);
-    box.style.height=h0+'px';void box.offsetHeight;box.style.height=h1+'px';
+    box.style.height=h0+'px';void box.offsetHeight;box.style.transition='';box.style.height=h1+'px';
     to.forEach((l,k)=>{if(bars[k])return;const i=document.createElement('i');place(i,from[from.length-1]||l);i.style.opacity='0';skel.append(i);bars.push(i);});
     void skel.offsetWidth;skel.classList.add('is-morphing');
     bars.forEach((i,k)=>{if(to[k]){place(i,to[k]);i.style.opacity='';}else i.style.opacity='0';});
@@ -10234,12 +10237,16 @@ async function _openProjectStarterWizard(profile){
     if(wideQuery&&wideQuery.addEventListener) wideQuery.addEventListener('change',syncBuildOpen);
     buildBar.addEventListener('click',(event)=>{if(wideQuery&&wideQuery.matches)event.preventDefault();});
     dialog.append(header,stepper,main,footer);overlay.append(dialog);document.body.append(overlay);
+    // The page under the blurred backdrop holds still while the wizard is open:
+    // anything moving there makes the browser re-blur the backdrop every frame.
+    document.documentElement.classList.add('ps-wizard-open');
     const stopFollowingHeight=_psFollowContentHeight(dialog,body);
 
     let done=false,pollTimer=null;
     const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);signinFlow=null;stopFollowingHeight();document.removeEventListener('keydown',onKey,true);
       if(wideQuery&&wideQuery.removeEventListener) wideQuery.removeEventListener('change',syncBuildOpen);
       overlay.classList.add('is-leaving');
+      if(!document.querySelector('.project-starter-overlay:not(.is-leaving)')) document.documentElement.classList.remove('ps-wizard-open');
       const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
       resolve(value);};
@@ -10477,7 +10484,7 @@ async function _openProjectStarterWizard(profile){
       });
       function paintReview(){
         review.innerHTML='';review.className='ps-review';
-        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span',null,P+' is reviewing your brief…'));}
+        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span','ps-review-log',st.progress||P+' is reading your brief'));}
         else if(st.analysisSetup){ paintSetup(review); }
         else if(st.analysisError){
           review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
@@ -10562,16 +10569,27 @@ async function _openProjectStarterWizard(profile){
       };
       setTimeout(poll,every);
     }
+    // The busy line under the brief reads out what the planner is doing now
+    // (one short line from its tool calls and reasoning); each new line slides in.
+    function _psShowProgress(line){
+      line=String(line||'').trim();
+      if(!line||line===st.progress) return;
+      st.progress=line;
+      const log=dialog.querySelector('.ps-review.is-busy .ps-review-log');
+      if(!log) return;
+      log.textContent=line;
+      log.classList.remove('is-new');void log.offsetWidth;log.classList.add('is-new');
+    }
     async function analyze(){
       if(!plannerAgent){afterDetails();return;}
-      st.busy=true;st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
+      st.busy=true;st.progress='';st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
       try{
         const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
         const job=await new Promise((res,rej)=>{
           const poll=async()=>{
             if(done) return rej(new Error('closed'));
             try{const j=await api('/api/projects/starter/job?job_id='+encodeURIComponent(start.job_id));
-              if(j.status==='running'){pollTimer=setTimeout(poll,1500);return;}res(j);}catch(e){rej(e);}
+              if(j.status==='running'){_psShowProgress(j.progress);pollTimer=setTimeout(poll,900);return;}res(j);}catch(e){rej(e);}
           };poll();
         });
         if(job.status==='error') throw new Error(job.error||P+' could not review the brief.');

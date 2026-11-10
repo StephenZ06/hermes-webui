@@ -12,7 +12,7 @@ def _capture(monkeypatch):
 
     monkeypatch.setattr(agent, "_run_ephemeral_turn", fake_turn)
     monkeypatch.setattr(agent, "profile_available", lambda profile: True)
-    monkeypatch.setattr(agent, "_start_job", lambda kind, work: work())
+    monkeypatch.setattr(agent, "_start_job", lambda kind, work, with_progress=False: work(lambda _line: None) if with_progress else work())
     return runs
 
 

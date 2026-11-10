@@ -172,8 +172,9 @@ def start_analysis(*, name: str, brief: str, template: dict) -> str:
         name=name or "Untitled project",
         brief=brief[:20000],
     )
-    return _start_job("analysis", lambda: parse_analysis(_run_ephemeral_turn(
-        prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, **_planner_run())))
+    return _start_job("analysis", lambda report: parse_analysis(_run_ephemeral_turn(
+        prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, progress=report,
+        answer_label="Writing up its questions", **_planner_run())), with_progress=True)
 
 
 def _planner_run() -> dict:
@@ -181,14 +182,95 @@ def _planner_run() -> dict:
             "model": PLANNER_MODEL, "model_provider": PLANNER_PROVIDER}
 
 
-def _start_job(kind: str, work) -> str:
+def _start_job(kind: str, work, *, with_progress: bool = False) -> str:
+    """Run ``work`` in the background as a pollable job.
+
+    With ``with_progress`` the work is called with a ``report(line)`` callable
+    whose latest line is returned by ``get_job`` as ``progress`` while the job
+    runs, so the wizard can show what the agent is doing.
+    """
     job_id = uuid.uuid4().hex[:16]
     now = time.time()
     with _jobs_lock:
         _prune_jobs(now)
         _jobs[job_id] = {"status": "running", "kind": kind, "created": now}
+    if with_progress:
+        inner = work
+
+        def work():
+            return inner(lambda line: _report_progress(job_id, line))
     threading.Thread(target=_job_worker, args=(job_id, work), daemon=True).start()
     return job_id
+
+
+def _report_progress(job_id: str, line: str) -> None:
+    line = str(line or "").strip()
+    if not line:
+        return
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is not None and job.get("status") == "running":
+            job["progress"] = line[:_PROGRESS_MAX]
+
+
+# ── Progress lines ──────────────────────────────────────────────────────────
+# One short, plain sentence for what a hidden agent turn is doing right now,
+# built from its stream events: the tool it called, the heading or latest
+# sentence of its reasoning, or that it is writing the answer.
+
+_PROGRESS_MAX = 120
+_TOOL_VERBS = {
+    "read_file": "Reading", "write_file": "Writing", "patch": "Editing", "search_files": "Searching files for",
+    "web_search": "Searching the web for", "web_extract": "Reading", "terminal": "Running",
+    "browser_navigate": "Opening", "skill_view": "Reading the skill", "skills_list": "Listing skills",
+    "todo": "Updating its plan", "memory": "Checking its memory", "session_search": "Searching past sessions for",
+}
+_TOOL_ARG_KEYS = ("path", "query", "pattern", "url", "urls", "command", "name", "file_path")
+
+
+def _clip(text: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def tool_progress_line(data) -> str:
+    """``Reading src/app.py`` style line for one tool call event."""
+    data = data if isinstance(data, dict) else {}
+    name = str(data.get("name") or "").strip()
+    if not name:
+        return ""
+    args = data.get("args") if isinstance(data.get("args"), dict) else {}
+    arg, arg_key = "", ""
+    for key in _TOOL_ARG_KEYS:
+        value = args.get(key)
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        if isinstance(value, str) and value.strip():
+            arg, arg_key = value.strip(), key
+            break
+    if arg_key in ("path", "file_path"):
+        arg = arg.rstrip("/").rsplit("/", 1)[-1] or arg
+    verb = _TOOL_VERBS.get(name)
+    if verb is None:
+        verb = "Using " + name.replace("_", " ")
+    if arg and name not in ("todo", "memory", "skills_list"):
+        return _clip(f"{verb} {_clip(arg, 60)}", _PROGRESS_MAX)
+    return _clip(verb, _PROGRESS_MAX)
+
+
+def reasoning_progress_line(text: str) -> str:
+    """The latest heading (``**Weighing the stack**``) or sentence of reasoning."""
+    text = str(text or "")
+    headings = re.findall(r"\*\*([^*\n]{3,80})\*\*", text)
+    if headings:
+        return _clip(headings[-1], _PROGRESS_MAX)
+    plain = re.sub(r"[`*_#>]+", "", text).strip()
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", plain) if len(s.strip()) > 12]
+    if not sentences:
+        return ""
+    # The last sentence may still be streaming; prefer the last finished one.
+    last = sentences[-1] if re.search(r"[.!?]$", sentences[-1]) or len(sentences) == 1 else sentences[-2]
+    return _clip(last, _PROGRESS_MAX)
 
 
 def get_job(job_id: str) -> dict | None:
@@ -308,12 +390,25 @@ def _profile_model(session) -> tuple[str | None, str | None]:
 
 def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = None, title: str = "Docs-Git",
                         profile: str = DOCS_PROFILE, model: str | None = None,
-                        model_provider: str | None = None) -> str:
+                        model_provider: str | None = None, progress=None,
+                        answer_label: str = "Writing its answer") -> str:
     """Run one hidden agent turn under ``profile`` and return its final answer.
 
     ``model``/``model_provider`` pin the model; otherwise the profile's own
-    default is used.
+    default is used. ``progress`` receives a one-line description of what the
+    turn is doing each time that changes.
     """
+    last_line = [""]
+    reasoning = [""]
+
+    def report(line: str) -> None:
+        if progress is None or not line or line == last_line[0]:
+            return
+        last_line[0] = line
+        try:
+            progress(line)
+        except Exception:
+            pass
     label = AGENT_LABELS.get(profile, profile)
     if not profile_available(profile):
         raise RuntimeError(f"The {label} profile is not set up.")
@@ -351,6 +446,7 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
         daemon=True,
     )
     worker.start()
+    report(f"Starting {label}")
     deadline = time.time() + timeout
     try:
         while time.time() < deadline:
@@ -361,7 +457,15 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                     break
                 continue
             name, data = event[0], event[1] if len(event) > 1 else None
-            if name == "done":
+            if name == "tool":
+                reasoning[0] = ""  # what it thought before the call is done
+                report(tool_progress_line(data))
+            elif name == "reasoning" and isinstance(data, dict):
+                reasoning[0] = (reasoning[0] + str(data.get("text") or ""))[-4000:]
+                report(reasoning_progress_line(reasoning[0]))
+            elif name == "token":
+                report(answer_label)
+            elif name == "done":
                 payload = data or {}
                 if payload.get("failure_reason"):
                     # The model never answered: report why, not "unreadable".
