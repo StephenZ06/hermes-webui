@@ -52,18 +52,21 @@ def test_coming_back_to_the_dashboard_fades_in_once():
             page.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/job-os/')
                 ? new Promise((r) => setTimeout(r, 400)).then(() => f(u, o)) : f(u, o);
               window.__starts = []; window.__t0 = performance.now();
-              document.addEventListener('animationstart', (e) => { if (/automation-in|funnel-grow|page-view-in/.test(e.animationName))
-                window.__starts.push([Math.round(performance.now() - window.__t0), e.animationName]); }, true); }""")
+              let n = 0; const ids = new WeakMap();
+              document.addEventListener('animationstart', (e) => { if (/automation-in|funnel-grow|page-view-in/.test(e.animationName)) {
+                if (!ids.has(e.target)) ids.set(e.target, ++n);
+                window.__starts.push([Math.round(performance.now() - window.__t0), e.animationName, ids.get(e.target)]); } }, true); }""")
             page.click('[data-job-os-view="dashboard"] >> nth=0')
             page.wait_for_timeout(2500)
             starts = page.evaluate("() => window.__starts")
         finally:
             browser.close()
     # One entrance, when the page is drawn from what is known (before the slowed
-    # 400 ms data arrives); rows may be staggered after it, but nothing may
-    # start again when the fresh data is patched in. Measured from the first
-    # start, so a busy machine that draws a little late doesn't fail it.
+    # 400 ms data arrives); rows and funnel bars are staggered after it (six
+    # funnel bars run to about 350 ms), but nothing may start again when the
+    # fresh data is patched in: every element animates once.
     assert starts, starts
     first = starts[0][0]
     assert first < 400, starts
-    assert all(at - first < 250 for at, _name in starts), starts
+    keys = [(name, element) for _at, name, element in starts]
+    assert len(keys) == len(set(keys)), starts
