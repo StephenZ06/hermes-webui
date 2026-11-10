@@ -72,6 +72,8 @@ const PAGE_MODULE_ASSETS = [
   './static/notebook/index.js' + VQ,
   './static/work-hub.js' + VQ,
   './static/goal-planner.js' + VQ,
+  './static/dashboard/sprite.js' + VQ,
+  './static/dashboard/index.js' + VQ,
 ];
 
 function deleteOldShellCaches() {

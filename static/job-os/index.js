@@ -1062,8 +1062,8 @@
     }
     if (name === 'skills-manage') {
       // Skills are kept on the Dashboard's Career tab; open it there.
-      if (typeof window.switchPanel === 'function') window.switchPanel('dashboard');
-      if (window.HermesDashboard) window.HermesDashboard.select('career');
+      // Opens the Dashboard (loading its code first if needed) on that tab.
+      if (typeof window.openCareerDashboard === 'function') Promise.resolve(window.openCareerDashboard()).catch(() => {});
       return;
     }
     if (name === 'resume-replace' || name === 'resume-cancel') {

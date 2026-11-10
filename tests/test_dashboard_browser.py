@@ -951,6 +951,7 @@ def test_character_layout_fits_from_laptop_to_wide_screens(browser):
 def test_new_unlocks_slide_in_once_and_old_ones_stay_quiet(browser):
     page = _open(browser, viewport={"width": 1440, "height": 900})
     page.evaluate("() => { try { localStorage.removeItem('hermes-dashboard-seen-unlocks'); } catch (_) {} }")
+    page.evaluate("() => loadPageModule('dashboard')")  # the Dashboard's code loads with its page
     items = [{"key": "a", "title": "Alpha", "description": "First", "unlocked_at": 1, "art": False, "icon": "★"},
              {"key": "b", "title": "Beta", "description": "Second", "unlocked_at": None, "art": False, "icon": "★"}]
     page.evaluate("(items) => window.HermesDashboard._announce('achievement', items)", items)
@@ -1051,7 +1052,8 @@ def test_jobs_side_panel_opens_the_career_dashboard_and_side_buttons_sit_on_the_
     # Only the active panel's button shows.
     assert page.evaluate("() => getComputedStyle(document.getElementById('panelChat') || document.querySelector('.panel-view:not(.active)')).display") == "none"
     page.click("#panelJobs .hermes-cli-interact-btn")
-    page.wait_for_function("() => window.HermesDashboard._state.tab === 'career' && document.querySelector('.dash-head h1')?.textContent === 'CAREER DASHBOARD'", polling=100, timeout=10000)
+    # The Dashboard's code may load on this click.
+    page.wait_for_function("() => window.HermesDashboard && window.HermesDashboard._state.tab === 'career' && document.querySelector('.dash-head h1')?.textContent === 'CAREER DASHBOARD'", polling=100, timeout=10000)
 
 
 def test_a_new_habit_rises_in_its_strip_fills_the_row_and_today_comes_first(browser):

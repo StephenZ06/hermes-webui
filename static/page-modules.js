@@ -68,4 +68,52 @@
   window.withWorkHub = function (fn) {
     return window.loadPageModule('notes').then(function () { return fn(window); });
   };
+
+  // The "career" buttons (index.html, Jobs' Manage Skills) call this before the
+  // Dashboard may have loaded; dashboard/index.js replaces it with the real one.
+  // Like the real one it switches at once (switchPanel loads the page's code)
+  // and then selects the Career tab.
+  function openCareerDashboardStub() {
+    var switching = typeof window.switchPanel === 'function' ? window.switchPanel('dashboard') : null;
+    return Promise.resolve(switching).then(function () { return window.loadPageModule('dashboard'); }).then(function () {
+      if (window.HermesDashboard) window.HermesDashboard.select('career');
+    });
+  }
+  if (typeof window.openCareerDashboard !== 'function') window.openCareerDashboard = openCareerDashboardStub;
+
+  // Start the landing page's scripts as soon as the app's own scripts have run,
+  // instead of after boot reaches restorePanelFromRoute(). Mirrors its rules:
+  // the hash, then this tab's remembered page, then the server's start page
+  // for a fresh launch. A wrong guess only loads a page early.
+  var PANEL_MODULE = { jobs: 'jobs', notebook: 'notebook', dashboard: 'dashboard', notes: 'notes', files: 'files' };
+  function landingPanel() {
+    var hash = /^#([a-z-]+)/.exec(window.location.hash || '');
+    if (hash) return hash[1];
+    var saved = '';
+    try { saved = sessionStorage.getItem('hermes-webui-panel-route') || ''; } catch (_) {}
+    var remembered = /^#([a-z-]+)/.exec(saved);
+    if (remembered) return remembered[1];
+    if (saved || !document.body || document.body.dataset.startPage !== 'dashboard') return '';
+    if (/\/session\//.test(window.location.pathname) || /[?&]action=/.test(window.location.search)) return '';
+    return 'dashboard';
+  }
+  function preloadLanding() {
+    var name = PANEL_MODULE[landingPanel()];
+    if (name) window.loadPageModule(name).catch(function () {});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', preloadLanding, { once: true });
+  else preloadLanding();
+
+  // The Dashboard (the start page) fetches its data in the browser's quiet
+  // time so its first open needs no loader. Its code now loads in that same
+  // quiet time, after start-up, instead of with the app.
+  function preloadDashboardWhenIdle() {
+    var go = function () { window.loadPageModule('dashboard').catch(function () {}); };
+    setTimeout(function () {
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(go, { timeout: 4000 });
+      else go();
+    }, 2500);
+  }
+  if (document.readyState === 'complete') preloadDashboardWhenIdle();
+  else window.addEventListener('load', preloadDashboardWhenIdle, { once: true });
 }());

@@ -6,8 +6,11 @@ import pytest
 from tests._pytest_port import BASE
 
 
-def _open(sync_api, browser, path="/"):
+def _open(sync_api, browser, path="/", remembered=None):
     tab = browser.new_page(viewport={"width": 1280, "height": 800})
+    if remembered:
+        # The page this tab was last on, as a reload remembers it ('chat', '#jobs').
+        tab.add_init_script(f"sessionStorage.setItem('hermes-webui-panel-route', {remembered!r})")
     tab.scripts = []
     tab.on("request", lambda r: tab.scripts.append(r.url.split("/static/", 1)[1].split("?")[0])
            if r.resource_type == "script" and "/static/" in r.url else None)
@@ -79,3 +82,27 @@ def test_the_workspace_work_hub_pane_loads_work_hub_when_it_is_first(page):
     page.evaluate("() => switchRightPanelPane('plane')")
     page.wait_for_function("() => typeof window.renderWorkspaceWorkHub === 'function'", timeout=15000)
     assert page.scripts.count("work-hub.js") == 1
+
+
+@pytest.fixture
+def page_on_chat(browser):
+    return _open(*browser, remembered="chat")
+
+
+def test_landing_on_chat_leaves_the_dashboard_for_quiet_time(page_on_chat):
+    at_start = list(page_on_chat.scripts)  # the fixture returns once boot is ready
+    assert [s for s in at_start if s.startswith("dashboard/")] == [], at_start
+    # It still arrives once the page is idle, so its first open needs no loader.
+    page_on_chat.wait_for_function("() => !!window.HermesDashboard", timeout=20000)
+    assert page_on_chat.evaluate("() => _currentPanel") == "chat"
+
+
+def test_landing_on_the_dashboard_loads_it_early_and_shows_it(browser):
+    tab = _open(*browser, path="/#dashboard")
+    tab.wait_for_function("() => window.HermesDashboard && document.querySelector('#dashboardRoot .dash-body')", timeout=15000)
+    assert tab.scripts.count("dashboard/index.js") == 1
+
+
+def test_the_career_button_opens_the_dashboard_on_its_career_tab(page_on_chat):
+    page_on_chat.evaluate("async () => { await openCareerDashboard(); }")
+    page_on_chat.wait_for_function("() => document.querySelector('.dash-body')?.dataset.tab === 'career'", timeout=15000)
