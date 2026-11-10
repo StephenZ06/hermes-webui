@@ -23504,6 +23504,20 @@ window.SlideOnChange=SlideOnChange;
 // [{label, items:[{value, label, count?}]}]; `onPick(value)` runs on a pick.
 // Clicking the button again, Escape, or a click outside closes it (the exit
 // fade comes from motion-ui's popup ghost).
+// Scrollbars stay hidden until something scrolls: whatever scrolls gets
+// .is-scrolling (the CSS shows its thumb) and loses it a moment after it stops.
+(function(){
+  if(typeof document==='undefined'||document.__autoHideScrollbars) return;
+  document.__autoHideScrollbars=true;
+  const timers=new WeakMap();
+  document.addEventListener('scroll',(event)=>{
+    const el=event.target===document?document.documentElement:event.target;
+    if(!el||!el.classList) return;
+    if(!el.classList.contains('is-scrolling')) el.classList.add('is-scrolling');
+    clearTimeout(timers.get(el));
+    timers.set(el,setTimeout(()=>el.classList.remove('is-scrolling'),900));
+  },{capture:true,passive:true});
+})();
 const FILTER_ICON='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25V8.5z"/></svg>';
 function filterButtonHtml(id,label){
   return '<button type="button" class="filter-btn" id="'+id+'" aria-label="'+label+'" aria-haspopup="menu" aria-expanded="false">'+FILTER_ICON+'<span class="filter-btn-dot" aria-hidden="true"></span></button>';

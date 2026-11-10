@@ -142,13 +142,14 @@ def test_skills_page_spacing_is_even_and_the_filter_matches_the_search_height(sk
       const head = r('#panelSkills .panel-head'), tabs = r('#skillsTabSkills'), line = r('#skillsSectionHeading'),
         search = r('#skillsSearch'), filter = r('#skillsFilterBtn');
       return {above: Math.round(tabs.top - head.bottom), below: Math.round(line.top - tabs.bottom), after: Math.round(search.top - line.bottom),
-              searchH: search.height, filterH: filter.height, label: document.querySelector('#skillsSectionHeading').textContent.trim()}; }""")
+              searchH: Math.round(search.height * 100) / 100, filterH: Math.round(filter.height * 100) / 100, label: document.querySelector('#skillsSectionHeading').textContent.trim()}; }""")
     assert m["label"] == "CATEGORIES"
     assert m["above"] == m["below"] == m["after"] == 12, m
     assert m["searchH"] == m["filterH"] == 32, m
     skills.evaluate("() => switchSkillsTab('libraries')")
     skills.wait_for_selector(".lib-filters .themed-select-trigger")
-    heights = skills.evaluate("() => [...document.querySelectorAll('.lib-filters .themed-select-trigger')].map(t => t.getBoundingClientRect().height)")
+    skills.wait_for_function("() => !document.getElementById('librariesPane').getAnimations().length")
+    heights = skills.evaluate("() => [...document.querySelectorAll('.lib-filters .themed-select-trigger')].map(t => Math.round(t.getBoundingClientRect().height * 100) / 100)")
     assert heights == [32, 32, 32], heights
     clipped = skills.evaluate("() => [...document.querySelectorAll('.lib-filters .themed-select-trigger')].filter(t => { const l = t.firstElementChild; return l && l.scrollWidth > l.clientWidth; }).length")
     assert clipped == 0

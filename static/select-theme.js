@@ -104,6 +104,8 @@
     // The Integrations business list, Resume Studio's gap filters and the Jobs settings' choices space them evenly,
     // as far apart as the list sits from its edge.
     if (trigger.closest('.office-biz-business, .gaps-controls, .job-os-settings .set-row')) popup.classList.add('is-spaced');
+    // The Skills page's library filters keep 2px between options.
+    if (trigger.closest('.lib-filters')) popup.classList.add('is-gapped');
     popup.setAttribute('role', 'listbox');
     var optionEls = [];
     var highlightedIndex = -1;

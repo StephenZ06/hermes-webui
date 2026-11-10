@@ -10031,6 +10031,17 @@ const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,website:1,research:1,ne
 function _psArt(name,size){
   return '<img class="ps-art ps-art-'+name+'" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
 }
+// Template artwork is fetched and decoded ahead of the step that shows it
+// (the Location step warms the Template step's images), so the cards paint
+// with their art instead of a spinner.
+const _psArtReady=new Map();
+function _psPreloadArt(keys){
+  (keys||[]).forEach(key=>{
+    if(!_PS_ART[key]||_psArtReady.has(key)) return;
+    const img=new Image();img.decoding='async';img.src='static/project-starter/'+key+'.webp';
+    _psArtReady.set(key,{img,ready:img.decode?img.decode().catch(()=>{}):Promise.resolve()});
+  });
+}
 // Each artwork slot shows its own spinner, centred in the icon's box, until that
 // image has decoded; the image then fades in. Slots load independently.
 function _psWatchArt(root){
@@ -10060,10 +10071,11 @@ function _psGlideHeight(el,from){
   const start=onScreen!=null?onScreen:(from!=null?from:el._psShown);
   const to=el.getBoundingClientRect().height;
   el._psShown=to;
-  if(start==null||Math.abs(to-start)<2) return;
+  if(start==null||Math.abs(to-start)<2) return null;
   const anim=el.animate([{height:start+'px'},{height:to+'px'}],{duration:340,easing:'cubic-bezier(.22,1,.36,1)'});
   el._psHeightAnim=anim;
   anim.onfinish=anim.oncancel=()=>{if(el._psHeightAnim===anim)el._psHeightAnim=null;};
+  return anim;
 }
 // The lines of text in `box`, as bars relative to it (one per line box).
 function _psTextLines(box){
@@ -10114,7 +10126,7 @@ function _psSwapText(box,fill){
       if(token!==box._psSwap) return;
       box.classList.remove('is-swapping');skel.classList.add('is-out');
       setTimeout(()=>{if(token!==box._psSwap)return;skel.remove();box.style.height='';},280);
-    },200);
+    },240);  // after the card's .22s height glide, so it resizes before the text shows
   },150);
 }
 // Re-glides the dialog whenever its body content changes size (rAF-batched).
@@ -10281,7 +10293,13 @@ async function _openProjectStarterWizard(profile){
       // The subtitle under the title fades to its new wording with the step.
       if(sub.textContent!==subBefore){sub.classList.remove('ps-sub-in');void sub.offsetWidth;sub.classList.add('ps-sub-in');}
       _psWatchArt(body);
-      _psGlideHeight(dialog,h0);
+      // The dialog reaches its new size first; the step's content enters as
+      // the glide lands (220ms of its 340ms, by when the ease-out is ~95% there).
+      const glide=_psGlideHeight(dialog,h0);
+      body.style.setProperty('--ps-enter-delay',glide?'220ms':'0ms');
+      // Later in-step staggers (a template's file list) start at once again.
+      const enterToken=(body._psEnterToken=(body._psEnterToken||0)+1);
+      if(glide) setTimeout(()=>{if(body._psEnterToken===enterToken)body.style.setProperty('--ps-enter-delay','0ms');},900);
     };
     const go=(step,direction)=>{st.step=step;render(direction);};
 
@@ -10322,6 +10340,7 @@ async function _openProjectStarterWizard(profile){
     }
     function renderLocation(){
       const adopt=st.mode==='adopt';
+      if(!adopt) _psPreloadArt(templates.map(t=>t.key));
       sub.textContent=adopt?'Choose the folder that holds your existing project.':'Choose where the new project folder should be created.';
       const wrap=section(adopt?'Select the existing project folder:':'Select the Workspace Location:',
         adopt?P+' will read this folder and adapt its instruction files.':'Expand a workspace and pick the folder that will contain the new project.');
@@ -10911,19 +10930,81 @@ async function _openProjectStarterWizard(profile){
       sub.textContent='Check everything, then create it. Start building sends Hermes straight to work on version 1.';
       const wrap=section('Review and create:');wrap.classList.add('ps-section-review');
       const grid=_psEl('div','ps-review-grid');
-      const card=(title,rows)=>{const c=_psEl('div','ps-review-card');c.style.setProperty('--i',grid.children.length);c.append(_psEl('h4',null,title));
-        const list=_psEl('ul');rows.forEach(r=>list.append(_psEl('li',null,r)));if(!rows.length)list.append(_psEl('li','is-empty','None'));c.append(list);return c;};
+      // One card per part of the build: a titled head (with a count where it
+      // helps), then the part's own preview.
+      const card=(title,cls,count)=>{
+        const c=_psEl('section','ps-review-card '+cls);c.style.setProperty('--i',grid.children.length);
+        const head=_psEl('div','ps-review-head');head.append(_psEl('h4',null,title));
+        if(count!=null) head.append(_psEl('span','ps-review-count',String(count)));
+        c.append(head);grid.append(c);return c;
+      };
       const tpl=templates.find(t=>t.key===st.template)||{label:'Blank Project'};
-      const where=st.workspace?(st.workspace.name||st.workspace.path)+(st.parent?' / '+st.parent:'')+' / '+st.name.trim():st.name.trim();
-      grid.append(card('Project',[st.name.trim(),tpl.label,where]));
-      if(isVisual()&&st.look){const l=st.look;grid.append(card('Look and feel',[_psLabel(l.style)+' · '+_psLabel(l.motion),_psLabel(l.framework)+(l.tailwind?' + Tailwind CSS':'')]));}
-      grid.append(card('Skills',chosenSkills().map(s=>s.name)));
-      if(isVisual()) grid.append(card('Components',chosenComponents().map(c=>c.name+' · '+c.library_name)));
-      wrap.append(grid);
-      const files=_psEl('div','ps-files');files.append(_psEl('p','ps-files-title','Files created in '+st.name.trim()));
+      const name=st.name.trim();
+      const where=st.workspace?[(st.workspace.name||st.workspace.path),...(st.parent?st.parent.split('/'):[]),name].join(' / '):name;
+
+      // Project: a small terminal, like the Jobs page's Scout run panel. The
+      // project's facts, then the command Hermes runs and the files it writes.
+      const project=card('Project','ps-review-project');
+      const term=_psEl('div','ps-term');
+      const bar=_psEl('div','ps-term-bar');bar.setAttribute('aria-hidden','true');
+      bar.innerHTML='<span class="ps-term-dots"><i></i><i></i><i></i></span>';
+      bar.append(_psEl('span','ps-term-title','hermes — '+(name||'new project')));
+      const facts=_psEl('dl','ps-term-facts');
+      [['Project Name:',name],['Project Type:',tpl.label],['Directory:',where]].forEach(([k,v])=>{const row=_psEl('div','ps-term-fact');row.append(_psEl('dt',null,k),_psEl('dd',null,v||'—'));facts.append(row);});
+      const cmd=_psEl('div','ps-term-cmd');cmd.innerHTML='<b aria-hidden="true">$</b> ';cmd.append('hermes project create --template '+(st.template||'blank'));
+      const files=_psEl('div','ps-files ps-term-out');
       const list=_psEl('ul','ps-files-list');
-      filesToCreate().forEach((f,i)=>{const li=_psEl('li','ps-file');li.style.setProperty('--i',i);li.innerHTML=_psIcon('file',14);li.append(_psEl('span',null,f));list.append(li);});
-      files.append(list);wrap.append(files);
+      filesToCreate().forEach((f,i)=>{const li=_psEl('li','ps-file');li.style.setProperty('--i',i);li.append(_psEl('span','ps-term-plus','+'),_psEl('span',null,f));list.append(li);});
+      files.append(list);
+      term.append(bar,facts,cmd,files);project.append(term);
+
+      // Look and feel: the chosen style and motion as the same live samples
+      // the Look & feel step shows, and what it is built with.
+      if(isVisual()&&st.look){
+        const l=st.look,look=card('Look and feel','ps-review-look');
+        const tiles=_psEl('div','ps-review-look-tiles');
+        const tile=(label,value,preview)=>{const t=_psEl('div','ps-review-tile');t.append(preview);const text=_psEl('div','ps-review-tile-text');text.append(_psEl('span','ps-review-tile-label',label),_psEl('span','ps-review-tile-value',value||'—'));t.append(text);return t;};
+        const sample=_psEl('span','ps-look-sample');sample.dataset.style=l.style||'';sample.setAttribute('aria-hidden','true');
+        sample.append(_psEl('span','ps-look-sample-head','Aa'),_psEl('span','ps-look-sample-line'),_psEl('span','ps-look-sample-line is-short'));
+        const demo=_psEl('span','ps-motion-demo');demo.dataset.motion=l.motion||'none';demo.setAttribute('aria-hidden','true');demo.append(_psEl('span'));
+        const stack=_psEl('span','ps-review-stack');stack.setAttribute('aria-hidden','true');
+        [_psLabel(l.framework),l.tailwind?'Tailwind CSS':''].filter(Boolean).forEach(x=>stack.append(_psEl('span','ps-review-chip',x)));
+        tiles.append(tile('Style',_psLabel(l.style),sample),tile('Motion',_psLabel(l.motion),demo),
+          tile('Built with',_psLabel(l.framework)+(l.tailwind?' + Tailwind CSS':''),stack));
+        look.append(tiles);
+      }
+
+      // Skills: a table with rounded corners.
+      const skills=chosenSkills();
+      const sk=card('Skills','ps-review-skills',skills.length);
+      if(!skills.length) sk.append(_psEl('p','ps-review-empty','No skills chosen. Hermes uses its defaults.'));
+      else{
+        const table=_psEl('table','ps-review-table');
+        const thead=_psEl('thead');const hr=_psEl('tr');['Skill','Category','What it does'].forEach(h=>hr.append(_psEl('th',null,h)));thead.append(hr);
+        const tbody=_psEl('tbody');
+        skills.forEach(s=>{const tr=_psEl('tr');tr.append(_psEl('td','ps-review-skill',s.name),_psEl('td','ps-review-cat',_psLabel(s.category||'')||'—'),_psEl('td','ps-review-desc',s.description||''));tbody.append(tr);});
+        table.append(thead,tbody);sk.append(table);
+      }
+
+      // Components: the previews the Toolkit step showed.
+      if(isVisual()){
+        const comps=chosenComponents();
+        const cc=card('Components','ps-review-comps',comps.length);
+        if(!comps.length) cc.append(_psEl('p','ps-review-empty','No components chosen. Hermes picks them as it builds.'));
+        else{
+          const g=_psEl('div','ps-review-comp-grid');
+          comps.forEach(c=>{
+            const t=_psEl('div','ps-review-comp');
+            const thumb=_psEl('span','ps-kit-thumb');
+            if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.decoding='async';img.draggable=false;thumb.append(img);}
+            else thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));
+            const text=_psEl('span','ps-review-comp-text');text.append(_psEl('span','ps-review-comp-name',c.name),_psEl('span','ps-review-comp-meta',c.library_name+' · '+_psLabel(c.kind)));
+            t.append(thumb,text);g.append(t);
+          });
+          cc.append(g);
+        }
+      }
+      wrap.append(grid);
       setNav({canNext:true,nextLabel:'Create & start building',extraLabel:'Create project'});
     }
 

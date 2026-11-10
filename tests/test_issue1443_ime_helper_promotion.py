@@ -110,6 +110,7 @@ def test_project_create_and_rename_use_windowed_helper():
     # fields advance on Enter and must not do so while an IME is composing.
     wizard = re.compile(
         r"(?:nameInput|other)\.onkeydown\s*=\s*\(\s*event\s*\)\s*=>\s*\{\s*"
+        r"(?:event\.stopPropagation\(\)\s*;\s*)?"
         r"if\s*\(\s*event\.key\s*===\s*'Enter'\s*\)\s*\{\s*"
         + _windowed_guard("event"),
         re.DOTALL,

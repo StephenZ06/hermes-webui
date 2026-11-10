@@ -43,7 +43,8 @@ def test_chat_new_menu_has_icons_with_even_margins_slides_in_and_leaves_no_selec
               art: icon.querySelector('svg circle') ? 'circle-plus' : ''}; })""")
     assert [r["kind"] for r in rows] == ["new-chat-menu-icon is-conversation", "new-chat-menu-icon is-project"], rows
     for r in rows:
-        assert r["w"] == 16 and r["top"] == r["bottom"] == r["left"] == 8, r
+        # The circled plus sits half a pixel below centre, on the label's ink centre.
+        assert r["w"] == 16 and r["left"] == 8 and (r["top"], r["bottom"]) == (8.5, 7.5), r
     # Both choices show the same circled plus, not a picture.
     assert [r["art"] for r in rows] == ["circle-plus", "circle-plus"], rows
     page.mouse.click(900, 700)

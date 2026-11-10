@@ -365,7 +365,10 @@ def test_recent_job_status_badges_are_capitals(page):
 
 
 def test_scrollbar_thumbs_are_grey_on_every_page(page):
-    out = page.evaluate("""() => ['', 'dash-card-body is-scrolling', 'cron-run-list is-capped', 'pipe-col-cards is-scrolling'].map(cls => {
+    # Bars only show while their element scrolls (.is-scrolling), so every
+    # sample scrolls; the shown thumb is the same grey everywhere.
+    page.evaluate("() => document.querySelector('#jobOsRoot .action-centre .action-list').classList.add('is-scrolling')")
+    out = page.evaluate("""() => ['is-scrolling', 'dash-card-body is-scrolling', 'cron-run-list is-capped is-scrolling', 'pipe-col-cards is-scrolling'].map(cls => {
         const box = document.createElement('div');
         box.className = cls;
         document.getElementById('jobOsRoot').appendChild(box);

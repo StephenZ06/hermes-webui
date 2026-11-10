@@ -168,7 +168,7 @@ def test_builder_cards_share_sizes_on_the_8px_grid_without_overflow(page, width)
     _to_template(page, "Website")
     _through_brief(page)
     page.wait_for_selector(".ps-look-card")
-    page.wait_for_timeout(500)
+    page.wait_for_function("() => document.querySelector('.ps-body').getAnimations({subtree: true}).every(a => a.playState === 'finished' || a.effect.getTiming().iterations === Infinity)")
     for sel in (".ps-look-grid", ".ps-motion-grid"):
         geo = page.evaluate("""(sel) => { const cards = [...document.querySelector(sel).children];
           return cards.map(c => { const r = c.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }); }""", sel)

@@ -2071,7 +2071,7 @@
   .ps-files-empty{margin:0;color:var(--muted);font-size:13px;line-height:1.5;padding-top:30px;text-align:center;}
   .ps-files-title{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
   .ps-files-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;margin:0;padding:0;list-style:none;}
-  .ps-file{display:flex;align-items:center;gap:7px;min-width:0;font-family:var(--font-mono);font-size:12px;color:var(--text);opacity:0;animation:ps-file-in .22s ease-out forwards;animation-delay:calc(var(--i) * 35ms);}
+  .ps-file{display:flex;align-items:center;gap:7px;min-width:0;font-family:var(--font-mono);font-size:12px;color:var(--text);opacity:0;animation:ps-file-in .22s ease-out forwards;animation-delay:calc(var(--ps-enter-delay,0ms) + var(--i) * 35ms);}
   .ps-file .ps-icon{color:var(--accent-text);}
   .ps-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   @keyframes ps-file-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
@@ -2126,7 +2126,7 @@
   .ps-wizard .ps-close:hover{transform:rotate(90deg);}
   .ps-wizard .ps-close svg{display:block;}
   .ps-template{align-items:center;}
-  .ps-choice,.ps-template{animation:ps-card-in .32s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 35ms);}
+  .ps-choice,.ps-template{animation:ps-card-in .32s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--ps-enter-delay,0ms) + var(--i,0) * 35ms);}
   @keyframes ps-card-in{from{opacity:0;transform:translateY(8px) scale(.98);}to{opacity:1;transform:none;}}
   .ps-choice.is-selected .ps-choice-icon,.ps-template.is-selected .ps-template-icon{animation:ps-pop .28s cubic-bezier(.3,1.6,.5,1);}
   .ps-option.is-selected .ps-option-key{animation:ps-pop .24s cubic-bezier(.3,1.6,.5,1);}
@@ -14348,6 +14348,9 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg .rpg-ach{height:172px;padding:0 0 4px;}
 .dash.is-rpg .rpg-ach .rpg-ach-art{height:108px;}
 .dash.is-rpg .rpg-ach .rpg-ach-art img{width:108px;height:108px;}
+/* A tile narrower than its art (side panel open) shrinks the art to fit, so
+   the badge and the lock over it stay on the tile's centre line. */
+.dash.is-rpg .rpg-ach .rpg-ach-art > img{max-width:100%;}
 /* Party and Realms: the first member / realm starts as far below the divider
    as the title sits above it (18px, measured from the ink). */
 .dash.is-rpg .rpg-party{margin-top:-9px;}
@@ -16091,6 +16094,14 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   /* Bars that only show while scrolling or on hover keep doing so, in grey. */
   :root:root:root:root :is(.pipe-col-cards,.dash-card-body)::-webkit-scrollbar-thumb{background:transparent;}
   :root:root:root:root :is(.pipe-col-cards,.dash-card-body):is(:hover,.is-scrolling)::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);}
+  /* Every bar hides until its element scrolls (ui.js adds .is-scrolling and
+     takes it off 900ms after the last scroll); pointing at a hidden thumb
+     still shows it, so it can be grabbed. */
+  :root:root:root:root:not(.is-scrolling)::-webkit-scrollbar-thumb,:root:root:root:root :not(.is-scrolling)::-webkit-scrollbar-thumb,#jobOsRoot .action-centre .action-list:not(.is-scrolling)::-webkit-scrollbar-thumb{background:transparent;}
+  :root:root:root:root:not(.is-scrolling)::-webkit-scrollbar-thumb:hover,:root:root:root:root :not(.is-scrolling)::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover);}
+}
+@supports not selector(::-webkit-scrollbar){
+  *:not(.is-scrolling){scrollbar-color:transparent transparent;}
 }
 /* The Action centre's bar stays on the card's right edge at its new width. */
 #jobOsRoot .action-centre .action-list{padding-right:16px;}
@@ -18025,7 +18036,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
 .ps-look-label{margin:2px 0 -6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
 .ps-look-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
 .ps-motion-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
-.ps-look-card,.ps-motion-card{position:relative;display:flex;flex-direction:column;gap:8px;padding:8px 8px 12px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--text) 2%,transparent);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .16s,background .16s,transform .16s,box-shadow .16s;animation:ps-card-in .32s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 35ms);}
+.ps-look-card,.ps-motion-card{position:relative;display:flex;flex-direction:column;gap:8px;padding:8px 8px 12px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--text) 2%,transparent);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .16s,background .16s,transform .16s,box-shadow .16s;animation:ps-card-in .32s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--ps-enter-delay,0ms) + var(--i,0) * 35ms);}
 .ps-look-card:hover,.ps-motion-card:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));transform:translateY(-1px);}
 .ps-look-card.is-selected,.ps-motion-card.is-selected{border-color:var(--accent);background:var(--accent-bg);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent);}
 .ps-look-card:focus-visible,.ps-motion-card:focus-visible,.ps-chip-toggle:focus-visible,.ps-kit-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
@@ -18166,14 +18177,14 @@ textarea#msg::-webkit-scrollbar{display:none;}
 
 /* Steps: the new step fades and slides in from a soft blur; the subtitle
    follows; the question bar grows from where the last question left it. */
-.ps-builder .ps-body.ps-enter-fwd{animation:ps-step-in-fwd .34s cubic-bezier(.16,1,.3,1);}
-.ps-builder .ps-body.ps-enter-back{animation:ps-step-in-back .34s cubic-bezier(.16,1,.3,1);}
+.ps-builder .ps-body.ps-enter-fwd{animation:ps-step-in-fwd .34s cubic-bezier(.16,1,.3,1) var(--ps-enter-delay,0ms) backwards;}
+.ps-builder .ps-body.ps-enter-back{animation:ps-step-in-back .34s cubic-bezier(.16,1,.3,1) var(--ps-enter-delay,0ms) backwards;}
 @keyframes ps-step-in-fwd{from{opacity:0;transform:translateX(16px);filter:blur(3px);}to{opacity:1;transform:none;filter:none;}}
 @keyframes ps-step-in-back{from{opacity:0;transform:translateX(-16px);filter:blur(3px);}to{opacity:1;transform:none;filter:none;}}
 .ps-wizard .project-starter-header p.ps-sub-in{animation:ps-sub-in .3s ease-out;}
 @keyframes ps-sub-in{from{opacity:0;}to{opacity:1;}}
 .ps-progress span{transition:width .42s cubic-bezier(.16,1,.3,1);}
-.ps-options .ps-option{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 30ms);}
+.ps-options .ps-option{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--ps-enter-delay,0ms) + var(--i,0) * 30ms);}
 
 /* The reasoning card: its text morphs through placeholder bars between choices. */
 .ps-rec-why{position:relative;overflow:hidden;box-sizing:border-box;transition:height .22s cubic-bezier(.16,1,.3,1),border-color .2s ease;}
@@ -18195,7 +18206,7 @@ textarea#msg::-webkit-scrollbar{display:none;}
 
 /* Review: larger card titles; the step scrolls without a visible bar. */
 .ps-review-card h4{font-size:13px;letter-spacing:.04em;margin-bottom:10px;color:var(--text);}
-.ps-review-card{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 40ms);}
+.ps-review-card{animation:ps-card-in .3s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--ps-enter-delay,0ms) + var(--i,0) * 40ms);}
 .ps-body:has(.ps-section-review){scrollbar-width:none;}
 .ps-body:has(.ps-section-review)::-webkit-scrollbar{display:none;}
 @media (prefers-reduced-motion:reduce){
@@ -18267,3 +18278,90 @@ textarea#msg::-webkit-scrollbar{display:none;}
 :root[data-skin="zeus-2"] .dash.is-rpg{--rpg-pixel:var(--zeus2-pixel-title);--rpg-text:var(--zeus2-pixel-text);}
 :root[data-skin="zeus-2"] :is(.dash-picker header h3,.dash-cal header strong,.rpg-levelup-kicker,.rpg-levelup-levels,.rpg-levelup-class,.dash-unlock-copy small,.dash-unlock-copy strong,.dash-loader-text){font-family:var(--zeus2-pixel-title)!important;}
 :root[data-skin="zeus-2"] :is(.dash-picker,.dash-picker-search input,.dash-picker-group h4,.themed-select-popup.is-dash .themed-select-option,.themed-select-popup.is-dash .themed-select-group-label,.dash-picker-tools .themed-select-trigger,.dash-picker footer .dash-btn,.dash-cal,.dash-picker-row strong,.dash-picker-row small,.rpg-levelup-card,.rpg-levelup-card .dash-btn,.rpg-levelup-btn,.dash-unlock,.dash-unlock-more){font-family:var(--zeus2-pixel-text)!important;}
+
+/* ── Skills page and new-chat menu, third pass ── */
+/* Tab labels sit half a pixel lower: 1.5px over, .5px under keeps the 32px height. */
+#panelSkills .skills-tab{padding-top:1.5px;padding-bottom:.5px;}
+/* The Libraries list starts 12px under its divider, as the divider sits 12px under the tabs. */
+#panelSkills .libraries-pane{padding-top:0;}
+/* The library filters' option lists keep 2px between options. */
+.themed-select-popup.is-gapped{display:flex;flex-direction:column;gap:2px;}
+.themed-select-popup.is-gapped > .themed-select-option{flex:none;}
+/* The new-chat menu's circled plus sits half a pixel lower, on the label's ink centre. */
+.new-chat-menu-icon{position:relative;top:.5px;}
+
+
+/* ── Project builder, third pass ── */
+/* Wide screens: the Build summary card runs to the bottom of the step. */
+@media (min-width:900px){.ps-builder .ps-build{align-self:stretch;}}
+
+/* Review: one column of cards, each a titled head over its own preview. */
+.ps-review-grid{grid-template-columns:minmax(0,1fr);gap:12px;margin-bottom:0;}
+.ps-review-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:12px;}
+.ps-review-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;}
+.ps-review-card .ps-review-head h4{margin:0;font-size:13px;letter-spacing:.04em;line-height:20px;}
+.ps-review-count{min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;border:1px solid var(--border2);font-size:11px;line-height:18px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums;}
+.ps-review-empty{margin:0;font-size:12.5px;line-height:18px;color:var(--muted);}
+
+/* Project: a small terminal (the Jobs page's Scout run panel). */
+.ps-term{border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--text) 3%,var(--bg));overflow:hidden;font-family:var(--font-mono);font-size:12px;line-height:18px;}
+.ps-term-bar{display:flex;align-items:center;gap:10px;padding:5px 12px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;line-height:14px;}
+.ps-term-dots{display:inline-flex;gap:4px;}
+.ps-term-dots i{width:6px;height:6px;border-radius:50%;background:color-mix(in srgb,var(--muted) 45%,transparent);}
+.ps-term-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ps-term-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 16px;margin:0;padding:12px 12px 0;}
+.ps-term-fact{display:contents;}
+.ps-term-fact dt{color:var(--muted);}
+.ps-term-fact dd{margin:0;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ps-term-cmd{margin-top:12px;padding:8px 12px 0;border-top:1px dashed var(--border2);color:var(--muted);overflow-wrap:anywhere;}
+.ps-term-cmd b{color:var(--success,#4ade80);font-weight:700;}
+.ps-builder .ps-files.ps-term-out{min-height:0;margin:0;padding:6px 12px 12px;border:0;border-radius:0;background:transparent;}
+.ps-term-out .ps-files-list{grid-template-columns:minmax(0,1fr);gap:2px;}
+.ps-term-out .ps-file{gap:8px;font-size:12px;line-height:18px;}
+.ps-term-plus{flex:none;color:var(--success,#4ade80);}
+
+/* Look and feel: the step's own style sample and motion demo, side by side. */
+.ps-review-look-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.ps-review-tile{display:flex;flex-direction:column;gap:8px;min-width:0;padding:8px 8px 12px;border:1px solid var(--border2);border-radius:10px;}
+.ps-review-tile .ps-look-sample{height:64px;padding:0 12px;}
+.ps-review-tile .ps-look-sample-head{font-size:20px;line-height:24px;}
+.ps-review-tile .ps-look-sample[data-style=editorial] .ps-look-sample-head{font-size:22px;}
+.ps-review-tile .ps-motion-demo{width:100%;height:64px;}
+.ps-review-tile .ps-motion-demo span{left:calc(50% - 8px);top:24px;}
+.ps-review-stack{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:4px;height:64px;border-radius:8px;background:color-mix(in srgb,var(--text) 5%,transparent);}
+.ps-review-chip{white-space:nowrap;padding:2px 8px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border2));border-radius:999px;font-size:11px;line-height:16px;color:var(--text);}
+.ps-review-tile-text{display:flex;flex-direction:column;gap:2px;padding:0 4px;min-width:0;}
+.ps-review-tile-label{font-size:11px;line-height:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+.ps-review-tile-value{font-size:13px;line-height:18px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* Skills: a table with rounded corners. */
+.ps-review-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;border:1px solid var(--border2);border-radius:10px;overflow:hidden;font-size:12.5px;line-height:18px;}
+.ps-review-table th{padding:8px 12px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:color-mix(in srgb,var(--text) 4%,transparent);}
+.ps-review-table th:nth-child(1){width:32%;}
+.ps-review-table th:nth-child(2){width:22%;}
+.ps-review-table td{padding:8px 12px;border-top:1px solid var(--border2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ps-review-table .ps-review-skill{font-weight:600;color:var(--text);}
+.ps-review-table :is(.ps-review-cat,.ps-review-desc){color:var(--muted);}
+
+/* Components: the previews the Toolkit step showed. */
+.ps-review-comp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.ps-review-comp{display:flex;flex-direction:column;gap:8px;min-width:0;padding:6px 6px 10px;border:1px solid var(--border2);border-radius:10px;}
+.ps-review-comp-text{display:flex;flex-direction:column;gap:2px;padding:0 4px;min-width:0;}
+.ps-review-comp-name{font-size:12.5px;line-height:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ps-review-comp-meta{font-size:11.5px;line-height:16px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+@media (max-width:640px){
+  .ps-review-comp-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .ps-review-card{padding:12px;}
+}
+@media (max-width:520px){
+  .ps-review-look-tiles{grid-template-columns:minmax(0,1fr);}
+  .ps-review-tile{flex-direction:row;align-items:center;padding:8px;}
+  .ps-review-tile > :first-child{flex:none;width:120px;height:56px;}
+  .ps-review-stack{flex-direction:column;align-items:center;}
+  .ps-review-tile-value{white-space:normal;}
+  .ps-term-out .ps-files-list{grid-template-columns:minmax(0,1fr);}
+  .ps-review-table th:nth-child(3),.ps-review-table td:nth-child(3){display:none;}
+  .ps-review-table th:nth-child(1){width:58%;}
+  .ps-review-table th:nth-child(2){width:auto;}
+}
