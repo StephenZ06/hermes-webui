@@ -2037,6 +2037,7 @@ const LOCALES = {
   },
 
   it: {
+    page_load_failed: 'Impossibile caricare questa pagina. Controlla la connessione e riaprila.',
     offline_title: 'Connessione persa',
     offline_browser_detail: 'Il browser segnala che questo dispositivo è offline.',
     offline_network_detail: 'Hermes non è raggiungibile da questo browser al momento.',
@@ -4042,6 +4043,7 @@ const LOCALES = {
   },
 
   ja: {
+    page_load_failed: 'このページを読み込めませんでした。接続を確認して、もう一度開いてください。',
     offline_title: '接続が切断されました',
     offline_browser_detail: 'ブラウザはこのデバイスがオフラインだと報告しています。',
     offline_network_detail: '現在、このブラウザからHermesに到達できません。',
@@ -6052,6 +6054,7 @@ const LOCALES = {
   },
 
   ru: {
+    page_load_failed: 'Не удалось загрузить эту страницу. Проверьте подключение и откройте её снова.',
     offline_title: 'Соединение потеряно',
     offline_browser_detail: 'Браузер сообщает, что это устройство офлайн.',
     offline_network_detail: 'Hermes сейчас недоступен из этого браузера.',
@@ -8036,6 +8039,7 @@ const LOCALES = {
   },
 
   es: {
+    page_load_failed: 'No se pudo cargar esta página. Comprueba tu conexión y vuelve a abrirla.',
     offline_title: 'Conexión perdida',
     offline_browser_detail: 'Tu navegador indica que este dispositivo está sin conexión.',
     offline_network_detail: 'Hermes no está disponible desde este navegador ahora mismo.',
@@ -9987,6 +9991,7 @@ const LOCALES = {
   },
 
   de: {
+    page_load_failed: 'Diese Seite konnte nicht geladen werden. Prüfe deine Verbindung und öffne sie erneut.',
     offline_title: 'Verbindung verloren',
     offline_browser_detail: 'Dein Browser meldet, dass dieses Gerät offline ist.',
     offline_network_detail: 'Hermes ist von diesem Browser aus gerade nicht erreichbar.',
@@ -11932,6 +11937,7 @@ const LOCALES = {
   },
 
   zh: {
+    page_load_failed: '此页面无法加载。请检查网络连接后重新打开。',
     offline_title: '连接已断开',
     offline_browser_detail: '浏览器报告此设备当前离线。',
     offline_network_detail: '此浏览器当前无法连接到 Hermes。',
@@ -13872,6 +13878,7 @@ const LOCALES = {
   // Traditional Chinese (zh-Hant)
   'zh-Hant': {
 
+    page_load_failed: '此頁面無法載入。請檢查網路連線後重新開啟。',
     offline_title: '連線中斷',
     offline_browser_detail: '瀏覽器回報此裝置目前離線。',
     offline_network_detail: 'Hermes 目前無法從這個瀏覽器連上。',
@@ -15879,6 +15886,7 @@ const LOCALES = {
   },
 
   pt: {
+    page_load_failed: 'Não foi possível carregar esta página. Verifique sua conexão e abra-a novamente.',
     offline_title: 'Conexão perdida',
     offline_browser_detail: 'O navegador informa que este dispositivo está offline.',
     offline_network_detail: 'O Hermes está inacessível neste navegador agora.',
@@ -17703,6 +17711,7 @@ const LOCALES = {
     wiki_not_configured: 'Wiki not configured',
   },
   ko: {
+    page_load_failed: '이 페이지를 불러올 수 없습니다. 연결을 확인한 뒤 다시 열어 주세요.',
     offline_title: '연결이 끊겼습니다',
     offline_browser_detail: '브라우저가 이 장치가 오프라인이라고 보고합니다.',
     offline_network_detail: '현재 이 브라우저에서 Hermes에 연결할 수 없습니다.',
@@ -19698,6 +19707,7 @@ const LOCALES = {
   },
 
   fr: {
+    page_load_failed: 'Impossible de charger cette page. Vérifiez votre connexion et rouvrez-la.',
     offline_title: 'Connexion perdue',
     offline_browser_detail: 'Votre navigateur signale que cet appareil est hors ligne.',
     offline_network_detail: 'Hermes est actuellement inaccessible depuis ce navigateur.',
@@ -21676,6 +21686,7 @@ const LOCALES = {
   },
 
   cs: {
+    page_load_failed: 'Tuto stránku se nepodařilo načíst. Zkontrolujte připojení a otevřete ji znovu.',
     _label: 'Čeština',
     _lang: 'cs',
     _speech: 'cs-CZ',
@@ -23644,6 +23655,7 @@ const LOCALES = {
 
 
 
+    page_load_failed: 'Bu sayfa yüklenemedi. Bağlantınızı kontrol edip yeniden açın.',
     offline_title: 'Bağlantı kesildi',
     offline_browser_detail: 'Tarayıcınız bu cihazın çevrimdışı olduğunu bildiriyor.',
     offline_network_detail: 'Hermes\'e şu anda bu tarayıcıdan ulaşılamıyor.',
@@ -25640,6 +25652,7 @@ const LOCALES = {
   
   },
   pl: {
+    page_load_failed: 'Nie udało się wczytać tej strony. Sprawdź połączenie i otwórz ją ponownie.',
     offline_title: 'Połączenie utracone',
     offline_browser_detail: 'Twoja przeglądarka zgłasza, że to urządzenie jest offline.',
     offline_network_detail: 'Hermes jest obecnie nieosiągalny z tej przeglądarki.',
@@ -27640,6 +27653,7 @@ const LOCALES = {
     checkpoint_diff_files_changed: (n) => n === 1 ? '1 plik zmieniony' : `${n} zmienionych plików`,
   },
   vi: {
+    page_load_failed: 'Không thể tải trang này. Hãy kiểm tra kết nối và mở lại.',
     offline_title: 'Mất kết nối',
     offline_browser_detail: 'Trình duyệt báo rằng thiết bị này đang ngoại tuyến.',
     offline_network_detail: 'Không thể kết nối tới Hermes từ trình duyệt lúc này.',
