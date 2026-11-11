@@ -84,7 +84,7 @@ def normalize_toolkit(raw, *, template: str, libraries_root: Path, skill_names: 
         return None
     from api.project_starter_agent import parse_look
 
-    look = parse_look(raw.get("look")) if is_visual(template) else None
+    look = parse_look(raw.get("look"), palette_source="custom") if is_visual(template) else None
     if look and not look["framework"]:
         look["framework"] = default_framework(template)
     skills = []
@@ -153,6 +153,9 @@ def _look_lines(look: dict) -> list[str]:
         lines.append(f"- Built with: {_label(look['framework'])}" + (" and Tailwind CSS" if look.get("tailwind") else ""))
     if look.get("why"):
         lines.append(f"- Why: {look['why']}")
+    if look.get("palette"):
+        from api.project_palette import palette_lines
+        lines += palette_lines(look["palette"])
     return lines
 
 

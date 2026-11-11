@@ -200,6 +200,7 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion)
                 continue
             item = dict(comp, library=lib["slug"], library_name=lib.get("name") or lib["slug"],
                         kind=lib.get("kind", ""), install=lib.get("install", ""), source=lib.get("source", ""),
+                        license=lib.get("license", ""),
                         score=_score(comp, style, motion), recommended=False)
             by_role.setdefault(comp["role"], []).append(item)
     out = {}

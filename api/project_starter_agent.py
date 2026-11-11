@@ -121,7 +121,10 @@ Do not use any tools and do not create files. Reply with ONLY one JSON object:
  "look": {{"style": "minimal|elegant|playful|bold|technical|editorial",
    "motion": "none|subtle|expressive",
    "framework": "react|vue|svelte|vanilla|swiftui|compose|react-native|flutter",
-   "tailwind": true|false, "why": "one sentence tied to the brief"}}}}
+   "tailwind": true|false, "why": "one sentence tied to the brief",
+   "palette": {{"name": "two-word name", "why": "one sentence tied to the business",
+     "light": {{"bg": "#rrggbb", "surface": "#rrggbb", "text": "#rrggbb", "primary": "#rrggbb", "accent": "#rrggbb"}},
+     "dark": {{"bg": "#rrggbb", "surface": "#rrggbb", "text": "#rrggbb", "primary": "#rrggbb", "accent": "#rrggbb"}}}}}}}}
 
 The project will be created from the "{template}" template, which writes these
 files: {files}. To fill them well we need: what is being built and for whom, the
@@ -150,6 +153,11 @@ the one style that suits its audience and brand, how much motion it should use,
 and the UI framework and whether Tailwind CSS fit the brief and template (for
 iOS pick swiftui or react-native, for Android compose, react-native or flutter).
 In "why", name the audience or brand trait that decides it, in one sentence.
+"palette" recommends the colours from what the business is about and its vibe
+(a brand colour the brief names comes first): a light set and a dark set, each
+with the page background, a surface for cards, body text, a primary for buttons
+and links, and an accent. Body text must reach 7:1 contrast on the background
+and the primary 4.5:1, in both sets; the dark set keeps the light set's hues.
 
 Project name: {name}
 Brief:
@@ -434,9 +442,10 @@ def parse_analysis(text: str) -> dict:
     return out
 
 
-def parse_look(raw) -> dict | None:
-    """The brief's recommended style and motion (both required), framework and Tailwind."""
+def parse_look(raw, *, palette_source: str = "recommended") -> dict | None:
+    """The brief's recommended style and motion (both required), framework, Tailwind and colour palette."""
     from api.library_catalog import FRAMEWORKS, MOTIONS, STYLES
+    from api.project_palette import normalize_palette
 
     if not isinstance(raw, dict):
         return None
@@ -445,8 +454,12 @@ def parse_look(raw) -> dict | None:
     if style not in STYLES or motion not in MOTIONS:
         return None
     framework = str(raw.get("framework") or "").strip().lower()
-    return {"style": style, "motion": motion, "framework": framework if framework in FRAMEWORKS else "",
+    look = {"style": style, "motion": motion, "framework": framework if framework in FRAMEWORKS else "",
             "tailwind": raw.get("tailwind") is True, "why": str(raw.get("why") or "").strip()[:300]}
+    palette = normalize_palette(raw.get("palette"), default_source=palette_source)
+    if palette:
+        look["palette"] = palette
+    return look
 
 
 def _profile_model(session) -> tuple[str | None, str | None]:

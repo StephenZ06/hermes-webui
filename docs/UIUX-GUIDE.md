@@ -206,8 +206,19 @@ live Build summary on the right (at 900px and below it folds into a bar under th
 step). Website, Web app, iOS and Android projects get a Look & feel step
 preselected from the brief, with the reason shown, then every template gets a
 Toolkit step (recommended skills ticked; visual templates also get catalog
-components by role) and a Review step whose primary action is Create & start
-building. Between 721px and 1023px the stepper shows only the current label.
+components, grouped by library with its licence, best fits for the style first)
+and a Review step whose primary action is Create & start building. Between 721px
+and 1023px the stepper shows only the current label.
+
+Look & feel has a Colours section: the planner's palette for the brief (starred),
+"Use logo colours" (the logo is read in the browser with a canvas and never
+uploaded; its palette then takes the star), six presets ordered by the chosen
+style, and "Your own" with light and dark pickers ("Work out dark from light"
+derives the dark set, mirroring `derive_dark` in `api/project_palette.py`). A
+live mock page shows both themes side by side (a Light/Dark toggle at 560px and
+below) with contrast checks for text, primary and the button label. Style samples
+and empty component thumbnails paint in the chosen light set. The palette is
+written into the project's `docs/UI_UX.md` as CSS tokens for both themes.
 
 Cards in these steps sit on an 8px grid and share one size per row; the browser
 tests measure this at 1440, 820 and 390 widths. Recommendations reuse the star

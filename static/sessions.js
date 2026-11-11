@@ -10036,6 +10036,9 @@ const _PROJECT_STARTER_ICONS={
   file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   chevron:'<path d="m9 6 6 6-6 6"/>',
   check:'<path d="m5 12 5 5 9-10"/>',
+  pen:'<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/><path d="m14.5 5.5 3 3"/>',
+  image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  alert:'<path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
 };
 // Full-colour artwork for the start choices and templates (icons/new-workspace,
 // optically normalised to the same visual size in static/project-starter/).
@@ -10718,6 +10721,64 @@ async function _openProjectStarterWizard(profile){
       ['playful','Playful','Rounded, colourful, friendly.'],['bold','Bold','Big type, strong contrast.'],
       ['technical','Technical','Precise, data-dense, monospace accents.'],['editorial','Editorial','Magazine-style reading and imagery.']];
     const _PS_MOTIONS=[['none','None','Nothing moves.'],['subtle','Subtle','Gentle fades and slides.'],['expressive','Expressive','Animated hero, playful transitions.']];
+    // Colour palettes (light and dark sets of bg, surface, text, primary, accent).
+    // Presets list the styles they suit; api/project_palette.py validates what is sent.
+    const _PS_PAL_ROLES=[['bg','Background'],['surface','Surface'],['text','Text'],['primary','Primary'],['accent','Accent']];
+    const _PS_PALETTES=[
+      ['graphite','Graphite',['minimal','technical'],{bg:'#f7f7f5',surface:'#ffffff',text:'#1c1d1f',primary:'#2f5bd3',accent:'#0b7a6b'},{bg:'#111214',surface:'#1a1b1e',text:'#ececec',primary:'#7da2ff',accent:'#3fd0b8'}],
+      ['terracotta','Terracotta',['elegant','editorial','playful'],{bg:'#fbf6f0',surface:'#ffffff',text:'#2b1d14',primary:'#b0502a',accent:'#2f7d6d'},{bg:'#17110d',surface:'#221a15',text:'#f5ebe2',primary:'#e58a5f',accent:'#5cc2ab'}],
+      ['forest','Forest',['elegant','minimal'],{bg:'#f4f7f2',surface:'#ffffff',text:'#18241b',primary:'#2e6b3f',accent:'#8a6414'},{bg:'#0e1510',surface:'#162019',text:'#e6efe7',primary:'#6fc28a',accent:'#e0b45c'}],
+      ['ocean','Ocean',['technical','minimal','bold'],{bg:'#f3f8fb',surface:'#ffffff',text:'#0f2230',primary:'#0b67a0',accent:'#b44a24'},{bg:'#0b141b',surface:'#121f29',text:'#e3eef5',primary:'#5cb3ec',accent:'#f08d66'}],
+      ['grape','Grape',['playful','bold'],{bg:'#f8f5fd',surface:'#ffffff',text:'#1f1430',primary:'#6d3fd1',accent:'#c8336f'},{bg:'#120d1b',surface:'#1c1528',text:'#efe8fa',primary:'#ab8cff',accent:'#ff7fb6'}],
+      ['sunset','Sunset',['playful','bold'],{bg:'#fff7f0',surface:'#ffffff',text:'#2a160c',primary:'#c2410c',accent:'#1864ab'},{bg:'#1a0f09',surface:'#24160e',text:'#fbeee5',primary:'#ff8a4c',accent:'#6cb4ff'}],
+      ['noir','Noir',['bold','editorial','minimal'],{bg:'#ffffff',surface:'#f4f4f4',text:'#0a0a0a',primary:'#111111',accent:'#d6336c'},{bg:'#0a0a0a',surface:'#161616',text:'#f5f5f5',primary:'#f5f5f5',accent:'#ff6b9a'}],
+      ['sage','Sage',['elegant','editorial','minimal'],{bg:'#f6f6f1',surface:'#ffffff',text:'#22261f',primary:'#4f6340',accent:'#9a5442'},{bg:'#121410',surface:'#1b1e18',text:'#ecece4',primary:'#a9c191',accent:'#e0927e'}],
+    ];
+    const _psPreset=(key)=>{const p=_PS_PALETTES.find(x=>x[0]===key);return p&&{key:p[0],name:p[1],source:'preset',light:{...p[3]},dark:{...p[4]},why:''};};
+    const _psPresetsFor=(style)=>[..._PS_PALETTES].sort((a,b)=>(b[2].includes(style)?1:0)-(a[2].includes(style)?1:0)).slice(0,6);
+    const _psHexOk=(v)=>/^#[0-9a-f]{6}$/i.test(String(v||''));
+    const _psRgb=(h)=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
+    const _psHex=(rgb)=>'#'+rgb.map(c=>Math.max(0,Math.min(255,Math.round(c*255))).toString(16).padStart(2,'0')).join('');
+    const _psLum=(h)=>{const [r,g,b]=_psRgb(h).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));return 0.2126*r+0.7152*g+0.0722*b;};
+    const _psContrast=(a,b)=>{const x=_psLum(a),y=_psLum(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05);};
+    function _psToHsl(h){const [r,g,b]=_psRgb(h);const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let hue=0,sat=0;
+      if(mx!==mn){const d=mx-mn;sat=l>0.5?d/(2-mx-mn):d/(mx+mn);hue=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;hue/=6;}return [hue,sat,l];}
+    function _psFromHsl(hue,sat,l){if(!sat)return _psHex([l,l,l]);const q=l<0.5?l*(1+sat):l+sat-l*sat,p=2*l-q;
+      const f=(t)=>{t=(t+1)%1;return t<1/6?p+(q-p)*6*t:t<1/2?q:t<2/3?p+(q-p)*(2/3-t)*6:p;};return _psHex([f(hue+1/3),f(hue),f(hue-1/3)]);}
+    // The same hue moved lighter (on dark) or darker (on light) until it reads on bg.
+    function _psReadable(h,bg,target=4.5){let [hue,sat,l]=_psToHsl(h);const up=_psLum(bg)<0.2;let out=h;
+      for(let i=0;i<50&&_psContrast(out,bg)<target;i++){l=up?Math.min(0.95,l+0.02):Math.max(0.05,l-0.02);out=_psFromHsl(hue,sat,l);}return out;}
+    // Mirrors derive_dark in api/project_palette.py.
+    function _psDeriveDark(light){const [hue,sat]=_psToHsl(light.primary);const bg=_psFromHsl(hue,Math.min(sat,0.22),0.08);
+      const lift=(h)=>{let [a,b,l]=_psToHsl(h);return _psReadable(_psFromHsl(a,b,Math.max(l,0.6)),bg);};
+      return {bg,surface:_psFromHsl(hue,Math.min(sat,0.2),0.13),text:_psFromHsl(hue,Math.min(sat,0.12),0.93),primary:lift(light.primary),accent:lift(light.accent)};}
+    // A light set around a brand colour (and a second colour when there is one).
+    function _psFromBrand(primary,accent){const [hue,sat]=_psToHsl(primary);const bg=_psFromHsl(hue,Math.min(sat,0.35),0.975);
+      if(!accent){const [h2,s2,l2]=_psToHsl(primary);accent=_psFromHsl((h2+0.45)%1,Math.max(s2,0.45),Math.min(Math.max(l2,0.35),0.5));}
+      const light={bg,surface:'#ffffff',text:_psFromHsl(hue,Math.min(sat,0.25),0.12),primary:_psReadable(primary,bg),accent:_psReadable(accent,bg)};
+      return {light,dark:_psDeriveDark(light)};}
+    // The logo's two main colours, read in the browser only (never uploaded).
+    async function _psLogoColours(file){
+      const url=URL.createObjectURL(file);
+      try{
+        const img=new Image();img.decoding='async';img.src=url;await img.decode();
+        const n=64,scale=Math.min(1,n/Math.max(img.naturalWidth||n,img.naturalHeight||n));
+        const w=Math.max(1,Math.round((img.naturalWidth||n)*scale)),h=Math.max(1,Math.round((img.naturalHeight||n)*scale));
+        const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{willReadFrequently:true});
+        ctx.drawImage(img,0,0,w,h);const data=ctx.getImageData(0,0,w,h).data;const buckets=new Map();
+        for(let i=0;i<data.length;i+=4){if(data[i+3]<160)continue;
+          const hex=_psHex([data[i],data[i+1],data[i+2]].map(c=>(Math.round(c/16)*16)/255));const [,sat,l]=_psToHsl(hex);
+          if(l>0.93||l<0.07)continue;const b=buckets.get(hex)||{hex,count:0,sat};b.count++;buckets.set(hex,b);}
+        const ranked=[...buckets.values()].map(b=>({...b,score:b.count*(0.25+b.sat)})).sort((a,b)=>b.score-a.score);
+        if(!ranked.length) return null;
+        const first=ranked[0];const hue=_psToHsl(first.hex)[0];
+        const second=ranked.find(b=>{const d=Math.abs(_psToHsl(b.hex)[0]-hue);return Math.min(d,1-d)>0.08&&b.sat>0.2;});
+        return {primary:first.hex,accent:second&&second.hex,preview:await new Promise(r=>{const c=document.createElement('canvas');const k=Math.min(1,96/Math.max(img.naturalWidth||96,img.naturalHeight||96));
+          c.width=Math.max(1,Math.round((img.naturalWidth||96)*k));c.height=Math.max(1,Math.round((img.naturalHeight||96)*k));c.getContext('2d').drawImage(img,0,0,c.width,c.height);r(c.toDataURL('image/png'));})};
+      }finally{URL.revokeObjectURL(url);}
+    }
+    const _psOnColour=(h)=>_psContrast(h,'#ffffff')>=_psContrast(h,'#111111')?'#ffffff':'#111111';
+    function _psPaletteVars(node,set){_PS_PAL_ROLES.forEach(([role])=>node.style.setProperty('--pal-'+role,set[role]));node.style.setProperty('--pal-on-primary',_psOnColour(set.primary));}
     const _psLabel=(k)=>({'react-native':'React Native',swiftui:'SwiftUI',vanilla:'HTML/CSS/JS',compose:'Compose','text-effect':'Text effects',npm:'npm','copy-paste':'Copy-paste'})[k]||String(k||'').replace(/-/g,' ').replace(/^./,c=>c.toUpperCase());
     const isVisual=()=>!!_PS_VISUAL[st.template];
     const fwChoices=()=>_PS_FRAMEWORKS[_PS_VISUAL[st.template]]||[];
@@ -10727,8 +10788,136 @@ async function _openProjectStarterWizard(profile){
       const rec=st.analysis&&st.analysis.look;
       const fw=rec&&fwChoices().includes(rec.framework)?rec.framework:_PS_DEFAULT_FW[st.template];
       st.look={template:st.template,style:rec?rec.style:'',motion:rec?rec.motion:'',framework:fw,
-        tailwind:_PS_VISUAL[st.template]==='web'&&!!(rec&&rec.tailwind),why:rec&&rec.why||''};
+        tailwind:_PS_VISUAL[st.template]==='web'&&!!(rec&&rec.tailwind),why:rec&&rec.why||'',
+        palette:_psRecommendedPalette(rec&&rec.style)};
       return st.look;
+    }
+
+    // The planner's palette for this brief, or the first preset that suits the style.
+    function _psRecommendedPalette(style){
+      const rec=st.analysis&&st.analysis.look&&st.analysis.look.palette;
+      if(rec&&rec.light&&rec.dark) return {key:'recommended',name:rec.name||'Recommended',source:'recommended',light:{...rec.light},dark:{...rec.dark},why:rec.why||''};
+      const first=_psPresetsFor(style||'minimal')[0];return _psPreset(first[0]);
+    }
+
+    // Look & feel → Colours: recommended, from the logo, presets or custom, with a
+    // live light and dark preview and contrast checks. Returns {node, paint}.
+    function _psColours(look,changed){
+      const node=_psEl('div','ps-pal');
+      const options=_psEl('div','ps-pal-options');options.setAttribute('role','radiogroup');options.setAttribute('aria-label','Colours');
+      const recPal=st.analysis&&st.analysis.look&&st.analysis.look.palette;
+      const choices=()=>{
+        const list=[];
+        if(recPal&&recPal.light) list.push({key:'recommended',name:recPal.name||'Recommended',meta:'Recommended for the brief',pal:{key:'recommended',name:recPal.name||'Recommended',source:'recommended',light:{...recPal.light},dark:{...recPal.dark},why:recPal.why||''}});
+        if(st.logoPalette) list.push({key:'logo',name:'Your logo',meta:'From your logo',pal:st.logoPalette,logo:st.logoPreview});
+        _psPresetsFor(look.style).forEach(p=>list.push({key:p[0],name:p[1],meta:'Suits '+p[2].map(_psLabel).join(', ').toLowerCase(),pal:_psPreset(p[0])}));
+        return list;
+      };
+      const starKey=()=>st.logoPalette?'logo':(recPal&&recPal.light?'recommended':'');
+      const swatch=(pal)=>{const sw=_psEl('span','ps-pal-swatch');sw.setAttribute('aria-hidden','true');
+        ['light','dark'].forEach(theme=>{const row=_psEl('span','ps-pal-swatch-row');row.dataset.theme=theme;row.style.background=pal[theme].bg;
+          ['surface','text','primary','accent'].forEach(role=>{const chip=_psEl('span','ps-pal-chip');chip.style.background=pal[theme][role];row.append(chip);});sw.append(row);});return sw;};
+      const select=(pal)=>{look.palette={...pal,light:{...pal.light},dark:{...pal.dark}};changed();};
+      const logoInput=_psEl('input');logoInput.type='file';logoInput.accept='image/png,image/jpeg,image/webp,image/gif,image/svg+xml';logoInput.hidden=true;
+      const logoStatus=_psEl('span','ps-pal-logo-status');logoStatus.setAttribute('role','status');
+      logoInput.onchange=async()=>{const file=logoInput.files&&logoInput.files[0];logoInput.value='';if(!file)return;
+        logoStatus.textContent='Reading the logo colours…';
+        try{const got=await _psLogoColours(file);
+          if(!got){logoStatus.textContent='No clear colours in that logo. Pick a preset or your own.';return;}
+          const built=_psFromBrand(got.primary,got.accent);
+          st.logoPalette={key:'logo',name:'Your logo',source:'logo',light:built.light,dark:built.dark,why:'Built from the main colours of your logo.'};
+          st.logoPreview=got.preview;logoStatus.textContent='';paintOptions();select(st.logoPalette);}
+        catch(_error){logoStatus.textContent='That file could not be read as an image.';}};
+      function paintOptions(){
+        options.innerHTML='';
+        choices().forEach((c,i)=>{
+          const card=_psEl('button','ps-pal-card');card.type='button';card.dataset.pal=c.key;card.setAttribute('role','radio');card.style.setProperty('--i',i);
+          if(c.logo){const img=document.createElement('img');img.className='ps-pal-logo';img.src=c.logo;img.alt='';img.draggable=false;card.append(img);}
+          card.append(swatch(c.pal));
+          const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',c.name),_psEl('span','ps-look-desc',c.meta));card.append(text);
+          if(c.key===starKey()) card.append(_psRecStar());
+          card.onclick=()=>select(c.pal);options.append(card);
+        });
+        const custom=_psEl('button','ps-pal-card ps-pal-custom');custom.type='button';custom.dataset.pal='custom';custom.setAttribute('role','radio');
+        const customSw=_psEl('span','ps-pal-swatch ps-pal-swatch-custom');customSw.setAttribute('aria-hidden','true');customSw.innerHTML=_psIcon('pen',16);
+        const ct=_psEl('span','ps-look-text');ct.append(_psEl('span','ps-look-name','Your own'),_psEl('span','ps-look-desc','Pick each colour'));
+        custom.append(customSw,ct);
+        custom.onclick=()=>{const base=look.palette||_psPreset('graphite');look.palette={...base,key:'custom',name:'Custom',source:'custom',light:{...base.light},dark:{...base.dark},why:''};follow=false;changed();};
+        options.append(custom);
+      }
+      paintOptions();
+      const logoRow=_psEl('div','ps-pal-logo-row');
+      const logoBtn=_psEl('button','ps-link ps-pal-logo-btn');logoBtn.type='button';
+      logoBtn.innerHTML=_psIcon('image',14)+'<span>Use logo colours</span>';logoBtn.onclick=()=>logoInput.click();
+      logoRow.append(logoBtn,logoInput,logoStatus);
+      // Preview: both themes side by side (a toggle on narrow screens).
+      const body=_psEl('div','ps-pal-body');
+      const preview=_psEl('div','ps-pal-preview');
+      const seg=_psEl('div','ps-pal-seg');seg.setAttribute('role','tablist');seg.setAttribute('aria-label','Preview theme');
+      let shown='light';
+      const panes={};
+      ['light','dark'].forEach(theme=>{
+        const tab=_psEl('button','ps-pal-seg-btn',theme==='light'?'Light':'Dark');tab.type='button';tab.dataset.theme=theme;tab.setAttribute('role','tab');
+        tab.onclick=()=>{shown=theme;paint();};seg.append(tab);
+        const pane=_psEl('div','ps-pal-pane');pane.dataset.theme=theme;
+        const label=_psEl('span','ps-pal-pane-label',theme==='light'?'Light':'Dark');
+        const mock=_psEl('div','ps-pal-mock');mock.setAttribute('aria-hidden','true');
+        const nav=_psEl('div','ps-pal-nav');nav.append(_psEl('span','ps-pal-dot'),_psEl('span','ps-pal-brand',st.name||'Your project'),_psEl('span','ps-pal-links'));
+        nav.lastChild.append(_psEl('i'),_psEl('i'),_psEl('i'));
+        const hero=_psEl('div','ps-pal-hero');hero.append(_psEl('strong',null,'Made for the people you serve'),_psEl('span',null,'Body text sits on the page background like this.'));
+        const actions=_psEl('div','ps-pal-actions');actions.append(_psEl('span','ps-pal-btn is-primary','Get started'),_psEl('span','ps-pal-btn is-ghost','Learn more'));hero.append(actions);
+        const row=_psEl('div','ps-pal-row');
+        const mini=_psEl('div','ps-pal-mini');mini.append(_psEl('span','ps-pal-tag','New'),_psEl('i'),_psEl('i','is-short'));
+        const field=_psEl('div','ps-pal-field','you@example.com');
+        row.append(mini,field);mock.append(nav,hero,row);
+        const checks=_psEl('div','ps-pal-checks');
+        pane.append(label,mock,checks);panes[theme]={pane,checks};preview.append(pane);
+      });
+      body.append(seg,preview);
+      // Custom editor: light and dark columns; dark can follow light.
+      const editor=_psEl('div','ps-pal-editor');
+      let follow=false;
+      const followBox=_psEl('label','ps-pal-follow');const followInput=_psEl('input');followInput.type='checkbox';
+      followBox.append(followInput,_psEl('span',null,'Work out dark from light'));
+      followInput.onchange=()=>{follow=followInput.checked;if(follow&&look.palette){look.palette.dark=_psDeriveDark(look.palette.light);}changed();};
+      const grid=_psEl('div','ps-pal-edit-grid');
+      grid.append(_psEl('span'),_psEl('span','ps-pal-edit-head','Light'),_psEl('span','ps-pal-edit-head','Dark'));
+      const inputs={};
+      _PS_PAL_ROLES.forEach(([role,label])=>{
+        grid.append(_psEl('span','ps-pal-edit-role',label));
+        ['light','dark'].forEach(theme=>{
+          const cell=_psEl('span','ps-pal-edit-cell');
+          const pick=_psEl('input');pick.type='color';pick.setAttribute('aria-label',label+' ('+theme+')');
+          const hex=_psEl('input','ps-pal-hex');hex.type='text';hex.maxLength=7;hex.spellcheck=false;hex.autocomplete='off';hex.setAttribute('aria-label',label+' hex ('+theme+')');
+          const apply=(v)=>{if(!_psHexOk(v)||!look.palette)return;look.palette[theme][role]=v.toLowerCase();
+            if(follow&&theme==='light') look.palette.dark=_psDeriveDark(look.palette.light);changed();};
+          pick.oninput=()=>apply(pick.value);
+          hex.oninput=()=>{const v=hex.value.trim();apply(v.startsWith('#')?v:'#'+v);};
+          hex.onkeydown=(e)=>e.stopPropagation();
+          cell.append(pick,hex);grid.append(cell);inputs[theme+':'+role]={pick,hex};
+        });
+      });
+      editor.append(followBox,grid);
+      const why=_psEl('p','ps-pal-why');
+      node.append(options,logoRow,body,editor,why);
+      const check=(label,a,b,need)=>{const r=_psContrast(a,b);const ok=r>=need;
+        const el=_psEl('span','ps-pal-check'+(ok?' is-ok':' is-low'));el.innerHTML=_psIcon(ok?'check':'alert',12);
+        el.append(document.createTextNode(label+' '+r.toFixed(1)+':1'+(ok?'':' · low')));return el;};
+      function paint(){
+        const pal=look.palette;if(!pal) return;
+        const key=pal.key||pal.source;
+        options.querySelectorAll('.ps-pal-card').forEach(c=>{const on=c.dataset.pal===key;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
+        ['light','dark'].forEach(theme=>{const {pane,checks}=panes[theme];_psPaletteVars(pane,pal[theme]);
+          pane.classList.toggle('is-shown',shown===theme);checks.innerHTML='';
+          checks.append(check('Text',pal[theme].text,pal[theme].bg,4.5),check('Primary',pal[theme].primary,pal[theme].bg,3),check('Button label',_psOnColour(pal[theme].primary),pal[theme].primary,4.5));});
+        seg.querySelectorAll('.ps-pal-seg-btn').forEach(b=>{const on=b.dataset.theme===shown;b.classList.toggle('is-on',on);b.setAttribute('aria-selected',String(on));});
+        const isCustom=key==='custom';editor.hidden=!isCustom;followInput.checked=follow;
+        Object.entries(inputs).forEach(([k,{pick,hex}])=>{const [theme,role]=k.split(':');const v=pal[theme][role];
+          if(pick.value!==v) pick.value=v;if(document.activeElement!==hex) hex.value=v;
+          const lock=theme==='dark'&&follow;pick.disabled=lock;hex.disabled=lock;});
+        why.textContent=pal.why||'';why.hidden=!pal.why;
+      }
+      return {node,paint};
     }
 
     // Step 7 — Look & feel, preselected from the brief
@@ -10750,7 +10939,7 @@ async function _openProjectStarterWizard(profile){
         const card=_psEl('button','ps-look-card'+(look.style===key?' is-selected':''));card.type='button';card.dataset.style=key;
         card.setAttribute('role','radio');card.setAttribute('aria-checked',String(look.style===key));card.style.setProperty('--i',i);
         const sample=_psEl('span','ps-look-sample');sample.dataset.style=key;sample.setAttribute('aria-hidden','true');
-        sample.append(_psEl('span','ps-look-sample-head','Aa'),_psEl('span','ps-look-sample-line'),_psEl('span','ps-look-sample-line is-short'));
+        sample.append(_psEl('span','ps-look-sample-head','Aa'),_psEl('span','ps-look-sample-line'),_psEl('span','ps-look-sample-line is-short'),_psEl('span','ps-look-sample-btn'));
         const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',label),_psEl('span','ps-look-desc',desc));
         card.append(sample,text);
         if(rec&&rec.style===key) card.append(_psRecStar());
@@ -10758,6 +10947,9 @@ async function _openProjectStarterWizard(profile){
         grid.append(card);
       });
       wrap.append(grid);
+      wrap.append(_psEl('p','ps-look-label','Colours'));
+      const colours=_psColours(look,()=>renderLook.paint());
+      wrap.append(colours.node);
       wrap.append(_psEl('p','ps-look-label','Motion'));
       const motions=_psEl('div','ps-motion-grid');motions.setAttribute('role','radiogroup');motions.setAttribute('aria-label','Motion');
       _PS_MOTIONS.forEach(([key,label,desc])=>{
@@ -10787,6 +10979,8 @@ async function _openProjectStarterWizard(profile){
       }
       wrap.append(stack);
       renderLook.paint=()=>{
+        if(look.palette) _psPaletteVars(wrap,look.palette.light);
+        colours.paint();
         grid.querySelectorAll('.ps-look-card').forEach(c=>{const on=c.dataset.style===look.style;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
         motions.querySelectorAll('.ps-motion-card').forEach(c=>{const on=c.dataset.motion===look.motion;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
         stack.querySelectorAll('[data-framework]').forEach(c=>{const on=c.dataset.framework===look.framework;c.classList.toggle('is-on',on);c.setAttribute('aria-pressed',String(on));});
@@ -10823,6 +11017,7 @@ async function _openProjectStarterWizard(profile){
         const fits=new Set(Object.values(data.components||{}).flat().map(c=>c.library+'/'+c.slug));
         [...st.kit.comps].forEach(id=>{if(!fits.has(id))st.kit.comps.delete(id);});
       }
+      if(look&&look.palette) _psPaletteVars(holder,look.palette.light);
       paintKit(holder);
       setNav({canNext:true});
       paintBuild();
@@ -10904,12 +11099,22 @@ async function _openProjectStarterWizard(profile){
           if(!data.libraries) lists.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));
           else if(!roles.length) lists.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));
           else{
+            // Grouped by library (name, licence, count); the best fits for the
+            // chosen style and motion come first in each group.
             let n=0,any=false;
+            const groups=new Map();
             roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
-              const items=data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' ')));
-              if(!items.length) return;
+              data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' '))).forEach(c=>{
+                if(!groups.has(c.library)) groups.set(c.library,{name:c.library_name,license:c.license||'',items:[]});
+                groups.get(c.library).items.push(c);});
+            });
+            [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(group=>{
+              const items=group.items.sort((a,b)=>(b.recommended-a.recommended)||((b.score||0)-(a.score||0))||a.name.localeCompare(b.name));
               any=true;
-              lists.append(_psEl('p','ps-kit-role',_psLabel(role)));
+              const gh=_psEl('div','ps-kit-lib');
+              gh.append(_psEl('span','ps-kit-lib-name',group.name),_psEl('span','ps-kit-lib-count',items.length+(items.length===1?' component':' components')));
+              if(group.license) gh.append(_psEl('span','ps-kit-lib-license',group.license));
+              lists.append(gh);
               const grid=_psEl('div','ps-kit-grid ps-kit-comps');
               items.forEach(c=>{
                 const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
@@ -10921,12 +11126,12 @@ async function _openProjectStarterWizard(profile){
                     const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                     card.addEventListener('mouseenter',()=>{if(!reduce())img.src=loop;});card.addEventListener('mouseleave',()=>{img.src=still;});
                     card.addEventListener('focus',()=>{if(!reduce())img.src=loop;});card.addEventListener('blur',()=>{img.src=still;});}}
-                else thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));
+                else{thumb.classList.add('is-empty');thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));}
                 thumb.insertAdjacentHTML('beforeend',_psCheck(on));
                 const text=_psEl('span','ps-kit-text');
                 const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
                 if(c.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
-                text.append(top,_psEl('span','ps-kit-meta',c.library_name+' · '+_psLabel(c.kind)));
+                text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
                 const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
                 text.append(chips);card.append(thumb,text);
                 card.onclick=()=>toggle(card,st.kit.comps,id);
@@ -10947,7 +11152,9 @@ async function _openProjectStarterWizard(profile){
     }
     function chosenSkills(){return st.kit.data?st.kit.data.skills.filter(s=>st.kit.skills.has(s.name)):[];}
     function toolkitPayload(){
-      const look=isVisual()&&st.look?{style:st.look.style,motion:st.look.motion,framework:st.look.framework,tailwind:!!st.look.tailwind,why:st.look.why||''}:null;
+      const pal=st.look&&st.look.palette;
+      const look=isVisual()&&st.look?{style:st.look.style,motion:st.look.motion,framework:st.look.framework,tailwind:!!st.look.tailwind,why:st.look.why||'',
+        palette:pal?{name:pal.name,source:pal.source,light:pal.light,dark:pal.dark,why:pal.why||''}:null}:null;
       return {look,skills:chosenSkills().map(s=>s.name),components:chosenComponents().map(c=>({library:c.library,slug:c.slug}))};
     }
     function filesToCreate(){
@@ -11000,7 +11207,13 @@ async function _openProjectStarterWizard(profile){
         const demo=_psEl('span','ps-motion-demo');demo.dataset.motion=l.motion||'none';demo.setAttribute('aria-hidden','true');demo.append(_psEl('span'));
         const stack=_psEl('span','ps-review-stack');stack.setAttribute('aria-hidden','true');
         [_psLabel(l.framework),l.tailwind?'Tailwind CSS':''].filter(Boolean).forEach(x=>stack.append(_psEl('span','ps-review-chip',x)));
-        tiles.append(tile('Style',_psLabel(l.style),sample),tile('Motion',_psLabel(l.motion),demo),
+        if(l.palette){_psPaletteVars(look,l.palette.light);sample.append(_psEl('span','ps-look-sample-btn'));}
+        const palTiles=[];
+        if(l.palette){const sw=_psEl('span','ps-pal-swatch ps-review-pal');sw.setAttribute('aria-hidden','true');
+          ['light','dark'].forEach(theme=>{const row=_psEl('span','ps-pal-swatch-row');row.dataset.theme=theme;row.style.background=l.palette[theme].bg;
+            ['surface','text','primary','accent'].forEach(role=>{const chip=_psEl('span','ps-pal-chip');chip.style.background=l.palette[theme][role];row.append(chip);});sw.append(row);});
+          palTiles.push(tile('Colours',l.palette.name||'Custom',sw));}
+        tiles.append(tile('Style',_psLabel(l.style),sample),...palTiles,tile('Motion',_psLabel(l.motion),demo),
           tile('Built with',_psLabel(l.framework)+(l.tailwind?' + Tailwind CSS':''),stack));
         look.append(tiles);
       }
