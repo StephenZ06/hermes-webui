@@ -1,7 +1,16 @@
 # Project status — hermes-webui
 
 
-## 2026-11-10 (latest): remaining checklist items, pre-existing test failures fixed
+## 2026-11-11 (latest): builder colour palettes, imported skills and libraries, imported-first ordering
+
+- Look & feel gained a Colours section and the Toolkit groups components by library with their licence (a3784def9); details in docs/UIUX-GUIDE.md. `api/project_palette.py` validates palettes and writes CSS tokens for both themes into the new project's docs/UI_UX.md.
+- Imported skills now lead (d471c025e): `/api/skills` marks a skill `imported` when the profile's `skills/.hub/lock.json` records its folder with a trust level other than `builtin`. The Toolkit step ranks imported skills that fit the project first; the Skills page lists their categories first and has an "Imported" filter.
+- Live state, not in the repo: skills from Libraries.dev, ObsidianUI, transitions.dev, impeccable, stop-slop, Appllama and ui-ux-pro-max (brand, banner-design, slides, ui-styling) are installed in the default, architecture, coding-claude and coding-codex profiles under ui-design, motion, writing, mobile and creative. Each profile's SOUL.md has a "Skill priority" section (backups `SOUL.md.bak-2026-11-11`). The default profile's library catalog holds obsidian-ui, rare-ui and transitions-dev (preview images fall back to the README; the container has no browser).
+- Blocked by the security scan and not installed, pending the user's decision: ui-ux-pro-max, design-system, design (ui-ux-pro-max-skill repo) and design-taste-frontend (taste-skill). The HIGH findings read as false positives (tests copying `os.environ`, a `.env` loader, "ngrok" icon names). taste-skill has 1,631 files and times out through the per-file GitHub download; a clone scanned with `tools.skills_guard.scan_skill` gives the same verdict.
+- Gotchas: anonymous GitHub API access allows 60 requests an hour (a token raises it); two installs of the same skill at once collide in the shared quarantine folder; `--name` does not rename the folder (transitions.dev's agent skill sits in `motion/skill` but is named transitions-agent); route tests need agent modules, which the repo venv lacks (`ruamel`): run them with `PYTHONPATH=<agent checkout> uv run --python .venv/bin/python --with ruamel.yaml --with pytest python -m pytest ...` and revert the uv.lock it rewrites.
+- Verified: 167 skill/toolkit tests and 21 builder/Skills browser tests pass; 11 route tests pass with agent modules; deployed d471c025e (healthy, sw.js carries the sha).
+
+## 2026-11-10: remaining checklist items, pre-existing test failures fixed
 
 - Dashboard pixel font (Press Start 2P) is served as WOFF2 (30 KB) with the TTF as fallback (b4caebefb); tests/test_pixel_font_woff2_browser.py checks the browser fetches the WOFF2.
 - Checked, no change needed: every server-calling search box is debounced (sessions, notebook, project bind path, workspace path suggestions); the achievement grid uses `loading="lazy"`; the Dashboard's idle image prefetch is deliberate (cards appear with their art).
