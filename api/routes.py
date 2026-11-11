@@ -875,6 +875,26 @@ def _normalize_disabled_set(values) -> set:
     return {str(v).strip() for v in values if str(v).strip()}
 
 
+def _imported_skill_paths(skills_dir: Path) -> set[str]:
+    """Folders (relative to ``skills_dir``) of skills the hub lock records as
+    installed from a hub or a link, not as built-ins. Unreadable lock: none."""
+    try:
+        installed = json.loads((skills_dir / ".hub" / "lock.json").read_text(encoding="utf-8")).get("installed")
+    except (OSError, ValueError, AttributeError):
+        return set()
+    if not isinstance(installed, dict):
+        return set()
+    return {str(entry.get("install_path")).strip("/") for entry in installed.values()
+            if isinstance(entry, dict) and entry.get("install_path") and entry.get("trust_level") != "builtin"}
+
+
+def _skill_rel_path(skill_dir: Path, skills_dir: Path) -> str | None:
+    try:
+        return skill_dir.relative_to(skills_dir).as_posix()
+    except ValueError:
+        return None
+
+
 def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict:
     """List skills using an explicit local skills directory.
 
@@ -904,6 +924,7 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
     seen_names: set[str] = set()
     disabled = _get_disabled_skill_names_for_profile()
     search_dirs = _active_skill_search_dirs(skills_dir)
+    imported_paths = _imported_skill_paths(skills_dir)
 
     for scan_dir in search_dirs:
         for skill_md in iter_skill_index_files(scan_dir, "SKILL.md"):
@@ -939,6 +960,9 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
                         # When the skill's folder was added (its last entry
                         # change): the Skills page's "Recently added" filter.
                         "added": int(skill_dir.stat().st_mtime),
+                        # Installed from a hub or a link (not a built-in): the
+                        # Skills page and the project builder list these first.
+                        "imported": _skill_rel_path(skill_dir, skills_dir) in imported_paths,
                     }
                 )
             except (UnicodeDecodeError, PermissionError) as e:

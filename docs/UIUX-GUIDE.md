@@ -205,7 +205,8 @@ The create-project wizard is laid out as a builder: the step on the left and a
 live Build summary on the right (at 900px and below it folds into a bar under the
 step). Website, Web app, iOS and Android projects get a Look & feel step
 preselected from the brief, with the reason shown, then every template gets a
-Toolkit step (recommended skills ticked; visual templates also get catalog
+Toolkit step (recommended skills ticked, imported skills that fit the project
+first; visual templates also get catalog
 components, grouped by library with its licence, best fits for the style first)
 and a Review step whose primary action is Create & start building. Between 721px
 and 1023px the stepper shows only the current label.
@@ -244,7 +245,10 @@ A filter sits beside a search box as a 32px square with an accent outline
 at a time in labelled groups. The Toolkit step and the Skills page use it. On
 the Skills page the tabs, the labelled "Categories" divider and the search row
 are 12px apart; library filters match the search box's 32px height and are as
-wide as their labels. Category folding animates its height.
+wide as their labels. Category folding animates its height. Skills installed
+from a hub or a link (`imported` in `/api/skills`, read from the hub lock) lead
+the list: their categories come first and they come first within each
+category, and the filter has an "Imported" choice.
 
 The builder dialog reaches its new size before a step's content enters: when a
 step change makes the dialog glide (340ms), the step and its card staggers wait

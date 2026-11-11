@@ -6691,6 +6691,7 @@ function renderSkills(skills, opts = {}) {
   ) : skills;
   if (f === 'enabled') filtered = filtered.filter(s => !s.disabled);
   else if (f === 'disabled') filtered = filtered.filter(s => s.disabled);
+  else if (f === 'imported') filtered = filtered.filter(s => s.imported);
   else if (f.startsWith('cat:')) filtered = filtered.filter(s => (s.category || '(general)') === f.slice(4));
   // Group by category; "Recently added" is one group, newest first.
   const cats = {};
@@ -6711,7 +6712,9 @@ function renderSkills(skills, opts = {}) {
   box.innerHTML = '';
   if (opts.quiet) { box.classList.remove('is-refresh'); void box.offsetWidth; box.classList.add('is-refresh'); }
   if (!Object.keys(cats).length) { box.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(t('skills_no_match'))}</div>`; return; }
-  const order = f === 'recent' ? Object.entries(cats) : Object.entries(cats).sort();
+  // Skills you imported lead: their categories first, and first within each category.
+  const hasImported = items => items.some(s => s.imported);
+  const order = f === 'recent' ? Object.entries(cats) : Object.entries(cats).sort(([a, x], [b, y]) => (hasImported(y) - hasImported(x)) || (a < b ? -1 : a > b ? 1 : 0));
   for (const [cat, items] of order) {
     const collapsed = f !== 'recent' && _collapsedCats.has(cat);
     const sec = document.createElement('div');
@@ -6727,7 +6730,7 @@ function renderSkills(skills, opts = {}) {
     rows.className = 'skills-cat-items';
     rows.hidden = collapsed;
     sec.appendChild(rows);
-    for (const skill of (f === 'recent' ? items : items.sort((a,b) => a.name.localeCompare(b.name)))) {
+    for (const skill of (f === 'recent' ? items : items.sort((a,b) => (!!b.imported - !!a.imported) || a.name.localeCompare(b.name)))) {
       const el = document.createElement('div');
       el.className = 'skill-item' + (skill.disabled ? ' disabled' : '');
       el.dataset.skillName = skill.name;
@@ -6757,14 +6760,14 @@ function filterSkills() {
   if (_skillsData) renderSkills(_skillsData, {quiet: true});
 }
 
-// The filter beside "Search skills…": a category, recently added, enabled or
+// The filter beside "Search skills…": a category, recently added, imported, enabled or
 // turned off. '' shows every skill by category.
 let _skillsFilter = '';
 const _SKILLS_RECENT = 12;
 function _skillsFilterLabel(value) {
   if (!value) return 'Filter skills';
   if (value.startsWith('cat:')) return 'Filter: ' + value.slice(4);
-  return 'Filter: ' + ({recent: 'Recently added', enabled: 'Turned on', disabled: 'Turned off'}[value] || value);
+  return 'Filter: ' + ({recent: 'Recently added', imported: 'Imported', enabled: 'Turned on', disabled: 'Turned off'}[value] || value);
 }
 function _paintSkillsFilterBtn() {
   const btn = $('skillsFilterBtn'); if (!btn) return;
@@ -6778,6 +6781,7 @@ function openSkillsFilter(event) {
   openFilterMenu($('skillsFilterBtn'), [
     {items: [{value: '', label: 'All skills', count: skills.length},
              {value: 'recent', label: 'Recently added', count: Math.min(_SKILLS_RECENT, skills.length)},
+             {value: 'imported', label: 'Imported', count: skills.filter(s => s.imported).length},
              {value: 'enabled', label: 'Turned on', count: skills.filter(s => !s.disabled).length},
              {value: 'disabled', label: 'Turned off', count: skills.filter(s => s.disabled).length}]},
     {label: 'Categories', items: cats.map(c => ({value: 'cat:' + c, label: c, count: skills.filter(s => (s.category || '(general)') === c).length}))},

@@ -60,7 +60,8 @@ def _words(text: str) -> set[str]:
 
 
 def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int = 5) -> list[dict]:
-    """Every skill with a score; the best ``limit`` scoring 2 or more are recommended."""
+    """Every skill with a score; the best ``limit`` scoring 2 or more are recommended,
+    imported skills that fit the project first."""
     hints = _words(_TEMPLATE_HINTS.get(template, ""))
     brief_words = _words(brief)
     scored = []
@@ -72,8 +73,10 @@ def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int 
                                str(skill.get("description") or "")]))
         score = 2 * len(own & hints) + len(own & brief_words)
         scored.append({"name": name, "category": str(skill.get("category") or ""),
-                       "description": str(skill.get("description") or "")[:240], "score": score, "recommended": False})
-    scored.sort(key=lambda s: (-s["score"], s["name"]))
+                       "description": str(skill.get("description") or "")[:240], "score": score,
+                       "imported": bool(skill.get("imported")), "recommended": False})
+    # Skills the user imported come ahead of built-ins, but only when they fit the project.
+    scored.sort(key=lambda s: (not (s["imported"] and s["score"] >= 2), -s["score"], s["name"]))
     for item in scored[:limit]:
         item["recommended"] = item["score"] >= 2
     return scored

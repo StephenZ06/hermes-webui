@@ -160,7 +160,7 @@ def test_skills_filter_narrows_to_a_category_and_folding_is_animated(skills):
     cats = skills.evaluate("() => [...document.querySelectorAll('#skillsList .skills-cat-header')].map(h => h.dataset.cat)")
     skills.click("#skillsFilterBtn")
     texts = skills.locator(".filter-menu-item .filter-menu-text").all_inner_texts()
-    assert texts[:4] == ["All skills", "Recently added", "Turned on", "Turned off"], texts
+    assert texts[:5] == ["All skills", "Recently added", "Imported", "Turned on", "Turned off"], texts
     skills.click(f".filter-menu-item >> text={cats[-1]}")
     assert skills.evaluate("() => [...document.querySelectorAll('#skillsList .skills-cat-header')].map(h => h.dataset.cat)") == [cats[-1]]
     skills.click("#skillsFilterBtn")
@@ -171,6 +171,30 @@ def test_skills_filter_narrows_to_a_category_and_folding_is_animated(skills):
     skills.click("#skillsList .skills-cat-header >> nth=0")
     assert skills.evaluate("() => document.querySelector('#skillsList .skills-cat-items').getAnimations().length") == 1
     skills.wait_for_function("() => document.querySelector('#skillsList .skills-cat-items').hidden")
+
+
+IMPORTED = {"skills": [
+    {"name": "arxiv", "category": "research", "description": "Papers"},
+    {"name": "claude-design", "category": "creative", "description": "Built-in design"},
+    {"name": "banner-design", "category": "creative", "description": "Banners", "imported": True},
+    {"name": "ascii-art", "category": "creative", "description": "Art"},
+    {"name": "better-ui", "category": "ui-design", "description": "UI polish", "imported": True},
+], "categories": ["creative", "research", "ui-design"]}
+
+
+def test_imported_skills_lead_the_skills_page_and_have_their_own_filter(page):
+    page.route("**/api/skills", lambda r: r.fulfill(json=IMPORTED))
+    page.evaluate("async () => { _skillsData = null; _skillsFilter = ''; await switchPanel('skills'); }")
+    page.wait_for_selector("#skillsList .skills-cat-header")
+    cats = page.evaluate("() => [...document.querySelectorAll('#skillsList .skills-cat-header')].map(h => h.dataset.cat)")
+    # Categories holding an imported skill first, then the rest, each alphabetical.
+    assert cats == ["creative", "ui-design", "research"], cats
+    names = page.eval_on_selector_all("#skillsList .skills-category >> nth=0", "els => [...els[0].querySelectorAll('.skill-name')].map(e => e.textContent)")
+    assert names == ["banner-design", "ascii-art", "claude-design"], names
+    page.click("#skillsFilterBtn")
+    page.click(".filter-menu-item >> text=Imported")
+    shown = page.eval_on_selector_all("#skillsList .skill-name", "els => els.map(e => e.textContent)")
+    assert shown == ["banner-design", "better-ui"], shown
 
 
 def test_add_dialog_eases_straight_to_its_new_height_without_a_snap(skills):
