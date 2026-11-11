@@ -204,12 +204,25 @@ no timer. Kanban's visibility comes from the last saved choice in `localStorage`
 The create-project wizard is laid out as a builder: the step on the left and a
 live Build summary on the right (at 900px and below it folds into a bar under the
 step). Website, Web app, iOS and Android projects get a Look & feel step
-preselected from the brief, with the reason shown, then every template gets a
-Toolkit step (recommended skills ticked, imported skills that fit the project
-first; visual templates also get catalog
-components, grouped by library with its licence, best fits for the style first)
-and a Review step whose primary action is Create & start building. Between 721px
-and 1023px the stepper shows only the current label.
+preselected from the brief (stars mark the planner's picks; there is no separate
+banner), split into Style, Colours, Motion and Built with by dividers with 20px
+above and below. Every template then gets a Toolkit step and a Review step whose
+primary action is Create & start building. Between 721px and 1023px the stepper
+shows only the current label.
+
+Toolkit lists skills as a table (tick, skill, category, what it does, star):
+recommended skills are ticked and imported skills that fit the project come
+first. "Show all N skills" opens category tabs with a sliding pill; choosing a
+category slides the rows across and eases the table to its new height. At 560px
+and below the category and description columns fold into the skill cell. Visual
+templates also get catalog components, grouped by library with its licence, best
+fits for the style first; a component with a captured loop plays it while it is
+on screen (a "Live" badge marks it; the still stays under reduced motion).
+
+Text in option cards, palette preview buttons and contrast checks is trimmed to
+its capitals and baseline (`text-box: trim-both cap alphabetic`) so padding
+centres it; Zeus 2.0 adds 1px to option text because Courier New draws its
+capitals taller than it declares.
 
 Look & feel has a Colours section: the planner's palette for the brief (starred),
 "Use logo colours" (the logo is read in the browser with a canvas and never
@@ -223,7 +236,10 @@ written into the project's `docs/UI_UX.md` as CSS tokens for both themes.
 
 Cards in these steps sit on an 8px grid and share one size per row; the browser
 tests measure this at 1440, 820 and 390 widths. Recommendations reuse the star
-artwork (`static/wizard/star.png`) at top/right 8px, as on the Details step.
+artwork (`static/wizard/star.png`) in the card's top-right corner: 8px in, or
+13px on cards with a picture on top so it sits inside the picture. Recommended
+pills are not used. Palette changes fade over 320ms; the custom colour editor
+and the category tabs open like an accordion (grid rows 0fr to 1fr).
 
 The Skills page has Skills / Libraries tabs. Library components show their
 preview (the loop plays on hover, never under reduced motion), tag chips and a

@@ -56,7 +56,9 @@ def _to_look(page):
 
 
 def _settled(page):
-    page.wait_for_function("() => [...document.querySelectorAll('.ps-pal-mock')].every(m => !m.getAnimations().length)")
+    # Colour changes fade (CSS transitions); let them start, then wait them out.
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    page.wait_for_function("() => [...document.querySelectorAll('.ps-pal-mock')].every(m => !m.getAnimations({subtree: true}).length)")
 
 
 def _mock_bg(page, theme):
@@ -90,6 +92,9 @@ def test_a_preset_and_your_own_colours_reach_create(page):
     assert _mock_bg(page, "light") == _rgb("#f4f7f2")
     page.click(".ps-pal-card[data-pal=custom]")
     assert page.locator(".ps-pal-editor").is_visible()
+    # The editor opens like an accordion; type once it has.
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    page.wait_for_function("() => !document.querySelector('.ps-pal-editor-wrap').getAnimations({subtree: true}).length")
     # Starts from the palette that was showing.
     assert page.input_value("[aria-label='Primary hex (light)']") == "#2e6b3f"
     page.fill("[aria-label='Primary hex (light)']", "#123456")

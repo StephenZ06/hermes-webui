@@ -100,7 +100,7 @@ def test_toolkit_search_and_filter_narrow_the_lists_and_ticks_update_in_place(pa
     card = page.locator(".ps-kit-skill[data-skill=pdf]")
     handle = card.element_handle()
     card.click()
-    assert card.get_attribute("aria-pressed") == "true"
+    assert card.locator("[role=checkbox]").get_attribute("aria-checked") == "true"
     assert page.evaluate("(el) => el.isConnected", handle)  # toggled in place, not repainted
     assert page.inner_text(".ps-kit-count >> nth=0") == "3 chosen"
 

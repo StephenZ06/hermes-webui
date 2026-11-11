@@ -18491,3 +18491,108 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
   .ps-actions:has(.ps-extra:not([hidden])) .ps-extra{margin-right:0;}
   .ps-actions button{white-space:nowrap;}
 }
+
+/* ── Builder steps 5-7 (Details, Look & feel, Toolkit) ──────────────────────
+   Text in option cards and the palette preview is trimmed to its capitals and
+   baseline (text-box), so padding alone centres it on its key, icon or button
+   in any font, Zeus 2.0's Courier New included. */
+.ps-options .ps-option{padding:16px 12px;}
+.ps-option-text{gap:8px;}
+.ps-option-label,.ps-option-detail{text-box:trim-both cap alphabetic;}
+/* Courier New (Zeus 2.0) draws its capitals about 1px taller than it declares, so
+   the trimmed text would sit high. */
+:root[data-skin="zeus-2"] .ps-option-text{position:relative;top:1px;}
+
+/* Look & feel: sections split by a divider with equal space above and below. */
+.ps-look-secs{display:flex;flex-direction:column;}
+.ps-look-sec{display:flex;flex-direction:column;gap:12px;}
+.ps-look-sec+.ps-look-sec{margin-top:20px;padding-top:20px;border-top:1px solid var(--border2);}
+.ps-look-secs .ps-look-label{margin:0;text-box:trim-both cap alphabetic;}
+.ps-look-secs .ps-pal-why{text-box:trim-both cap alphabetic;}
+.ps-motion-card .ps-option-star{position:absolute;top:8px;right:8px;z-index:2;}
+/* Cards with a picture on top: the star sits inside its top-right corner. */
+.ps-pal-card .ps-option-star,.ps-look-card .ps-option-star,.ps-kit-comp .ps-option-star{position:absolute;top:13px;right:13px;z-index:2;}
+.ps-pal-logo{top:auto;bottom:10px;right:10px;width:22px;height:22px;}
+/* Palette changes fade instead of snapping. */
+:is(.ps-pal-mock,.ps-pal-mock *,.ps-look-sample,.ps-look-sample *,.ps-motion-demo span){transition:background-color .32s cubic-bezier(.22,1,.36,1),color .32s cubic-bezier(.22,1,.36,1),box-shadow .32s cubic-bezier(.22,1,.36,1),border-color .32s cubic-bezier(.22,1,.36,1);}
+.ps-pal-btn{padding:7px 10px;text-box:trim-both cap alphabetic;}
+.ps-pal-tag{padding:4px 6px;text-box:trim-both cap alphabetic;}
+.ps-pal-field{padding:8px;text-box:trim-both cap alphabetic;}
+.ps-pal-check{align-items:center;}
+.ps-pal-check .ps-icon{flex:none;}
+.ps-pal-check-text{text-box:trim-both cap alphabetic;}
+.ps-pal-checks{gap:8px 12px;}
+/* Light/Dark switch (narrow screens): a pill slides between the two. */
+.ps-pal-seg{position:relative;}
+.ps-pal-seg-btn{position:relative;z-index:1;}
+.ps-pal-seg.has-pill .ps-pal-seg-btn.is-on{background:transparent;box-shadow:none;}
+.ps-pal-seg-pill{position:absolute;top:2px;bottom:2px;left:0;width:0;border-radius:6px;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.18);opacity:0;transition:transform .25s cubic-bezier(.22,1,.36,1),width .25s cubic-bezier(.22,1,.36,1);}
+.ps-pal-seg.has-pill .ps-pal-seg-pill{opacity:1;}
+@media (max-width:560px){.ps-pal-pane.is-shown{animation:ps-pal-pane-in .3s cubic-bezier(.22,1,.36,1);}}
+@keyframes ps-pal-pane-in{from{opacity:0;transform:translateY(4px);filter:blur(2px);}to{opacity:1;transform:none;filter:none;}}
+/* Your own colours open like an accordion. */
+.ps-pal-editor-wrap{display:grid;grid-template-rows:0fr;transition:grid-template-rows .35s cubic-bezier(.22,1,.36,1),margin .35s cubic-bezier(.22,1,.36,1);margin-top:-12px;}
+.ps-pal-editor-wrap.is-open{grid-template-rows:1fr;margin-top:0;}
+.ps-pal-editor-inner{min-height:0;overflow:hidden;}
+.ps-pal-editor-wrap .ps-pal-editor{opacity:0;transform:translateY(-4px);visibility:hidden;transition:opacity .25s ease,transform .35s cubic-bezier(.22,1,.36,1),visibility 0s linear .35s;}
+.ps-pal-editor-wrap.is-open .ps-pal-editor{opacity:1;transform:none;visibility:visible;transition:opacity .25s ease .06s,transform .35s cubic-bezier(.22,1,.36,1),visibility 0s;}
+
+/* Toolkit: skills as a table. */
+.ps-kit-skills{display:flex;flex-direction:column;}
+.ps-kit-cats-wrap{display:grid;grid-template-rows:0fr;transition:grid-template-rows .35s cubic-bezier(.22,1,.36,1);}
+.ps-kit-cats-wrap.is-open{grid-template-rows:1fr;}
+.ps-kit-cats-inner{min-height:0;overflow:hidden;}
+.ps-kit-cats{position:relative;display:flex;flex-wrap:wrap;gap:2px;padding:3px;margin-bottom:10px;border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--text) 3%,transparent);opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .35s cubic-bezier(.22,1,.36,1);}
+.ps-kit-cats-wrap.is-open .ps-kit-cats{opacity:1;transform:none;}
+.ps-kit-cat{position:relative;z-index:1;flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:color .25s cubic-bezier(.22,1,.36,1);}
+.ps-kit-cat:hover,.ps-kit-cat.is-on{color:var(--text);}
+.ps-kit-cat:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.ps-kit-cat-label{text-box:trim-both cap alphabetic;}
+.ps-kit-cat-n{font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted);text-box:trim-both cap alphabetic;}
+.ps-kit-cats-pill{position:absolute;top:0;left:0;height:28px;width:0;border-radius:7px;background:var(--accent-bg);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent);opacity:0;transition:transform .25s cubic-bezier(.22,1,.36,1),width .25s cubic-bezier(.22,1,.36,1),height .25s cubic-bezier(.22,1,.36,1);}
+.ps-kit-cats.has-pill .ps-kit-cats-pill{opacity:1;}
+.ps-kit-table-frame{position:relative;overflow:hidden;border:1px solid var(--border2);border-radius:12px;background:var(--bg);}
+.ps-kit-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;}
+.ps-kit-table[hidden]{display:none;}
+.ps-kit-ghost{position:absolute;inset:0 0 auto 0;pointer-events:none;}
+.ps-kit-table th{height:32px;padding:0 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border2);background:color-mix(in srgb,var(--text) 3%,var(--bg));}
+.ps-kit-table td{padding:10px;border-top:1px solid color-mix(in srgb,var(--border2) 60%,transparent);vertical-align:middle;}
+.ps-kit-table tbody tr:first-child td{border-top:0;}
+.ps-kit-col-check{width:44px;}
+.ps-kit-table th.ps-kit-col-check,.ps-kit-table td.ps-kit-col-check{padding-right:0;}
+.ps-kit-col-name{width:28%;}
+.ps-kit-col-cat{width:18%;}
+.ps-kit-col-star{width:40px;text-align:right;}
+.ps-kit-table td.ps-kit-col-star{padding-left:0;}
+.ps-kit-skill{cursor:pointer;transition:background-color .2s cubic-bezier(.22,1,.36,1);animation:ps-kit-row-in .3s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(min(var(--i,0),10) * 20ms);}
+@keyframes ps-kit-row-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+.ps-kit-lists.is-quiet .ps-kit-skill{animation:none;}
+.ps-kit-skill:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
+.ps-kit-skill.is-selected{background:var(--accent-bg);}
+.ps-kit-tick{display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer;border-radius:6px;}
+.ps-kit-tick:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.ps-kit-table .ps-kit-name{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:18px;}
+.ps-kit-table td.ps-kit-col-cat{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ps-kit-table .ps-kit-desc{-webkit-line-clamp:2;}
+.ps-kit-col-star .ps-option-star{position:static;display:inline-block;vertical-align:middle;}
+.ps-kit-skills .ps-kit-empty[hidden]{display:none;}
+.ps-kit-skills .ps-kit-more{margin-top:10px;}
+/* Ticks draw in (transitions.dev "Checkbox check"). */
+.ps-kit-check .ps-icon :is(path,polyline){stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .15s cubic-bezier(.22,1,.36,1);}
+.ps-kit-check.is-on .ps-icon :is(path,polyline){stroke-dashoffset:0;transition:stroke-dashoffset .35s cubic-bezier(.22,1,.36,1);}
+.ps-kit-check.is-on{color:var(--bg);}
+.ps-kit-check:not(.is-on){color:var(--bg);}
+/* Components: moving ones play their loop while on screen. */
+.ps-kit-live{position:absolute;left:8px;bottom:8px;display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:999px;background:color-mix(in srgb,#000 55%,transparent);color:#fff;font-size:10px;font-weight:700;letter-spacing:.02em;backdrop-filter:blur(4px);}
+.ps-kit-live span{text-box:trim-both cap alphabetic;}
+.ps-kit-comp .ps-kit-name{padding-right:0;}
+.ps-kit-sub{display:none;}
+@media (max-width:560px){
+  .ps-kit-col-cat,.ps-kit-col-desc{display:none;}
+  .ps-kit-col-name{width:auto;}
+  .ps-kit-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:12px;line-height:16px;color:var(--muted);}
+}
+@media (prefers-reduced-motion:reduce){
+  .ps-pal-editor-wrap,.ps-pal-editor-wrap .ps-pal-editor,.ps-kit-cats-wrap,.ps-kit-cats,.ps-kit-cats-pill,.ps-pal-seg-pill,.ps-kit-skill,.ps-kit-check .ps-icon :is(path,polyline){transition:none;animation:none;}
+  :is(.ps-pal-mock,.ps-pal-mock *,.ps-look-sample,.ps-look-sample *){transition:none;}
+}

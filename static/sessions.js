@@ -10039,6 +10039,7 @@ const _PROJECT_STARTER_ICONS={
   pen:'<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/><path d="m14.5 5.5 3 3"/>',
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
   alert:'<path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
+  play:'<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>',
 };
 // Full-colour artwork for the start choices and templates (icons/new-workspace,
 // optically normalised to the same visual size in static/project-starter/).
@@ -10198,7 +10199,7 @@ async function _openProjectStarterWizard(profile){
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false,
     look:null,startBuilding:false,
-    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false,q:'',filter:''}};
+    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false,cat:'',q:'',filter:''}};
   const folderCache=new Map();
 
   return new Promise(resolve=>{
@@ -10778,8 +10779,8 @@ async function _openProjectStarterWizard(profile){
       }finally{URL.revokeObjectURL(url);}
     }
     const _psOnColour=(h)=>_psContrast(h,'#ffffff')>=_psContrast(h,'#111111')?'#ffffff':'#111111';
-    function _psPaletteVars(node,set){_PS_PAL_ROLES.forEach(([role])=>node.style.setProperty('--pal-'+role,set[role]));node.style.setProperty('--pal-on-primary',_psOnColour(set.primary));}
-    const _psLabel=(k)=>({'react-native':'React Native',swiftui:'SwiftUI',vanilla:'HTML/CSS/JS',compose:'Compose','text-effect':'Text effects',npm:'npm','copy-paste':'Copy-paste'})[k]||String(k||'').replace(/-/g,' ').replace(/^./,c=>c.toUpperCase());
+    function _psPaletteVars(node,set){node.classList.add('ps-pal-vars');_PS_PAL_ROLES.forEach(([role])=>node.style.setProperty('--pal-'+role,set[role]));node.style.setProperty('--pal-on-primary',_psOnColour(set.primary));}
+    const _psLabel=(k)=>({'react-native':'React Native',swiftui:'SwiftUI',vanilla:'HTML/CSS/JS',compose:'Compose','text-effect':'Text effects',npm:'npm','copy-paste':'Copy-paste'})[k]||String(k||'').replace(/-/g,' ').replace(/^./,c=>c.toUpperCase()).replace(/\b(ui|ux|seo|api|cli|pdf|ai|mcp)\b/gi,m=>m.toUpperCase());
     const isVisual=()=>!!_PS_VISUAL[st.template];
     const fwChoices=()=>_PS_FRAMEWORKS[_PS_VISUAL[st.template]]||[];
     const afterDetails=()=>go(isVisual()?7:8,1);
@@ -10808,7 +10809,7 @@ async function _openProjectStarterWizard(profile){
       const recPal=st.analysis&&st.analysis.look&&st.analysis.look.palette;
       const choices=()=>{
         const list=[];
-        if(recPal&&recPal.light) list.push({key:'recommended',name:recPal.name||'Recommended',meta:'Recommended for the brief',pal:{key:'recommended',name:recPal.name||'Recommended',source:'recommended',light:{...recPal.light},dark:{...recPal.dark},why:recPal.why||''}});
+        if(recPal&&recPal.light) list.push({key:'recommended',name:recPal.name||'Recommended',meta:'Picked for your brief',pal:{key:'recommended',name:recPal.name||'Recommended',source:'recommended',light:{...recPal.light},dark:{...recPal.dark},why:recPal.why||''}});
         if(st.logoPalette) list.push({key:'logo',name:'Your logo',meta:'From your logo',pal:st.logoPalette,logo:st.logoPreview});
         _psPresetsFor(look.style).forEach(p=>list.push({key:p[0],name:p[1],meta:'Suits '+p[2].map(_psLabel).join(', ').toLowerCase(),pal:_psPreset(p[0])}));
         return list;
@@ -10832,9 +10833,9 @@ async function _openProjectStarterWizard(profile){
         options.innerHTML='';
         choices().forEach((c,i)=>{
           const card=_psEl('button','ps-pal-card');card.type='button';card.dataset.pal=c.key;card.setAttribute('role','radio');card.style.setProperty('--i',i);
-          if(c.logo){const img=document.createElement('img');img.className='ps-pal-logo';img.src=c.logo;img.alt='';img.draggable=false;card.append(img);}
           card.append(swatch(c.pal));
           const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',c.name),_psEl('span','ps-look-desc',c.meta));card.append(text);
+          if(c.logo){const img=document.createElement('img');img.className='ps-pal-logo';img.src=c.logo;img.alt='';img.draggable=false;card.append(img);}
           if(c.key===starKey()) card.append(_psRecStar());
           card.onclick=()=>select(c.pal);options.append(card);
         });
@@ -10854,6 +10855,7 @@ async function _openProjectStarterWizard(profile){
       const body=_psEl('div','ps-pal-body');
       const preview=_psEl('div','ps-pal-preview');
       const seg=_psEl('div','ps-pal-seg');seg.setAttribute('role','tablist');seg.setAttribute('aria-label','Preview theme');
+      const segPill=_psEl('span','ps-pal-seg-pill');segPill.setAttribute('aria-hidden','true');seg.append(segPill);
       let shown='light';
       const panes={};
       ['light','dark'].forEach(theme=>{
@@ -10874,6 +10876,8 @@ async function _openProjectStarterWizard(profile){
         pane.append(label,mock,checks);panes[theme]={pane,checks};preview.append(pane);
       });
       body.append(seg,preview);
+      if(window.ResizeObserver) new ResizeObserver(()=>{const on=seg.querySelector('.ps-pal-seg-btn.is-on');
+        if(on&&on.offsetWidth){segPill.style.width=on.offsetWidth+'px';segPill.style.transform='translateX('+on.offsetLeft+'px)';seg.classList.add('has-pill');}}).observe(seg);
       // Custom editor: light and dark columns; dark can follow light.
       const editor=_psEl('div','ps-pal-editor');
       let follow=false;
@@ -10898,11 +10902,12 @@ async function _openProjectStarterWizard(profile){
         });
       });
       editor.append(followBox,grid);
+      const editorWrap=_psEl('div','ps-pal-editor-wrap');const editorInner=_psEl('div','ps-pal-editor-inner');editorInner.append(editor);editorWrap.append(editorInner);
       const why=_psEl('p','ps-pal-why');
-      node.append(options,logoRow,body,editor,why);
+      node.append(options,logoRow,body,editorWrap,why);
       const check=(label,a,b,need)=>{const r=_psContrast(a,b);const ok=r>=need;
         const el=_psEl('span','ps-pal-check'+(ok?' is-ok':' is-low'));el.innerHTML=_psIcon(ok?'check':'alert',12);
-        el.append(document.createTextNode(label+' '+r.toFixed(1)+':1'+(ok?'':' · low')));return el;};
+        el.append(_psEl('span','ps-pal-check-text',label+' '+r.toFixed(1)+':1'+(ok?'':' · low')));return el;};
       function paint(){
         const pal=look.palette;if(!pal) return;
         const key=pal.key||pal.source;
@@ -10910,8 +10915,9 @@ async function _openProjectStarterWizard(profile){
         ['light','dark'].forEach(theme=>{const {pane,checks}=panes[theme];_psPaletteVars(pane,pal[theme]);
           pane.classList.toggle('is-shown',shown===theme);checks.innerHTML='';
           checks.append(check('Text',pal[theme].text,pal[theme].bg,4.5),check('Primary',pal[theme].primary,pal[theme].bg,3),check('Button label',_psOnColour(pal[theme].primary),pal[theme].primary,4.5));});
-        seg.querySelectorAll('.ps-pal-seg-btn').forEach(b=>{const on=b.dataset.theme===shown;b.classList.toggle('is-on',on);b.setAttribute('aria-selected',String(on));});
-        const isCustom=key==='custom';editor.hidden=!isCustom;followInput.checked=follow;
+        seg.querySelectorAll('.ps-pal-seg-btn').forEach(b=>{const on=b.dataset.theme===shown;b.classList.toggle('is-on',on);b.setAttribute('aria-selected',String(on));
+          if(on&&b.offsetWidth){segPill.style.width=b.offsetWidth+'px';segPill.style.transform='translateX('+b.offsetLeft+'px)';seg.classList.add('has-pill');}});
+        const isCustom=key==='custom';editorWrap.classList.toggle('is-open',isCustom);editor.inert=!isCustom;followInput.checked=follow;
         Object.entries(inputs).forEach(([k,{pick,hex}])=>{const [theme,role]=k.split(':');const v=pal[theme][role];
           if(pick.value!==v) pick.value=v;if(document.activeElement!==hex) hex.value=v;
           const lock=theme==='dark'&&follow;pick.disabled=lock;hex.disabled=lock;});
@@ -10925,15 +10931,11 @@ async function _openProjectStarterWizard(profile){
       const look=ensureLook();const rec=st.analysis&&st.analysis.look;
       sub.textContent='How the '+(templates.find(t=>t.key===st.template)||{label:'project'}).label+' should look and move.';
       const wrap=section('Choose the look and feel:');
-      if(rec){
-        const banner=_psEl('div','ps-look-rec');
-        banner.innerHTML='<img src="static/wizard/star.png" width="18" height="18" alt="" decoding="async" draggable="false">';
-        const text=_psEl('div','ps-look-rec-text');
-        text.append(_psEl('strong',null,'Recommended: '+_psLabel(rec.style)+' · '+_psLabel(rec.motion)));
-        if(rec.why) text.append(_psEl('span',null,rec.why));
-        banner.append(text);wrap.append(banner);
-      }
-      wrap.append(_psEl('p','ps-look-label','Style'));
+      // Style, Colours, Motion and Built with, split by dividers; a star marks
+      // the planner's pick in each.
+      const secs=_psEl('div','ps-look-secs');wrap.append(secs);
+      const lookSec=(label,...nodes)=>{const sec=_psEl('div','ps-look-sec');sec.dataset.sec=label.toLowerCase();
+        sec.append(_psEl('p','ps-look-label',label),...nodes);secs.append(sec);return sec;};
       const grid=_psEl('div','ps-look-grid');grid.setAttribute('role','radiogroup');grid.setAttribute('aria-label','Style');
       _PS_STYLES.forEach(([key,label,desc],i)=>{
         const card=_psEl('button','ps-look-card'+(look.style===key?' is-selected':''));card.type='button';card.dataset.style=key;
@@ -10946,11 +10948,9 @@ async function _openProjectStarterWizard(profile){
         card.onclick=()=>{look.style=key;renderLook.paint();};
         grid.append(card);
       });
-      wrap.append(grid);
-      wrap.append(_psEl('p','ps-look-label','Colours'));
+      lookSec('Style',grid);
       const colours=_psColours(look,()=>renderLook.paint());
-      wrap.append(colours.node);
-      wrap.append(_psEl('p','ps-look-label','Motion'));
+      lookSec('Colours',colours.node);
       const motions=_psEl('div','ps-motion-grid');motions.setAttribute('role','radiogroup');motions.setAttribute('aria-label','Motion');
       _PS_MOTIONS.forEach(([key,label,desc])=>{
         const card=_psEl('button','ps-motion-card'+(look.motion===key?' is-selected':''));card.type='button';card.dataset.motion=key;
@@ -10962,8 +10962,7 @@ async function _openProjectStarterWizard(profile){
         card.onclick=()=>{look.motion=key;renderLook.paint();};
         motions.append(card);
       });
-      wrap.append(motions);
-      wrap.append(_psEl('p','ps-look-label','Built with'));
+      lookSec('Motion',motions);
       const stack=_psEl('div','ps-stack-row');
       fwChoices().forEach(fw=>{
         const chip=_psEl('button','ps-chip-toggle'+(look.framework===fw?' is-on':''),_psLabel(fw));chip.type='button';chip.dataset.framework=fw;
@@ -10977,7 +10976,7 @@ async function _openProjectStarterWizard(profile){
         tw.onclick=()=>{look.tailwind=!look.tailwind;renderLook.paint();};
         stack.append(_psEl('span','ps-stack-sep'),tw);
       }
-      wrap.append(stack);
+      lookSec('Built with',stack);
       renderLook.paint=()=>{
         if(look.palette) _psPaletteVars(wrap,look.palette.light);
         colours.paint();
@@ -11056,10 +11055,101 @@ async function _openProjectStarterWizard(profile){
       input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';paintLists(true);}};
       const counts=()=>{lists.querySelectorAll('[data-count]').forEach(n=>{n.textContent=(n.dataset.count==='skills'?st.kit.skills.size:st.kit.comps.size)+' chosen';});};
       const toggle=(card,set,id)=>{const on=!set.has(id);if(on)set.add(id);else set.delete(id);
-        card.classList.toggle('is-selected',on);card.setAttribute('aria-pressed',String(on));
+        card.classList.toggle('is-selected',on);
+        if(card.tagName==='TR'){const box=card.querySelector('[role=checkbox]');if(box)box.setAttribute('aria-checked',String(on));}
+        else card.setAttribute('aria-pressed',String(on));
         const box=card.querySelector('.ps-kit-check');if(box)box.classList.toggle('is-on',on);counts();paintBuild();};
       const words=()=>st.kit.q.toLowerCase().split(/\s+/).filter(Boolean);
       const hit=(text)=>{const w=words();const t=text.toLowerCase();return w.every(x=>t.includes(x));};
+      // Skills as a table: tick, name, category, what it does, and a star for
+      // the planner's picks. "Show all" opens category tabs; choosing one slides
+      // the rows across and the table eases to its new height.
+      function skillsTable(f,narrowed){
+        const box=_psEl('div','ps-kit-skills');
+        const cats=[...new Set(data.skills.map(s=>s.category||'other'))].sort((a,b)=>_psLabel(a).localeCompare(_psLabel(b)));
+        const tabsWrap=_psEl('div','ps-kit-cats-wrap');const tabsInner=_psEl('div','ps-kit-cats-inner');
+        const tabs=_psEl('div','ps-kit-cats');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Skill categories');
+        const pill=_psEl('span','ps-kit-cats-pill');pill.setAttribute('aria-hidden','true');tabs.append(pill);
+        [['','All'],...cats.map(c=>[c,_psLabel(c)])].forEach(([value,label])=>{
+          const n=value?data.skills.filter(s=>(s.category||'other')===value).length:data.skills.length;
+          const tab=_psEl('button','ps-kit-cat');tab.type='button';tab.dataset.cat=value;tab.setAttribute('role','tab');
+          tab.append(_psEl('span','ps-kit-cat-label',label),_psEl('span','ps-kit-cat-n',String(n)));
+          tab.onclick=()=>{if(st.kit.cat===value)return;const from=cats.indexOf(st.kit.cat),to=cats.indexOf(value);st.kit.cat=value;paintTabs();fillRows(to>from?1:-1);};
+          tabs.append(tab);});
+        tabsInner.append(tabs);tabsWrap.append(tabsInner);
+        const frame=_psEl('div','ps-kit-table-frame');
+        const table=_psEl('table','ps-kit-table');
+        const thead=_psEl('thead');const hr=_psEl('tr');
+        [['','ps-kit-col-check','Chosen'],['Skill','ps-kit-col-name'],['Category','ps-kit-col-cat'],['What it does','ps-kit-col-desc'],['','ps-kit-col-star','Recommended']].forEach(([t,c,aria])=>{
+          const th=_psEl('th',c,t);th.scope='col';if(aria){th.append(_psEl('span','sr-only',aria));}hr.append(th);});
+        thead.append(hr);table.append(thead);
+        const tbody=_psEl('tbody');table.append(tbody);frame.append(table);
+        const empty=_psEl('p','ps-kit-empty','No skills match.');
+        const open=()=>!narrowed&&st.kit.allSkills;
+        function rowsFor(){
+          const matches=data.skills.filter(s=>(!f||s.category===f.slice(6))&&hit([s.name,s.category,s.description].join(' ')));
+          if(narrowed) return matches;
+          if(open()) return matches.filter(s=>!st.kit.cat||(s.category||'other')===st.kit.cat);
+          return matches.filter((s,i)=>i<6||st.kit.skills.has(s.name));
+        }
+        function row(s,i){
+          const on=st.kit.skills.has(s.name);
+          const tr=_psEl('tr','ps-kit-skill'+(on?' is-selected':''));tr.dataset.skill=s.name;tr.style.setProperty('--i',i);
+          const c0=_psEl('td','ps-kit-col-check');const check=_psEl('button','ps-kit-tick');check.type='button';check.setAttribute('role','checkbox');
+          check.setAttribute('aria-checked',String(on));check.setAttribute('aria-label',s.name);check.innerHTML=_psCheck(on);c0.append(check);
+          const c1=_psEl('td','ps-kit-col-name');c1.append(_psEl('span','ps-kit-name',s.name));
+          if(s.description) c1.append(_psEl('span','ps-kit-sub',s.description));
+          const c2=_psEl('td','ps-kit-col-cat',s.category?_psLabel(s.category):'');
+          const c3=_psEl('td','ps-kit-col-desc');c3.append(_psEl('span','ps-kit-desc',s.description||''));
+          const c4=_psEl('td','ps-kit-col-star');if(s.recommended)c4.append(_psRecStar());
+          tr.append(c0,c1,c2,c3,c4);
+          tr.onclick=(event)=>{if(event.target.closest('a'))return;toggle(tr,st.kit.skills,s.name);};
+          return tr;
+        }
+        function fillRows(dir){
+          const list=rowsFor();
+          const h0=frame.offsetHeight;
+          const old=dir&&frame.isConnected?tbody.cloneNode(true):null;
+          tbody.replaceChildren(...list.map(row));
+          empty.hidden=!!list.length;table.hidden=!list.length;
+          if(!old||!h0) return;
+          // Old rows slide out one way while the new ones come in from the other
+          // (transitions.dev "Page side-by-side"), and the frame eases its height.
+          const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if(reduce) return;
+          const ghost=_psEl('table','ps-kit-table ps-kit-ghost');ghost.setAttribute('aria-hidden','true');ghost.append(thead.cloneNode(true),old);
+          frame.append(ghost);
+          const h1=frame.offsetHeight;
+          const ease='cubic-bezier(0.22, 1, 0.36, 1)';
+          frame.animate([{height:h0+'px'},{height:h1+'px'}],{duration:320,easing:ease});
+          ghost.animate([{transform:'translateX(0)',opacity:1,filter:'blur(0)'},{transform:'translateX('+(-24*dir)+'px)',opacity:0,filter:'blur(3px)'}],{duration:220,easing:ease,fill:'forwards'}).onfinish=()=>ghost.remove();
+          tbody.animate([{transform:'translateX('+(24*dir)+'px)',opacity:0,filter:'blur(3px)'},{transform:'translateX(0)',opacity:1,filter:'blur(0)'}],{duration:320,delay:60,easing:ease,fill:'backwards'});
+        }
+        function paintTabs(){
+          tabsWrap.classList.toggle('is-open',open());tabsWrap.inert=!open();
+          tabs.querySelectorAll('.ps-kit-cat').forEach(t=>{const on=t.dataset.cat===(st.kit.cat||'');t.classList.toggle('is-on',on);t.setAttribute('aria-selected',String(on));
+            if(on) requestAnimationFrame(()=>{if(!t.offsetWidth)return;pill.style.width=t.offsetWidth+'px';pill.style.height=t.offsetHeight+'px';
+              pill.style.transform='translate('+t.offsetLeft+'px,'+t.offsetTop+'px)';tabs.classList.add('has-pill');});});
+        }
+        box.append(tabsWrap,frame,empty);
+        fillRows(0);paintTabs();
+        // Tabs re-wrap when the dialog resizes; keep the pill on the chosen one.
+        if(window.ResizeObserver) new ResizeObserver(()=>{if(tabs.isConnected&&open())paintTabs();}).observe(tabs);
+        if(!narrowed&&data.skills.length>6){
+          const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
+          more.setAttribute('aria-expanded',String(!!st.kit.allSkills));
+          more.onclick=()=>{
+            const h0=frame.offsetHeight;st.kit.allSkills=!st.kit.allSkills;if(!st.kit.allSkills)st.kit.cat='';
+            more.textContent=st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills';more.setAttribute('aria-expanded',String(st.kit.allSkills));
+            tbody.replaceChildren(...rowsFor().map(row));paintTabs();
+            const h1=frame.offsetHeight;
+            if(h0&&h1&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches))
+              frame.animate([{height:h0+'px'},{height:h1+'px'}],{duration:360,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});
+          };
+          box.append(more);
+        }
+        return box;
+      }
       function paintLists(quiet){
         lists.innerHTML='';lists.classList.toggle('is-quiet',!!quiet);
         if(quiet){lists.classList.remove('is-refresh');void lists.offsetWidth;lists.classList.add('is-refresh');}
@@ -11068,30 +11158,7 @@ async function _openProjectStarterWizard(profile){
           const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
           head.append(_psEl('h4',null,'Skills'),count);lists.append(head);
           if(!data.skills.length) lists.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
-          const matches=data.skills.filter(s=>(!f||s.category===f.slice(6))&&hit([s.name,s.category,s.description].join(' ')));
-          const shown=narrowed||st.kit.allSkills?matches:matches.filter((s,i)=>i<6||st.kit.skills.has(s.name));
-          if(data.skills.length&&!matches.length) lists.append(_psEl('p','ps-kit-empty','No skills match.'));
-          const sgrid=_psEl('div','ps-kit-grid');
-          shown.forEach((s,i)=>{
-            const on=st.kit.skills.has(s.name);
-            const card=_psEl('button','ps-kit-card ps-kit-skill'+(on?' is-selected':''));card.type='button';card.dataset.skill=s.name;
-            card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',i);
-            card.innerHTML=_psCheck(on);
-            const text=_psEl('span','ps-kit-text');
-            const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,s.name));
-            if(s.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
-            text.append(top);
-            if(s.category) text.append(_psEl('span','ps-kit-meta',_psLabel(s.category)));
-            if(s.description) text.append(_psEl('span','ps-kit-desc',s.description));
-            card.append(text);
-            card.onclick=()=>toggle(card,st.kit.skills,s.name);
-            sgrid.append(card);
-          });
-          if(shown.length) lists.append(sgrid);
-          if(!narrowed&&(data.skills.length>shown.length||st.kit.allSkills&&data.skills.length>6)){
-            const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
-            more.onclick=()=>{st.kit.allSkills=!st.kit.allSkills;paintLists(true);};lists.append(more);
-          }
+          else lists.append(skillsTable(f,narrowed));
         }
         if(data.visual&&(!f||f.startsWith('role:'))){
           const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
@@ -11103,6 +11170,9 @@ async function _openProjectStarterWizard(profile){
             // chosen style and motion come first in each group.
             let n=0,any=false;
             const groups=new Map();
+            const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const loops=!reduce&&'IntersectionObserver' in window?new IntersectionObserver((entries)=>entries.forEach(e=>{
+              const img=e.target;const want=e.isIntersecting?img.dataset.loop:img.dataset.still;if(img.getAttribute('src')!==want)img.src=want;}),{root:holder.closest('.ps-body'),rootMargin:'40px'}):null;
             roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
               data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' '))).forEach(c=>{
                 if(!groups.has(c.library)) groups.set(c.library,{name:c.library_name,license:c.license||'',items:[]});
@@ -11122,15 +11192,16 @@ async function _openProjectStarterWizard(profile){
                 card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',n++);
                 const thumb=_psEl('span','ps-kit-thumb');
                 if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
-                  if(c.loop){const still=img.src,loop='api/libraries/preview?path='+encodeURIComponent(c.loop);
-                    const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                    card.addEventListener('mouseenter',()=>{if(!reduce())img.src=loop;});card.addEventListener('mouseleave',()=>{img.src=still;});
-                    card.addEventListener('focus',()=>{if(!reduce())img.src=loop;});card.addEventListener('blur',()=>{img.src=still;});}}
+                  // Moving components play their captured loop while on screen (the
+                  // still stays for reduced motion); a badge says it moves.
+                  if(c.loop){img.dataset.still=img.src;img.dataset.loop='api/libraries/preview?path='+encodeURIComponent(c.loop);thumb.classList.add('has-loop');
+                    const badge=_psEl('span','ps-kit-live');badge.innerHTML=_psIcon('play',10);badge.append(_psEl('span',null,'Live'));thumb.append(badge);
+                    if(loops) loops.observe(img);}}
                 else{thumb.classList.add('is-empty');thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));}
                 thumb.insertAdjacentHTML('beforeend',_psCheck(on));
                 const text=_psEl('span','ps-kit-text');
                 const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
-                if(c.recommended) top.append(_psEl('span','ps-kit-rec','Recommended'));
+                if(c.recommended) card.append(_psRecStar());
                 text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
                 const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
                 text.append(chips);card.append(thumb,text);

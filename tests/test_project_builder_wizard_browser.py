@@ -99,8 +99,8 @@ def test_look_is_preselected_from_the_brief_with_its_reason(page):
     assert "Look & feel" in page.locator(".ps-step-label").all_inner_texts()
     _through_brief(page)
     page.wait_for_selector(".ps-look-card")
-    assert page.inner_text(".ps-look-rec") .startswith("Recommended: Elegant · Subtle")
-    assert "calm trust" in page.inner_text(".ps-look-rec")
+    # The stars mark the planner's picks; there is no separate banner.
+    assert page.locator(".ps-look-rec").count() == 0
     assert page.get_attribute(".ps-look-card.is-selected", "data-style") == "elegant"
     assert page.get_attribute(".ps-motion-card.is-selected", "data-motion") == "subtle"
     assert page.locator(".ps-look-card[data-style=elegant] .ps-option-star").count() == 1
