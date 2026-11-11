@@ -94,9 +94,21 @@ def _through_brief(page):
     page.click(".ps-next")
 
 
+def open_section(page, key):
+    """Customize and Toolkit open one section at a time: open ``key`` and wait
+    until its body has finished opening."""
+    sec = f".ps-cz-sec[data-sec='{key}']"
+    page.wait_for_selector(sec)
+    if not page.eval_on_selector(sec, "s => s.classList.contains('is-open')"):
+        page.click(f"{sec} > .ps-cz-head")
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    page.wait_for_function("""s => { const e = document.querySelector(s); return e.classList.contains('is-open')
+      && !e.getAnimations({subtree: true}).some(a => a instanceof CSSTransition); }""", arg=sec)
+
+
 def test_look_is_preselected_from_the_brief_with_its_reason(page):
     _to_template(page, "Website")
-    assert "Look & feel" in page.locator(".ps-step-label").all_inner_texts()
+    assert "Customize" in page.locator(".ps-step-label").all_inner_texts()
     _through_brief(page)
     page.wait_for_selector(".ps-look-card")
     # The stars mark the planner's picks; there is no separate banner.
@@ -113,7 +125,7 @@ def test_look_is_preselected_from_the_brief_with_its_reason(page):
 
 def test_non_visual_templates_skip_look_and_show_skills_only(page):
     _to_template(page, "CLI Tool")
-    assert "Look & feel" not in page.locator(".ps-step-label").all_inner_texts()
+    assert "Customize" not in page.locator(".ps-step-label").all_inner_texts()
     KIT_CLI = dict(KIT, visual=False, components={})
     page.unroute("**/api/projects/starter/toolkit")
     page.route("**/api/projects/starter/toolkit", lambda r: r.fulfill(json=KIT_CLI))
@@ -133,6 +145,7 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     assert sorted(page.eval_on_selector_all(".ps-kit-skill.is-selected", "els => els.map(e => e.dataset.skill)")) == ["seo-audit", "ui-polish"]
     assert page.eval_on_selector_all(".ps-kit-comp.is-selected", "els => els.map(e => e.dataset.comp)") == ["calm/split"]
     page.click(".ps-kit-skill[data-skill=ui-polish]")
+    open_section(page, "comps")
     page.click(".ps-kit-comp[data-comp='glow/aurora']")
     assert "1" in page.inner_text(".ps-build-row:has(dt:text('Skills')) dd")
     page.click(".ps-next")

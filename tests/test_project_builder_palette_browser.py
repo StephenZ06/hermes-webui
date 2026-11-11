@@ -52,7 +52,8 @@ def page():
 def _to_look(page):
     wiz._to_template(page, "Website")
     wiz._through_brief(page)
-    page.wait_for_selector(".ps-pal-card")
+    page.wait_for_selector(".ps-pal-card", state="attached")
+    wiz.open_section(page, "colours")
 
 
 def _settled(page):
@@ -90,6 +91,10 @@ def test_a_preset_and_your_own_colours_reach_create(page):
     _to_look(page)
     page.click(".ps-pal-card[data-pal=forest]")
     assert _mock_bg(page, "light") == _rgb("#f4f7f2")
+    # Picking a palette ticks Colours and opens the next section; come back.
+    page.wait_for_selector(".ps-cz-sec[data-sec=type].is-open")
+    assert page.locator(".ps-cz-sec[data-sec=colours].is-done").count() == 1
+    wiz.open_section(page, "colours")
     page.click(".ps-pal-card[data-pal=custom]")
     assert page.locator(".ps-pal-editor").is_visible()
     # The editor opens like an accordion; type once it has.
@@ -133,8 +138,8 @@ def test_logo_colours_become_the_recommended_palette(page, tmp_path):
         return (210, 30, 40, 255)
     logo = tmp_path / "logo.png"
     logo.write_bytes(_png(32, 24, px))
-    page.set_input_files(".ps-pal-logo-row input[type=file]", str(logo))
-    page.wait_for_selector(".ps-pal-card[data-pal=logo].is-selected")
+    page.set_input_files(".ps-pal input[type=file]", str(logo))
+    page.wait_for_selector(".ps-pal-card[data-pal=logo].is-selected", state="attached")
     assert page.locator(".ps-pal-card[data-pal=logo] .ps-option-star").count() == 1
     assert page.locator(".ps-pal-card[data-pal=recommended] .ps-option-star").count() == 0
     r, g, b = page.eval_on_selector(".ps-pal-pane[data-theme=light] .ps-pal-btn.is-primary",
@@ -159,7 +164,8 @@ def test_narrow_screens_switch_between_light_and_dark(page):
 def test_toolkit_components_are_grouped_by_library_with_their_licence(page):
     _to_look(page)
     page.click(".ps-next")
-    page.wait_for_selector(".ps-kit-lib")
+    page.wait_for_selector(".ps-kit-lib", state="attached")
+    wiz.open_section(page, "comps")
     heads = page.eval_on_selector_all(".ps-kit-lib", "els => els.map(e => e.innerText.replace(/\\s+/g, ' ').trim())")
     assert heads == ["Calm UI 1 component MIT", "Glow 2 components Glow licence (personal use)"]
     assert page.inner_text(".ps-kit-comp[data-comp='calm/split'] .ps-kit-meta") == "Hero · npm"

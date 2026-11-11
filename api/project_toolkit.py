@@ -156,6 +156,9 @@ def _look_lines(look: dict) -> list[str]:
         lines.append(f"- Built with: {_label(look['framework'])}" + (" and Tailwind CSS" if look.get("tailwind") else ""))
     if look.get("why"):
         lines.append(f"- Why: {look['why']}")
+    if look.get("custom"):
+        from api.project_look import custom_lines
+        lines += custom_lines(look["custom"])
     if look.get("palette"):
         from api.project_palette import palette_lines
         lines += palette_lines(look["palette"])

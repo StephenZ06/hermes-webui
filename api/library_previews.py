@@ -2,7 +2,8 @@
 
 For each component with a demo page, a headless browser (Playwright, when it
 is installed) captures a 16:10 still and, for components that move, a ~3 s
-animated WebP loop. Without Playwright, or when capture fails, the preview
+animated WebP loop recorded at 25 frames a second (the DevTools screencast,
+so motion is smooth rather than a few screenshots a second). Without Playwright, or when capture fails, the preview
 falls back to the demo page's ``og:image``, then the library README's first
 image. Results are summarised in ``previews/STATUS.json`` so the Libraries tab
 can say when nothing could be captured. The user can replace any preview.
@@ -10,8 +11,10 @@ can say when nothing could be captured. The user can replace any preview.
 
 from __future__ import annotations
 
+import base64
 import io
 import json
+import time
 import re
 import urllib.parse
 import urllib.request
@@ -20,7 +23,8 @@ from pathlib import Path
 from api import library_catalog as lc
 
 WIDTH, HEIGHT = 1280, 800
-LOOP_FRAMES, LOOP_STEP_MS = 12, 250
+LOOP_SECONDS, LOOP_STEP_MS = 3.2, 40  # 25 frames a second
+LOOP_SIZE = (400, 250)
 _MAX_IMAGE_BYTES = 6_000_000
 IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
 
@@ -104,6 +108,68 @@ def readme_image(lib_dir: Path, source_link: str = "") -> bytes | None:
     return None
 
 
+def record_loop(page, clip: dict | None = None, *, seconds: float = LOOP_SECONDS,
+                step_ms: int = LOOP_STEP_MS, drive=None) -> list[bytes]:
+    """PNG frames of what ``page`` paints over ``seconds``, one every ``step_ms``.
+
+    Uses the DevTools screencast, which sends every painted frame with its
+    time, then samples it evenly (holding a frame while nothing repaints).
+    ``clip`` ({x, y, width, height} in CSS pixels) crops the frames;
+    ``drive(elapsed)`` is called between frames, for example to move the mouse
+    through a hover demo.
+    """
+    from PIL import Image
+
+    cdp = page.context.new_cdp_session(page)
+    got: list[tuple[float, str]] = []
+    acks: list[int] = []
+
+    def on_frame(event):
+        got.append((float(event["metadata"]["timestamp"]), event["data"]))
+        acks.append(event["sessionId"])
+
+    cdp.on("Page.screencastFrame", on_frame)
+    view = page.viewport_size or {"width": WIDTH, "height": HEIGHT}
+    cdp.send("Page.startScreencast", {"format": "png", "maxWidth": view["width"], "maxHeight": view["height"]})
+    start = time.time()
+    try:
+        while time.time() - start < seconds:
+            if drive is not None:
+                drive(time.time() - start)
+            while acks:
+                cdp.send("Page.screencastFrameAck", {"sessionId": acks.pop(0)})
+            page.wait_for_timeout(15)
+    finally:
+        try:
+            cdp.send("Page.stopScreencast")
+            cdp.detach()
+        except Exception:
+            pass
+    if not got:
+        return []
+    got.sort()
+    t0 = got[0][0]
+    decoded: dict[int, bytes] = {}
+    frames = []
+    i = 0
+    for k in range(int(seconds * 1000 / step_ms)):
+        t = t0 + k * step_ms / 1000
+        while i + 1 < len(got) and got[i + 1][0] <= t:
+            i += 1
+        if i not in decoded:
+            with Image.open(io.BytesIO(base64.b64decode(got[i][1]))) as img:
+                frame = img.convert("RGB")
+                if clip:
+                    sx = img.width / view["width"]
+                    frame = frame.crop(tuple(round(v * sx) for v in (
+                        clip["x"], clip["y"], clip["x"] + clip["width"], clip["y"] + clip["height"])))
+                out = io.BytesIO()
+                frame.save(out, "PNG")
+                decoded[i] = out.getvalue()
+        frames.append(decoded[i])
+    return frames
+
+
 def _capture(pw_factory, url: str, moving: bool) -> tuple[bytes, list[bytes]]:
     with pw_factory() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -112,27 +178,22 @@ def _capture(pw_factory, url: str, moving: bool) -> tuple[bytes, list[bytes]]:
             page.goto(url, wait_until="load", timeout=30000)
             page.wait_for_timeout(1200)
             still = page.screenshot(type="png")
-            frames = []
-            if moving:
-                for _ in range(LOOP_FRAMES):
-                    frames.append(page.screenshot(type="png"))
-                    page.wait_for_timeout(LOOP_STEP_MS)
-            return still, frames
+            return still, record_loop(page) if moving else []
         finally:
             browser.close()
 
 
-def _save_loop(lib_dir: Path, slug: str, frames: list[bytes]) -> bool:
+def _save_loop(lib_dir: Path, slug: str, frames: list[bytes], step_ms: int = LOOP_STEP_MS) -> bool:
     from PIL import Image, ImageChops, ImageOps
 
     images = []
     for data in frames:
         with Image.open(io.BytesIO(data)) as img:
-            images.append(ImageOps.fit(img.convert("RGB"), (WIDTH // 2, HEIGHT // 2)))
+            images.append(ImageOps.fit(img.convert("RGB"), LOOP_SIZE))
     if len(images) < 2 or all(ImageChops.difference(images[0], im).getbbox() is None for im in images[1:]):
         return False  # nothing moved: a loop would only cost bytes
     out = lib_dir / "previews" / f"{slug}.loop.webp"
-    images[0].save(out, "WEBP", save_all=True, append_images=images[1:], duration=LOOP_STEP_MS, loop=0, quality=70)
+    images[0].save(out, "WEBP", save_all=True, append_images=images[1:], duration=step_ms, loop=0, quality=62, method=4)
     return True
 
 

@@ -73,3 +73,60 @@ def test_the_hidden_turn_reports_its_tool_calls_reasoning_and_answer(monkeypatch
                                        answer_label="Writing up its questions")
     assert answer == "{}"
     assert lines == ["Starting Docs-Git", "Reading the brief", "Reading brief.md", "Writing up its questions"], lines
+
+
+def test_the_estimate_eases_through_the_work_then_fills_by_the_answer_and_never_goes_back(monkeypatch):
+    monkeypatch.setattr(agent, "_TYPICAL", {})
+    guess = agent._Estimate("Writing up its questions", now=0)
+    early, typical, late = guess.tick(5), guess.tick(60), guess.tick(600)
+    assert 5 <= early < 20 < typical <= 65 < late <= 70, (early, typical, late)
+    guess.answering("x" * 1500, now=601)
+    halfway = guess.tick(602)
+    assert late <= halfway < 96, halfway
+    guess.answering("x" * 3000, now=603)
+    assert guess.tick(604) == 96  # stays under 100 until the job is done
+    assert guess.tick(0) == 96  # never backwards
+    guess.learn("x" * 4500, now=610)
+    # The next run of the same kind expects about as long and as much.
+    nxt = agent._Estimate("Writing up its questions", now=0)
+    assert nxt.chars == 4500 and abs(nxt.seconds - 601) < 1
+
+
+def test_a_running_job_reports_its_estimate_and_the_hidden_turn_feeds_it(monkeypatch, tmp_path):
+    import api.models
+    import api.routes
+
+    class _Session:
+        session_id = "s1"
+        workspace = str(tmp_path)
+        path = str(tmp_path / "s1.json")
+
+        def save(self):
+            pass
+
+    def fake_stream(session_id, prompt, model, workspace, stream_id, _attachments, **_kw):
+        channel = api.routes.STREAMS[stream_id]
+        channel.put_nowait(("token", {"text": "{}"}))
+        channel.put_nowait(("done", {"answer": "{}"}))
+
+    monkeypatch.setattr(agent, "profile_available", lambda _p: True)
+    monkeypatch.setattr(api.models, "new_session", lambda **_kw: _Session())
+    monkeypatch.setattr(api.routes, "_run_agent_streaming", fake_stream)
+    seen = []
+    agent._run_ephemeral_turn("p", timeout=5, model="m", model_provider="x", progress=lambda _l: None, estimate=seen.append)
+    assert seen and all(0 < p < 100 for p in seen) and seen == sorted(seen), seen
+
+    release = threading.Event()
+    reported = threading.Event()
+
+    def work(report, _on_run):
+        report("Reading the brief")
+        report.estimate(42)
+        reported.set()
+        release.wait(5)
+        return {}
+
+    job_id = agent._start_job("analysis", work, with_progress=True)
+    assert reported.wait(5)
+    assert agent.get_job(job_id)["percent"] == 42
+    release.set()

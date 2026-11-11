@@ -102,7 +102,8 @@ def test_toolkit_search_and_filter_narrow_the_lists_and_ticks_update_in_place(pa
     card.click()
     assert card.locator("[role=checkbox]").get_attribute("aria-checked") == "true"
     assert page.evaluate("(el) => el.isConnected", handle)  # toggled in place, not repainted
-    assert page.inner_text(".ps-kit-count >> nth=0") == "3 chosen"
+    # The Skills section's header counts the picks.
+    assert page.inner_text(".ps-cz-sec[data-sec=skills] .ps-cz-summary") == "3 chosen"
 
 
 def test_builder_divider_has_equal_space_each_side_and_the_dialog_even_margins(page):

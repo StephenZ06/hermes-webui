@@ -85,3 +85,32 @@ def test_previews_in_png_or_jpg_are_listed_too(lib):
     (lib / "calm" / "previews" / "card.png").write_bytes(_png())
     comps = {c["slug"]: c for c in lc.list_libraries(lib)[0]["components"]}
     assert comps["card"]["preview"] == "calm/previews/card.png"
+
+
+def test_a_loop_is_recorded_at_25_frames_a_second_from_what_the_page_paints():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    from PIL import Image
+
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 400, "height": 300})
+            page.set_content("""<style>body{margin:0;background:#fff}
+              i{position:absolute;top:100px;left:0;width:40px;height:40px;background:#c00;animation:m 1s linear infinite}
+              @keyframes m{to{transform:translateX(300px)}}</style><i></i>""")
+            moves = []
+            frames = lp.record_loop(page, {"x": 0, "y": 80, "width": 400, "height": 80}, seconds=1.0,
+                                    drive=lambda t: moves.append(t))
+        finally:
+            browser.close()
+    assert len(frames) == 25
+    assert moves and moves == sorted(moves)
+    lefts = []
+    for data in frames:
+        with Image.open(io.BytesIO(data)) as img:
+            assert img.size == (400, 80)
+            red = [x for x in range(img.width) if img.getpixel((x, 40))[0] > 150 and img.getpixel((x, 40))[1] < 80]
+            lefts.append(red[0] if red else None)
+    # The square really moves between most frames (smooth), not a few times a second.
+    steps = sum(1 for a, b in zip(lefts, lefts[1:]) if a is not None and b is not None and a != b)
+    assert steps >= 15, lefts

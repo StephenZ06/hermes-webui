@@ -203,12 +203,21 @@ no timer. Kanban's visibility comes from the last saved choice in `localStorage`
 
 The create-project wizard is laid out as a builder: the step on the left and a
 live Build summary on the right (at 900px and below it folds into a bar under the
-step). Website, Web app, iOS and Android projects get a Look & feel step
-preselected from the brief (stars mark the planner's picks; there is no separate
-banner), split into Style, Colours, Motion and Built with by dividers with 20px
-above and below. Every template then gets a Toolkit step and a Review step whose
-primary action is Create & start building. Between 721px and 1023px the stepper
-shows only the current label.
+step). While the planner reviews the brief, the busy line shows an estimated
+percent and a 2px meter that ease up (the server's `_Estimate` in
+`api/project_starter_agent.py` learns how long each kind of turn takes; it stays
+under 100% until the job is done, then the meter fills before moving on).
+Website, Web app, iOS and Android projects get a Customize step preselected from
+the brief (stars mark the planner's picks; there is no separate banner). Its
+sections (Style, Colours, Typography, Buttons, Cards & spacing, Motion, Built
+with) open one at a time: picking in a section ticks it and opens the next
+(sections with several parts move on when their last part is picked, or with
+their "Next" button), and a folded section's header shows its choice. Typography,
+button and surface choices default from the style until the user touches them,
+apply to the palette preview and the samples, and reach `docs/UI_UX.md` with CSS
+tokens (`api/project_look.py`). Every template then gets a Toolkit step and a
+Review step whose primary action is Create & start building. Between 721px and
+1023px the stepper shows only the current label.
 
 Toolkit lists skills as a table (tick, skill, category, what it does, star):
 recommended skills are ticked and imported skills that fit the project come
@@ -217,18 +226,25 @@ category slides the rows across and eases the table to its new height. At 560px
 and below the category and description columns fold into the skill cell. Visual
 templates also get catalog components, grouped by library with its licence, best
 fits for the style first; a component with a captured loop plays it while it is
-on screen (a "Live" badge marks it; the still stays under reduced motion).
+on screen (a "Live" badge marks it; the still stays under reduced motion). For
+visual templates Skills and Components are folding sections like Customize's (all
+open while searching or filtering), and a "Chosen" tray above the components
+lists each picked one as a chip that scrolls to its card or removes it.
 
 Text in option cards, palette preview buttons and contrast checks is trimmed to
 its capitals and baseline (`text-box: trim-both cap alphabetic`) so padding
 centres it; Zeus 2.0 adds 1px to option text because Courier New draws its
 capitals taller than it declares.
 
-Look & feel has a Colours section: the planner's palette for the brief (starred),
-"Use logo colours" (the logo is read in the browser with a canvas and never
-uploaded; its palette then takes the star), six presets ordered by the chosen
-style, and "Your own" with light and dark pickers ("Work out dark from light"
-derives the dark set, mirroring `derive_dark` in `api/project_palette.py`). A
+Colours fill three rows of four: the planner's palette for the brief (starred),
+presets ordered by the chosen style, then "Use logo colours" and "Your own" at
+the end of the last row. The logo card imports a logo (click or drop; read in the
+browser with a canvas and never uploaded) and then shows that palette, which
+takes the star. "Your own" opens a hexagon picker: pick a role in the light or
+dark column, then a cell of the honeycomb (hue by angle, saturation by ring, a
+slider for lightness) or the greys; each hex can also be typed. "Work out dark
+from light" derives the dark set, mirroring `derive_dark` in
+`api/project_palette.py`. A
 live mock page shows both themes side by side (a Light/Dark toggle at 560px and
 below) with contrast checks for text, primary and the button label. Style samples
 and empty component thumbnails paint in the chosen light set. The palette is

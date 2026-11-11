@@ -10040,6 +10040,8 @@ const _PROJECT_STARTER_ICONS={
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
   alert:'<path d="M12 4 2.5 20h19z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
   play:'<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>',
+  upload:'<path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
 };
 // Full-colour artwork for the start choices and templates (icons/new-workspace,
 // optically normalised to the same visual size in static/project-starter/).
@@ -10277,7 +10279,7 @@ async function _openProjectStarterWizard(profile){
     const stepsFor=()=>st.mode==='adopt'
       ?[{n:1,label:'Start'},{n:2,label:'Project folder'},{n:6,label:P}]
       :[{n:1,label:'Start'},{n:2,label:'Location'},{n:3,label:'Template'},{n:4,label:'Brief'},{n:5,label:'Details'},
-        ...(isVisual()?[{n:7,label:'Look & feel'}]:[]),{n:8,label:'Toolkit'},{n:9,also:6,label:'Create'}];
+        ...(isVisual()?[{n:7,label:'Customize'}]:[]),{n:8,label:'Toolkit'},{n:9,also:6,label:'Create'}];
     const paintStepper=()=>{
       stepper.innerHTML='';
       const steps=stepsFor();
@@ -10501,7 +10503,12 @@ async function _openProjectStarterWizard(profile){
       });
       function paintReview(){
         review.innerHTML='';review.className='ps-review';
-        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span','ps-review-log',st.progress||P+' is reading your brief'));}
+        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span','ps-review-log',st.progress||P+' is reading your brief'));
+          // An estimate of how far the planner is (see _Estimate in
+          // api/project_starter_agent.py): a number and a thin meter that ease up.
+          const pct=_psEl('span','ps-review-pct');pct.append(_psEl('span','ps-review-pct-est','est.'),_psEl('span','ps-review-pct-n',Math.round(st.pctShown||0)+'%'));
+          const meter=_psEl('span','ps-review-meter');meter.setAttribute('aria-hidden','true');const fill=_psEl('span');fill.style.transform='scaleX('+((st.pctShown||0)/100)+')';meter.append(fill);
+          review.append(pct,meter);_psPaintPct();}
         else if(st.analysisSetup){ paintSetup(review); }
         else if(st.analysisError){
           review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
@@ -10597,8 +10604,27 @@ async function _openProjectStarterWizard(profile){
       log.textContent=line;
       log.classList.remove('is-new');void log.offsetWidth;log.classList.add('is-new');
     }
+    // The estimate eases toward the latest figure instead of jumping.
+    function _psPaintPct(){
+      const box=dialog.querySelector('.ps-review.is-busy');if(!box) return;
+      const n=box.querySelector('.ps-review-pct-n'),fill=box.querySelector('.ps-review-meter span'),pct=box.querySelector('.ps-review-pct');
+      const v=Math.round(st.pctShown||0);if(n)n.textContent=v+'%';if(fill)fill.style.transform='scaleX('+(st.pctShown||0)/100+')';
+      if(pct)pct.setAttribute('aria-label','About '+v+'% done (estimate)');
+    }
+    function _psSetPct(target){
+      target=Math.max(st.pctTarget||0,Math.min(100,Number(target)||0));st.pctTarget=target;
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){st.pctShown=target;_psPaintPct();return;}
+      if(st.pctRaf) return;
+      // Time-based easing (about 90% of the way in a quarter second), so slow frames do not slow it.
+      let last=performance.now();
+      const step=(now)=>{const d=st.pctTarget-(st.pctShown||0);const dt=Math.min(100,Math.max(0,now-last));last=now;
+        if(Math.abs(d)<0.4){st.pctShown=st.pctTarget;st.pctRaf=0;_psPaintPct();return;}
+        st.pctShown=(st.pctShown||0)+d*(1-Math.exp(-dt/110));_psPaintPct();st.pctRaf=requestAnimationFrame(step);};
+      st.pctRaf=requestAnimationFrame(step);
+    }
     async function analyze(){
       if(!plannerAgent){afterDetails();return;}
+      if(st.pctRaf)cancelAnimationFrame(st.pctRaf);st.pctRaf=0;st.pctShown=0;st.pctTarget=0;
       st.busy=true;st.progress='';st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
       try{
         const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
@@ -10606,10 +10632,15 @@ async function _openProjectStarterWizard(profile){
           const poll=async()=>{
             if(done) return rej(new Error('closed'));
             try{const j=await api('/api/projects/starter/job?job_id='+encodeURIComponent(start.job_id));
-              if(j.status==='running'){_psShowProgress(j.progress);pollTimer=setTimeout(poll,900);return;}res(j);}catch(e){rej(e);}
+              if(j.status==='running'){_psShowProgress(j.progress);if(j.percent!=null)_psSetPct(j.percent);pollTimer=setTimeout(poll,900);return;}res(j);}catch(e){rej(e);}
           };poll();
         });
         if(job.status==='error') throw new Error(job.error||P+' could not review the brief.');
+        // Finish the meter before moving on.
+        if(dialog.querySelector('.ps-review.is-busy')&&(st.pctShown||0)<100){_psSetPct(100);
+          const until=performance.now()+900;
+          await new Promise(r=>{const wait=()=>{if((st.pctShown||0)>=100||performance.now()>until)return setTimeout(r,160);requestAnimationFrame(wait);};wait();});}
+        if(done) return;
         st.analysis=job.result;st.questions=job.result.questions||[];st.q=0;
       }catch(error){
         if(done) return;
@@ -10734,9 +10765,15 @@ async function _openProjectStarterWizard(profile){
       ['sunset','Sunset',['playful','bold'],{bg:'#fff7f0',surface:'#ffffff',text:'#2a160c',primary:'#c2410c',accent:'#1864ab'},{bg:'#1a0f09',surface:'#24160e',text:'#fbeee5',primary:'#ff8a4c',accent:'#6cb4ff'}],
       ['noir','Noir',['bold','editorial','minimal'],{bg:'#ffffff',surface:'#f4f4f4',text:'#0a0a0a',primary:'#111111',accent:'#d6336c'},{bg:'#0a0a0a',surface:'#161616',text:'#f5f5f5',primary:'#f5f5f5',accent:'#ff6b9a'}],
       ['sage','Sage',['elegant','editorial','minimal'],{bg:'#f6f6f1',surface:'#ffffff',text:'#22261f',primary:'#4f6340',accent:'#9a5442'},{bg:'#121410',surface:'#1b1e18',text:'#ecece4',primary:'#a9c191',accent:'#e0927e'}],
+      ['midnight','Midnight',['technical','bold','elegant'],{bg:'#f5f6fa',surface:'#ffffff',text:'#141a2e',primary:'#283d8f',accent:'#8a5a00'},{bg:'#0b0f1e',surface:'#141a2e',text:'#e7eaf6',primary:'#8fa6ff',accent:'#e8bf55'}],
+      ['rose','Rose',['elegant','playful','editorial'],{bg:'#fdf6f7',surface:'#ffffff',text:'#2d1519',primary:'#b4325a',accent:'#3f7050'},{bg:'#1a0f12',surface:'#26161b',text:'#f8e9ec',primary:'#f08aa7',accent:'#8ccf9e'}],
+      ['citrus','Citrus',['playful','bold','minimal'],{bg:'#fbfbf2',surface:'#ffffff',text:'#1d2310',primary:'#4a7a0c',accent:'#b8400c'},{bg:'#11140a',surface:'#1a1e11',text:'#eef2df',primary:'#a3d65c',accent:'#ff9a5c'}],
+      ['mocha','Mocha',['elegant','editorial','minimal'],{bg:'#f8f5f1',surface:'#ffffff',text:'#2a211b',primary:'#7a4e2d',accent:'#36627a'},{bg:'#16110d',surface:'#211a15',text:'#f1e8df',primary:'#d4a27a',accent:'#7fb6d6'}],
     ];
     const _psPreset=(key)=>{const p=_PS_PALETTES.find(x=>x[0]===key);return p&&{key:p[0],name:p[1],source:'preset',light:{...p[3]},dark:{...p[4]},why:''};};
-    const _psPresetsFor=(style)=>[..._PS_PALETTES].sort((a,b)=>(b[2].includes(style)?1:0)-(a[2].includes(style)?1:0)).slice(0,6);
+    // Colours fill three rows of four: the recommendation (when there is one), presets, then "Use logo colours" and "Your own".
+    const _PS_PAL_SLOTS=12;
+    const _psPresetsFor=(style,n=6)=>[..._PS_PALETTES].sort((a,b)=>(b[2].includes(style)?1:0)-(a[2].includes(style)?1:0)).slice(0,n);
     const _psHexOk=(v)=>/^#[0-9a-f]{6}$/i.test(String(v||''));
     const _psRgb=(h)=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
     const _psHex=(rgb)=>'#'+rgb.map(c=>Math.max(0,Math.min(255,Math.round(c*255))).toString(16).padStart(2,'0')).join('');
@@ -10801,8 +10838,10 @@ async function _openProjectStarterWizard(profile){
       const first=_psPresetsFor(style||'minimal')[0];return _psPreset(first[0]);
     }
 
-    // Look & feel → Colours: recommended, from the logo, presets or custom, with a
-    // live light and dark preview and contrast checks. Returns {node, paint}.
+    // Look & feel → Colours: recommended, presets, from a logo, or your own (a
+    // hexagon colour picker), with a live light and dark preview and contrast
+    // checks. Cards fill rows of four; "Use logo colours" and "Your own" end the
+    // last row. Returns {node, paint}.
     function _psColours(look,changed){
       const node=_psEl('div','ps-pal');
       const options=_psEl('div','ps-pal-options');options.setAttribute('role','radiogroup');options.setAttribute('aria-label','Colours');
@@ -10810,18 +10849,18 @@ async function _openProjectStarterWizard(profile){
       const choices=()=>{
         const list=[];
         if(recPal&&recPal.light) list.push({key:'recommended',name:recPal.name||'Recommended',meta:'Picked for your brief',pal:{key:'recommended',name:recPal.name||'Recommended',source:'recommended',light:{...recPal.light},dark:{...recPal.dark},why:recPal.why||''}});
-        if(st.logoPalette) list.push({key:'logo',name:'Your logo',meta:'From your logo',pal:st.logoPalette,logo:st.logoPreview});
-        _psPresetsFor(look.style).forEach(p=>list.push({key:p[0],name:p[1],meta:'Suits '+p[2].map(_psLabel).join(', ').toLowerCase(),pal:_psPreset(p[0])}));
+        _psPresetsFor(look.style,_PS_PAL_SLOTS-2-list.length).forEach(p=>list.push({key:p[0],name:p[1],meta:'Suits '+p[2].map(_psLabel).join(', ').toLowerCase(),pal:_psPreset(p[0])}));
         return list;
       };
       const starKey=()=>st.logoPalette?'logo':(recPal&&recPal.light?'recommended':'');
       const swatch=(pal)=>{const sw=_psEl('span','ps-pal-swatch');sw.setAttribute('aria-hidden','true');
         ['light','dark'].forEach(theme=>{const row=_psEl('span','ps-pal-swatch-row');row.dataset.theme=theme;row.style.background=pal[theme].bg;
           ['surface','text','primary','accent'].forEach(role=>{const chip=_psEl('span','ps-pal-chip');chip.style.background=pal[theme][role];row.append(chip);});sw.append(row);});return sw;};
-      const select=(pal)=>{look.palette={...pal,light:{...pal.light},dark:{...pal.dark}};changed();};
+      const select=(pal)=>{look.palette={...pal,light:{...pal.light},dark:{...pal.dark}};changed('pick');};
       const logoInput=_psEl('input');logoInput.type='file';logoInput.accept='image/png,image/jpeg,image/webp,image/gif,image/svg+xml';logoInput.hidden=true;
-      const logoStatus=_psEl('span','ps-pal-logo-status');logoStatus.setAttribute('role','status');
-      logoInput.onchange=async()=>{const file=logoInput.files&&logoInput.files[0];logoInput.value='';if(!file)return;
+      logoInput.setAttribute('aria-label','Logo image');
+      const logoStatus=_psEl('p','ps-pal-logo-status');logoStatus.setAttribute('role','status');
+      const readLogo=async(file)=>{if(!file)return;
         logoStatus.textContent='Reading the logo colours…';
         try{const got=await _psLogoColours(file);
           if(!got){logoStatus.textContent='No clear colours in that logo. Pick a preset or your own.';return;}
@@ -10829,28 +10868,39 @@ async function _openProjectStarterWizard(profile){
           st.logoPalette={key:'logo',name:'Your logo',source:'logo',light:built.light,dark:built.dark,why:'Built from the main colours of your logo.'};
           st.logoPreview=got.preview;logoStatus.textContent='';paintOptions();select(st.logoPalette);}
         catch(_error){logoStatus.textContent='That file could not be read as an image.';}};
+      logoInput.onchange=()=>{const file=logoInput.files&&logoInput.files[0];logoInput.value='';readLogo(file);};
       function paintOptions(){
         options.innerHTML='';
         choices().forEach((c,i)=>{
           const card=_psEl('button','ps-pal-card');card.type='button';card.dataset.pal=c.key;card.setAttribute('role','radio');card.style.setProperty('--i',i);
           card.append(swatch(c.pal));
           const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',c.name),_psEl('span','ps-look-desc',c.meta));card.append(text);
-          if(c.logo){const img=document.createElement('img');img.className='ps-pal-logo';img.src=c.logo;img.alt='';img.draggable=false;card.append(img);}
           if(c.key===starKey()) card.append(_psRecStar());
           card.onclick=()=>select(c.pal);options.append(card);
         });
-        const custom=_psEl('button','ps-pal-card ps-pal-custom');custom.type='button';custom.dataset.pal='custom';custom.setAttribute('role','radio');
-        const customSw=_psEl('span','ps-pal-swatch ps-pal-swatch-custom');customSw.setAttribute('aria-hidden','true');customSw.innerHTML=_psIcon('pen',16);
+        const n=options.children.length;
+        // Use logo colours: an import card until a logo is read, then that logo's palette.
+        const logo=_psEl('button','ps-pal-card ps-pal-tool ps-pal-logo-card'+(st.logoPalette?' has-logo':''));logo.type='button';logo.dataset.pal='logo';logo.setAttribute('role','radio');logo.style.setProperty('--i',n);
+        if(st.logoPalette){const sw=swatch(st.logoPalette);logo.append(sw);
+          if(st.logoPreview){const img=document.createElement('img');img.className='ps-pal-logo';img.src=st.logoPreview;img.alt='';img.draggable=false;sw.append(img);}}
+        else{const sw=_psEl('span','ps-pal-swatch ps-pal-swatch-tool');sw.setAttribute('aria-hidden','true');sw.innerHTML=_psIcon('upload',16);logo.append(sw);}
+        const lt=_psEl('span','ps-look-text');lt.append(_psEl('span','ps-look-name',st.logoPalette?'Your logo':'Use logo colours'),
+          _psEl('span','ps-look-desc',st.logoPalette?'Click again to replace':'Import a logo'));logo.append(lt);
+        if(starKey()==='logo') logo.append(_psRecStar());
+        logo.onclick=()=>{if(st.logoPalette&&(look.palette||{}).key!=='logo'){select(st.logoPalette);return;}logoInput.click();};
+        logo.addEventListener('dragover',(e)=>{if(![...(e.dataTransfer&&e.dataTransfer.types||[])].includes('Files'))return;e.preventDefault();logo.classList.add('is-dragging');});
+        logo.addEventListener('dragleave',()=>logo.classList.remove('is-dragging'));
+        logo.addEventListener('drop',(e)=>{e.preventDefault();logo.classList.remove('is-dragging');readLogo(e.dataTransfer.files&&e.dataTransfer.files[0]);});
+        const custom=_psEl('button','ps-pal-card ps-pal-tool ps-pal-custom');custom.type='button';custom.dataset.pal='custom';custom.setAttribute('role','radio');custom.style.setProperty('--i',n+1);
+        const customSw=_psEl('span','ps-pal-swatch ps-pal-swatch-tool ps-pal-swatch-hex');customSw.setAttribute('aria-hidden','true');
+        customSw.innerHTML='<svg viewBox="0 0 48 28" width="48" height="28">'+[[12,9,'#e8590c'],[24,9,'#f2c94c'],[36,9,'#40c057'],[6,19,'#d6336c'],[18,19,'#7950f2'],[30,19,'#228be6'],[42,19,'#15aabf']].map(([x,y,c])=>'<polygon points="'+_psHexPoints(x,y,5.6)+'" fill="'+c+'"/>').join('')+'</svg>';
         const ct=_psEl('span','ps-look-text');ct.append(_psEl('span','ps-look-name','Your own'),_psEl('span','ps-look-desc','Pick each colour'));
         custom.append(customSw,ct);
-        custom.onclick=()=>{const base=look.palette||_psPreset('graphite');look.palette={...base,key:'custom',name:'Custom',source:'custom',light:{...base.light},dark:{...base.dark},why:''};follow=false;changed();};
-        options.append(custom);
+        custom.onclick=()=>{if((look.palette||{}).key==='custom'){picker.reveal();return;}
+          const base=look.palette||_psPreset('graphite');look.palette={...base,key:'custom',name:'Custom',source:'custom',light:{...base.light},dark:{...base.dark},why:''};follow=false;changed('custom');picker.reveal();};
+        options.append(logo,custom);
       }
       paintOptions();
-      const logoRow=_psEl('div','ps-pal-logo-row');
-      const logoBtn=_psEl('button','ps-link ps-pal-logo-btn');logoBtn.type='button';
-      logoBtn.innerHTML=_psIcon('image',14)+'<span>Use logo colours</span>';logoBtn.onclick=()=>logoInput.click();
-      logoRow.append(logoBtn,logoInput,logoStatus);
       // Preview: both themes side by side (a toggle on narrow screens).
       const body=_psEl('div','ps-pal-body');
       const preview=_psEl('div','ps-pal-preview');
@@ -10878,33 +10928,78 @@ async function _openProjectStarterWizard(profile){
       body.append(seg,preview);
       if(window.ResizeObserver) new ResizeObserver(()=>{const on=seg.querySelector('.ps-pal-seg-btn.is-on');
         if(on&&on.offsetWidth){segPill.style.width=on.offsetWidth+'px';segPill.style.transform='translateX('+on.offsetLeft+'px)';seg.classList.add('has-pill');}}).observe(seg);
-      // Custom editor: light and dark columns; dark can follow light.
-      const editor=_psEl('div','ps-pal-editor');
+      // Your own: a hexagon colour picker. Pick a role (light or dark), then a
+      // colour from the honeycomb or the greys; the slider sets how light the
+      // honeycomb is, and each role's hex can be typed.
       let follow=false;
+      const target={role:'primary',theme:'light'};
+      const editor=_psEl('div','ps-pal-editor ps-hex');
       const followBox=_psEl('label','ps-pal-follow');const followInput=_psEl('input');followInput.type='checkbox';
       followBox.append(followInput,_psEl('span',null,'Work out dark from light'));
-      followInput.onchange=()=>{follow=followInput.checked;if(follow&&look.palette){look.palette.dark=_psDeriveDark(look.palette.light);}changed();};
+      followInput.onchange=()=>{follow=followInput.checked;if(follow&&look.palette){look.palette.dark=_psDeriveDark(look.palette.light);if(target.theme==='dark')target.theme='light';}changed();};
       const grid=_psEl('div','ps-pal-edit-grid');
       grid.append(_psEl('span'),_psEl('span','ps-pal-edit-head','Light'),_psEl('span','ps-pal-edit-head','Dark'));
       const inputs={};
+      const apply=(theme,role,v)=>{if(!_psHexOk(v)||!look.palette)return;look.palette[theme][role]=v.toLowerCase();
+        if(follow&&theme==='light') look.palette.dark=_psDeriveDark(look.palette.light);changed();};
       _PS_PAL_ROLES.forEach(([role,label])=>{
         grid.append(_psEl('span','ps-pal-edit-role',label));
         ['light','dark'].forEach(theme=>{
-          const cell=_psEl('span','ps-pal-edit-cell');
-          const pick=_psEl('input');pick.type='color';pick.setAttribute('aria-label',label+' ('+theme+')');
+          const cell=_psEl('span','ps-pal-edit-cell');cell.dataset.role=role;cell.dataset.theme=theme;
+          const pick=_psEl('button','ps-hex-chip');pick.type='button';pick.setAttribute('aria-label','Pick '+label.toLowerCase()+' ('+theme+') from the honeycomb');
           const hex=_psEl('input','ps-pal-hex');hex.type='text';hex.maxLength=7;hex.spellcheck=false;hex.autocomplete='off';hex.setAttribute('aria-label',label+' hex ('+theme+')');
-          const apply=(v)=>{if(!_psHexOk(v)||!look.palette)return;look.palette[theme][role]=v.toLowerCase();
-            if(follow&&theme==='light') look.palette.dark=_psDeriveDark(look.palette.light);changed();};
-          pick.oninput=()=>apply(pick.value);
-          hex.oninput=()=>{const v=hex.value.trim();apply(v.startsWith('#')?v:'#'+v);};
+          const aim=()=>{if(theme==='dark'&&follow)return;target.role=role;target.theme=theme;paintPicker();};
+          pick.onclick=aim;hex.onfocus=aim;
+          hex.oninput=()=>{const v=hex.value.trim();apply(theme,role,v.startsWith('#')?v:'#'+v);};
           hex.onkeydown=(e)=>e.stopPropagation();
-          cell.append(pick,hex);grid.append(cell);inputs[theme+':'+role]={pick,hex};
+          cell.append(pick,hex);grid.append(cell);inputs[theme+':'+role]={pick,hex,cell};
         });
       });
-      editor.append(followBox,grid);
+      const side=_psEl('div','ps-hex-side');side.append(grid,followBox);
+      const main=_psEl('div','ps-hex-main');
+      const aimLabel=_psEl('p','ps-hex-aim');
+      const NS='http://www.w3.org/2000/svg';
+      const comb=document.createElementNS(NS,'svg');comb.setAttribute('class','ps-hex-comb');comb.setAttribute('role','group');
+      const greys=document.createElementNS(NS,'svg');greys.setAttribute('class','ps-hex-greys');greys.setAttribute('role','group');
+      const R=6,size=10.4,cells=[];
+      const ring=(q,r)=>Math.max(Math.abs(q),Math.abs(r),Math.abs(q+r));
+      for(let q=-R;q<=R;q++)for(let r=-R;r<=R;r++){if(ring(q,r)>R)continue;
+        const x=size*Math.sqrt(3)*(q+r/2),y=size*1.5*r;cells.push({x,y,ring:ring(q,r),angle:Math.atan2(y,x)});}
+      const W=size*Math.sqrt(3)*(2*R+1)+4,H=size*(3*R+2)+4;
+      comb.setAttribute('viewBox',(-W/2)+' '+(-H/2)+' '+W+' '+H);
+      const cellColour=(c,light)=>{const sat=c.ring/R;const l=light+(1-sat)*(0.97-light)*0.9;return _psFromHsl(((c.angle/(2*Math.PI))+1.25)%1,Math.min(1,sat*1.02),l);};
+      const pickCell=(poly)=>{if(target.theme==='dark'&&follow)return;apply(target.theme,target.role,poly.dataset.c);};
+      cells.forEach(c=>{const p=document.createElementNS(NS,'polygon');p.setAttribute('points',_psHexPoints(c.x,c.y,size-0.6));p.style.setProperty('--ring',c.ring);
+        p.addEventListener('click',()=>pickCell(p));p.addEventListener('pointerenter',()=>hover(p));comb.append(p);c.node=p;});
+      const GREYS=11;greys.setAttribute('viewBox','0 0 '+(GREYS*size*Math.sqrt(3)+4)+' '+(size*2+4));
+      const greyNodes=[];
+      for(let i=0;i<GREYS;i++){const g=document.createElementNS(NS,'polygon');const v=_psHex([i/(GREYS-1),i/(GREYS-1),i/(GREYS-1)]);
+        g.setAttribute('points',_psHexPoints(2+size*Math.sqrt(3)*(i+0.5),size+2,size-0.6));g.dataset.c=v;g.setAttribute('fill',v);g.style.setProperty('--ring',i/2);
+        g.addEventListener('click',()=>pickCell(g));g.addEventListener('pointerenter',()=>hover(g));greys.append(g);greyNodes.push(g);}
+      const lightWrap=_psEl('label','ps-hex-light');const lightInput=_psEl('input');lightInput.type='range';lightInput.min='18';lightInput.max='72';lightInput.value='50';
+      lightInput.setAttribute('aria-label','How light the honeycomb is');lightWrap.append(_psEl('span',null,'Darker'),lightInput,_psEl('span',null,'Lighter'));
+      const readout=_psEl('p','ps-hex-readout');readout.setAttribute('aria-live','polite');
+      const readSw=_psEl('span','ps-hex-readout-sw');const readTx=_psEl('span','ps-hex-readout-tx');readout.append(readSw,readTx);
+      function hover(poly){const c=poly.dataset.c;readSw.style.background=c;readTx.textContent=c+' for '+target.role+' ('+target.theme+')';}
+      function paintComb(){const light=Number(lightInput.value)/100;
+        cells.forEach(c=>{const v=cellColour(c,light);c.node.dataset.c=v;c.node.setAttribute('fill',v);});}
+      lightInput.oninput=()=>{paintComb();paintPicker();};
+      main.append(aimLabel,comb,greys,lightWrap,readout);
+      editor.append(side,main);
+      paintComb();
+      function paintPicker(){
+        const pal=look.palette;if(!pal) return;
+        const cur=(pal[target.theme]||{})[target.role]||'';
+        const roleLabel=(_PS_PAL_ROLES.find(r=>r[0]===target.role)||[,''])[1];
+        aimLabel.innerHTML='';aimLabel.append(_psEl('span',null,'Picking '),_psEl('strong',null,roleLabel.toLowerCase()+' ('+target.theme+')'));
+        Object.values(inputs).forEach(({cell})=>cell.classList.toggle('is-target',cell.dataset.role===target.role&&cell.dataset.theme===target.theme));
+        [...comb.children,...greyNodes].forEach(p=>p.classList.toggle('is-on',p.dataset.c===cur));
+        readSw.style.background=cur;readTx.textContent=cur+' for '+target.role+' ('+target.theme+')';
+      }
       const editorWrap=_psEl('div','ps-pal-editor-wrap');const editorInner=_psEl('div','ps-pal-editor-inner');editorInner.append(editor);editorWrap.append(editorInner);
+      const picker={reveal(){setTimeout(()=>{if(editorWrap.classList.contains('is-open'))_psRevealInBody(editorWrap);},380);}};
       const why=_psEl('p','ps-pal-why');
-      node.append(options,logoRow,body,editorWrap,why);
+      node.append(options,logoInput,logoStatus,editorWrap,body,why);
       const check=(label,a,b,need)=>{const r=_psContrast(a,b);const ok=r>=need;
         const el=_psEl('span','ps-pal-check'+(ok?' is-ok':' is-low'));el.innerHTML=_psIcon(ok?'check':'alert',12);
         el.append(_psEl('span','ps-pal-check-text',label+' '+r.toFixed(1)+':1'+(ok?'':' · low')));return el;};
@@ -10919,23 +11014,132 @@ async function _openProjectStarterWizard(profile){
           if(on&&b.offsetWidth){segPill.style.width=b.offsetWidth+'px';segPill.style.transform='translateX('+b.offsetLeft+'px)';seg.classList.add('has-pill');}});
         const isCustom=key==='custom';editorWrap.classList.toggle('is-open',isCustom);editor.inert=!isCustom;followInput.checked=follow;
         Object.entries(inputs).forEach(([k,{pick,hex}])=>{const [theme,role]=k.split(':');const v=pal[theme][role];
-          if(pick.value!==v) pick.value=v;if(document.activeElement!==hex) hex.value=v;
+          pick.style.background=v;if(document.activeElement!==hex) hex.value=v;
           const lock=theme==='dark'&&follow;pick.disabled=lock;hex.disabled=lock;});
+        if(isCustom) paintPicker();
         why.textContent=pal.why||'';why.hidden=!pal.why;
       }
       return {node,paint};
     }
+    const _psHexPoints=(x,y,r)=>Array.from({length:6},(_,i)=>{const a=Math.PI/180*(60*i-30);return (x+r*Math.cos(a)).toFixed(2)+','+(y+r*Math.sin(a)).toFixed(2);}).join(' ');
+    // Scroll the wizard body so ``node`` is in view (smoothly, unless reduced motion).
+    function _psRevealInBody(node){
+      const body=node.closest('.ps-body');if(!body) return;
+      const b=body.getBoundingClientRect(),r=node.getBoundingClientRect();
+      let delta=0;
+      if(r.top<b.top+8) delta=r.top-b.top-8;
+      else if(r.bottom>b.bottom-8) delta=Math.min(r.bottom-b.bottom+8,r.top-b.top-8);
+      if(Math.abs(delta)<2) return;
+      const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      body.scrollTo({top:body.scrollTop+delta,behavior:reduce?'auto':'smooth'});
+    }
 
-    // Step 7 — Look & feel, preselected from the brief
+    // Sections that open one at a time (Customize, Toolkit): the current one is
+    // open and the rest fold to a header with a summary. Finishing one ticks it
+    // and opens the next. ``state`` keeps {open, done} across repaints.
+    function _psSteps(state,{onOpen}={}){
+      const root=_psEl('div','ps-cz');
+      const secs=[];
+      if(!state.done) state.done=[];
+      const isDone=(key)=>state.done.includes(key);
+      function paint(){
+        secs.forEach(s=>{const open=state.open===s.key||!!state.all;
+          s.sec.classList.toggle('is-open',open);s.sec.classList.toggle('is-done',isDone(s.key));
+          s.head.setAttribute('aria-expanded',String(open));s.body.inert=!open;
+          const text=s.summary?s.summary():'';if(s.sum.textContent!==text){s.sum.textContent=text;s.sum.classList.remove('is-new');void s.sum.offsetWidth;s.sum.classList.add('is-new');}
+          if(s.next) s.next.textContent=secs.indexOf(s)===secs.length-1?'Done':'Next: '+secs[secs.indexOf(s)+1].title;});
+      }
+      function open(key,{reveal=true}={}){
+        if(state.open===key&&!state.all) return;
+        state.open=key;paint();
+        const s=secs.find(x=>x.key===key);
+        if(s&&reveal) setTimeout(()=>{if(s.sec.isConnected)_psRevealInBody(s.head.getBoundingClientRect().height&&s.sec.getBoundingClientRect().height>s.sec.closest('.ps-body').clientHeight?s.head:s.sec);},400);
+        if(onOpen) onOpen(key);
+      }
+      // Mark ``key`` done and open the one after it (or fold them all after the last).
+      function finish(key){
+        if(!isDone(key)) state.done.push(key);
+        const i=secs.findIndex(x=>x.key===key);const nxt=secs[i+1];
+        if(nxt) open(nxt.key); else {state.open='';paint();}
+      }
+      function add(key,title,{summary,next=true}={}){
+        const sec=_psEl('section','ps-cz-sec');sec.dataset.sec=key;
+        const head=_psEl('button','ps-cz-head');head.type='button';
+        const id='ps-cz-'+key;head.setAttribute('aria-controls',id);
+        const mark=_psEl('span','ps-cz-mark');mark.setAttribute('aria-hidden','true');
+        mark.innerHTML='<svg viewBox="0 0 18 18" width="18" height="18"><circle class="ps-cz-ring" cx="9" cy="9" r="8"/><path class="ps-cz-tick" d="M5.2 9.3l2.5 2.5 5.1-5.3"/></svg>';
+        const ttl=_psEl('span','ps-cz-title',title);const sum=_psEl('span','ps-cz-summary');
+        const chev=_psEl('span','ps-cz-chev');chev.innerHTML=_psIcon('chevron',14);
+        head.append(mark,ttl,sum,chev);
+        head.onclick=()=>{if(state.open===key&&!state.all){state.open='';paint();return;}open(key);};
+        const body=_psEl('div','ps-cz-body');body.id=id;body.setAttribute('role','region');body.setAttribute('aria-label',title);
+        const inner=_psEl('div','ps-cz-inner');body.append(inner);
+        const content=_psEl('div','ps-cz-content');inner.append(content);
+        let nextBtn=null;
+        if(next){const foot=_psEl('div','ps-cz-foot');nextBtn=_psEl('button','ps-cz-next');nextBtn.type='button';nextBtn.onclick=()=>finish(key);foot.append(nextBtn);inner.append(foot);}
+        sec.append(head,body);root.append(sec);
+        secs.push({key,title,sec,head,body,sum,summary,next:nextBtn});
+        return content;
+      }
+      return {root,add,paint,open,finish,isDone};
+    }
+
+    // Customize: the parts of the look beyond style and colour. Each choice has a
+    // default per style; picks the user has not touched follow the style.
+    const _PS_CUSTOM=[
+      ['font','Typeface',[['sans','Modern sans','Clean and neutral.'],['serif','Classic serif','Bookish headings, warm.'],['geometric','Geometric','Round letters, friendly.'],['mono','Mono accents','Monospace headings, data feel.']]],
+      ['scale','Text size',[['compact','Compact','More on screen.'],['comfortable','Comfortable','The balanced default.'],['large','Large','Big and easy to read.']]],
+      ['btnShape','Shape',[['square','Square','Straight corners.'],['soft','Soft','Slightly rounded.'],['rounded','Rounded','Clearly rounded.'],['pill','Pill','Fully round ends.']]],
+      ['btnFill','Fill',[['solid','Solid','Full colour.'],['tint','Soft tint','See-through colour.'],['outline','Outline','Border only.'],['ghost','Ghost','Text, fills on hover.']]],
+      ['btnHover','On hover',[['lift','Lift','Rises with a shadow.'],['darken','Deepen','The colour deepens.'],['glow','Glow','A soft coloured halo.'],['none','Still','Nothing changes.']]],
+      ['corners','Corners',[['sharp','Sharp','Square cards and fields.'],['soft','Soft','Gently rounded.'],['round','Round','Generously rounded.']]],
+      ['depth','Depth',[['flat','Flat','Colour only.'],['border','Bordered','Thin outlines.'],['shadow','Raised','Soft shadows.'],['glass','Glass','Frosted, see-through.']]],
+      ['density','Spacing',[['compact','Compact','Tight and efficient.'],['comfortable','Comfortable','Balanced.'],['airy','Airy','Generous room.']]],
+    ];
+    const _PS_CUSTOM_DEFAULTS={
+      minimal:{font:'sans',scale:'comfortable',btnShape:'soft',btnFill:'solid',btnHover:'darken',corners:'soft',depth:'border',density:'airy'},
+      elegant:{font:'serif',scale:'comfortable',btnShape:'soft',btnFill:'solid',btnHover:'darken',corners:'soft',depth:'flat',density:'airy'},
+      playful:{font:'geometric',scale:'comfortable',btnShape:'pill',btnFill:'solid',btnHover:'lift',corners:'round',depth:'shadow',density:'comfortable'},
+      bold:{font:'sans',scale:'large',btnShape:'square',btnFill:'solid',btnHover:'lift',corners:'sharp',depth:'flat',density:'comfortable'},
+      technical:{font:'mono',scale:'compact',btnShape:'soft',btnFill:'outline',btnHover:'darken',corners:'sharp',depth:'border',density:'compact'},
+      editorial:{font:'serif',scale:'large',btnShape:'square',btnFill:'solid',btnHover:'darken',corners:'sharp',depth:'flat',density:'airy'},
+    };
+    const _psCustomDefaults=(style)=>({..._PS_CUSTOM_DEFAULTS[style]||_PS_CUSTOM_DEFAULTS.minimal});
+    const _psCustomLabel=(key,value)=>{const g=_PS_CUSTOM.find(x=>x[0]===key);const o=g&&g[2].find(x=>x[0]===value);return o?o[1]:'';};
+    // The custom choices as CSS variables and data attributes on ``node`` (the
+    // previews and samples read them).
+    function _psCustomVars(node,custom){
+      if(!custom) return;
+      Object.entries(custom).forEach(([k,v])=>{node.dataset['cz'+k[0].toUpperCase()+k.slice(1)]=v;});
+    }
+
+    // A sample for one custom option, painted in the palette.
+    function _psCustomSample(key,value){
+      const s=_psEl('span','ps-cz-sample');s.dataset.kind=key;s.setAttribute('aria-hidden','true');
+      const btn=(label)=>{const b=_psEl('span','ps-cz-btn',label||'Button');return b;};
+      if(key==='font'){s.dataset.font=value;s.append(_psEl('span','ps-cz-aa','Aa'),_psEl('span','ps-cz-quick','The quick fox'));}
+      else if(key==='scale'){s.dataset.scale=value;s.append(_psEl('span','ps-cz-head-line','Heading'),_psEl('span','ps-cz-body-line','Body text reads like this.'));}
+      else if(key==='btnShape'){s.dataset.btnShape=value;s.append(btn('Get started'));}
+      else if(key==='btnFill'){s.dataset.btnFill=value;s.append(btn('Get started'));}
+      else if(key==='btnHover'){s.dataset.btnHover=value;s.append(btn('Hover me'));}
+      else if(key==='corners'){s.dataset.corners=value;const c=_psEl('span','ps-cz-card');c.append(_psEl('i'),_psEl('i','is-short'));s.append(c,_psEl('span','ps-cz-field'));}
+      else if(key==='depth'){s.dataset.depth=value;const c=_psEl('span','ps-cz-card');c.append(_psEl('i'),_psEl('i','is-short'));s.append(c);}
+      else if(key==='density'){s.dataset.density=value;for(let i=0;i<3;i++)s.append(_psEl('span','ps-cz-bar'));}
+      return s;
+    }
+
+    // Step 7 — Customize (Look & feel), preselected from the brief. Sections open
+    // one at a time; a pick ticks its section and opens the next.
     function renderLook(){
       const look=ensureLook();const rec=st.analysis&&st.analysis.look;
-      sub.textContent='How the '+(templates.find(t=>t.key===st.template)||{label:'project'}).label+' should look and move.';
-      const wrap=section('Choose the look and feel:');
-      // Style, Colours, Motion and Built with, split by dividers; a star marks
-      // the planner's pick in each.
-      const secs=_psEl('div','ps-look-secs');wrap.append(secs);
-      const lookSec=(label,...nodes)=>{const sec=_psEl('div','ps-look-sec');sec.dataset.sec=label.toLowerCase();
-        sec.append(_psEl('p','ps-look-label',label),...nodes);secs.append(sec);return sec;};
+      sub.textContent='How the '+(templates.find(t=>t.key===st.template)||{label:'project'}).label+' should look and move. Each part is open in turn; pick one to move on.';
+      const wrap=section('Customize');wrap.classList.add('ps-customize');
+      if(!look.custom){look.custom=_psCustomDefaults(look.style||(rec&&rec.style));look.touched=[];}
+      if(!look.steps) look.steps={open:'style',done:[]};
+      const recCustom=_psCustomDefaults(rec&&rec.style||look.style);
+      const steps=_psSteps(look.steps);wrap.append(steps.root);
+      const later=(fn)=>setTimeout(fn,260);
+      // Style
       const grid=_psEl('div','ps-look-grid');grid.setAttribute('role','radiogroup');grid.setAttribute('aria-label','Style');
       _PS_STYLES.forEach(([key,label,desc],i)=>{
         const card=_psEl('button','ps-look-card'+(look.style===key?' is-selected':''));card.type='button';card.dataset.style=key;
@@ -10945,12 +11149,38 @@ async function _openProjectStarterWizard(profile){
         const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',label),_psEl('span','ps-look-desc',desc));
         card.append(sample,text);
         if(rec&&rec.style===key) card.append(_psRecStar());
-        card.onclick=()=>{look.style=key;renderLook.paint();};
+        card.onclick=()=>{look.style=key;
+          // Untouched custom picks follow the new style.
+          const d=_psCustomDefaults(key);Object.keys(d).forEach(k=>{if(!look.touched.includes(k))look.custom[k]=d[k];});
+          renderLook.paint();later(()=>steps.finish('style'));};
         grid.append(card);
       });
-      lookSec('Style',grid);
-      const colours=_psColours(look,()=>renderLook.paint());
-      lookSec('Colours',colours.node);
+      steps.add('Style'.toLowerCase(),'Style',{summary:()=>_psLabel(look.style)}).append(grid);
+      // Colours
+      const colours=_psColours(look,(why)=>{renderLook.paint();if(why==='pick')later(()=>steps.finish('colours'));});
+      steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
+      // Typography, Buttons, Cards & spacing: groups of custom options.
+      const groupGrids=[];
+      const customSec=(key,title,keys)=>{
+        const box=steps.add(key,title,{summary:()=>keys.map(k=>_psCustomLabel(k,look.custom[k])).join(' · ')});
+        keys.forEach(k=>{const [,label,opts]=_PS_CUSTOM.find(g=>g[0]===k);
+          const g=_psEl('div','ps-cz-group');g.append(_psEl('p','ps-cz-label',label));
+          const row=_psEl('div','ps-cz-grid');row.setAttribute('role','radiogroup');row.setAttribute('aria-label',title+': '+label);row.style.setProperty('--n',opts.length);
+          opts.forEach(([value,name,desc],i)=>{
+            const card=_psEl('button','ps-cz-opt');card.type='button';card.dataset.key=k;card.dataset.value=value;card.setAttribute('role','radio');card.style.setProperty('--i',i);
+            const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',name),_psEl('span','ps-look-desc',desc));
+            card.append(_psCustomSample(k,value),text);
+            if(recCustom[k]===value) card.append(_psRecStar());
+            card.onclick=()=>{look.custom[k]=value;if(!look.touched.includes(k))look.touched.push(k);renderLook.paint();
+              // The last group of a section moves on; earlier ones wait for the rest.
+              if(k===keys[keys.length-1])later(()=>steps.finish(key));};
+            row.append(card);});
+          g.append(row);box.append(g);groupGrids.push(row);});
+      };
+      customSec('type','Typography',['font','scale']);
+      customSec('buttons','Buttons',['btnShape','btnFill','btnHover']);
+      customSec('surfaces','Cards & spacing',['corners','depth','density']);
+      // Motion
       const motions=_psEl('div','ps-motion-grid');motions.setAttribute('role','radiogroup');motions.setAttribute('aria-label','Motion');
       _PS_MOTIONS.forEach(([key,label,desc])=>{
         const card=_psEl('button','ps-motion-card'+(look.motion===key?' is-selected':''));card.type='button';card.dataset.motion=key;
@@ -10959,10 +11189,11 @@ async function _openProjectStarterWizard(profile){
         const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',label),_psEl('span','ps-look-desc',desc));
         card.append(demo,text);
         if(rec&&rec.motion===key) card.append(_psRecStar());
-        card.onclick=()=>{look.motion=key;renderLook.paint();};
+        card.onclick=()=>{look.motion=key;renderLook.paint();later(()=>steps.finish('motion'));};
         motions.append(card);
       });
-      lookSec('Motion',motions);
+      steps.add('motion','Motion',{summary:()=>_psLabel(look.motion)}).append(motions);
+      // Built with
       const stack=_psEl('div','ps-stack-row');
       fwChoices().forEach(fw=>{
         const chip=_psEl('button','ps-chip-toggle'+(look.framework===fw?' is-on':''),_psLabel(fw));chip.type='button';chip.dataset.framework=fw;
@@ -10976,14 +11207,17 @@ async function _openProjectStarterWizard(profile){
         tw.onclick=()=>{look.tailwind=!look.tailwind;renderLook.paint();};
         stack.append(_psEl('span','ps-stack-sep'),tw);
       }
-      lookSec('Built with',stack);
+      steps.add('built','Built with',{summary:()=>_psLabel(look.framework)+(look.tailwind?' + Tailwind':'')}).append(stack);
       renderLook.paint=()=>{
         if(look.palette) _psPaletteVars(wrap,look.palette.light);
+        _psCustomVars(wrap,look.custom);
         colours.paint();
         grid.querySelectorAll('.ps-look-card').forEach(c=>{const on=c.dataset.style===look.style;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
+        groupGrids.forEach(row=>row.querySelectorAll('.ps-cz-opt').forEach(c=>{const on=look.custom[c.dataset.key]===c.dataset.value;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));}));
         motions.querySelectorAll('.ps-motion-card').forEach(c=>{const on=c.dataset.motion===look.motion;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
         stack.querySelectorAll('[data-framework]').forEach(c=>{const on=c.dataset.framework===look.framework;c.classList.toggle('is-on',on);c.setAttribute('aria-pressed',String(on));});
         const tw=stack.querySelector('[data-tailwind]');if(tw){tw.classList.toggle('is-on',!!look.tailwind);tw.setAttribute('aria-pressed',String(!!look.tailwind));}
+        steps.paint();
         setNav({canNext:!!(look.style&&look.motion)});
         paintBuild();
       };
@@ -11038,7 +11272,7 @@ async function _openProjectStarterWizard(profile){
       tools.insertAdjacentHTML('beforeend',filterButtonHtml('psKitFilter','Filter skills and components'));
       const filterBtn=tools.querySelector('.filter-btn');
       holder.append(tools);
-      const lists=_psEl('div','ps-kit-lists');holder.append(lists);
+      let lists=_psEl('div','ps-kit-lists');holder.append(lists);
       const roles=Object.keys(data.components||{});
       const categories=[...new Set(data.skills.map(s=>s.category).filter(Boolean))];
       const paintFilter=()=>{filterBtn.classList.toggle('is-active',!!st.kit.filter);
@@ -11053,12 +11287,15 @@ async function _openProjectStarterWizard(profile){
       let typing=0;
       input.oninput=()=>{clearTimeout(typing);typing=setTimeout(()=>{st.kit.q=input.value.trim();paintLists(true);},90);};
       input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';paintLists(true);}};
-      const counts=()=>{lists.querySelectorAll('[data-count]').forEach(n=>{n.textContent=(n.dataset.count==='skills'?st.kit.skills.size:st.kit.comps.size)+' chosen';});};
+      let kitSteps=null,paintTray=()=>{};
+      const counts=()=>{lists.querySelectorAll('[data-count]').forEach(n=>{n.textContent=(n.dataset.count==='skills'?st.kit.skills.size:st.kit.comps.size)+' chosen';});if(kitSteps)kitSteps.paint();};
       const toggle=(card,set,id)=>{const on=!set.has(id);if(on)set.add(id);else set.delete(id);
-        card.classList.toggle('is-selected',on);
-        if(card.tagName==='TR'){const box=card.querySelector('[role=checkbox]');if(box)box.setAttribute('aria-checked',String(on));}
-        else card.setAttribute('aria-pressed',String(on));
-        const box=card.querySelector('.ps-kit-check');if(box)box.classList.toggle('is-on',on);counts();paintBuild();};
+        if(card){card.classList.toggle('is-selected',on);
+          if(card.tagName==='TR'){const box=card.querySelector('[role=checkbox]');if(box)box.setAttribute('aria-checked',String(on));}
+          else card.setAttribute('aria-pressed',String(on));
+          const box=card.querySelector('.ps-kit-check');if(box)box.classList.toggle('is-on',on);}
+        counts();if(set===st.kit.comps)paintTray();paintBuild();};
+      if(!st.kit.steps) st.kit.steps={open:'skills',done:[]};
       const words=()=>st.kit.q.toLowerCase().split(/\s+/).filter(Boolean);
       const hit=(text)=>{const w=words();const t=text.toLowerCase();return w.every(x=>t.includes(x));};
       // Skills as a table: tick, name, category, what it does, and a star for
@@ -11150,19 +11387,67 @@ async function _openProjectStarterWizard(profile){
         }
         return box;
       }
+      // The chosen components as removable chips above the cards; a chip
+      // scrolls to its card. Chips come and go with a short animation.
+      function makeTray(){
+        const tray=_psEl('div','ps-kit-tray');tray.setAttribute('aria-label','Chosen components');
+        const label=_psEl('span','ps-kit-tray-label','Chosen');const chips=_psEl('div','ps-kit-tray-chips');
+        const none=_psEl('span','ps-kit-tray-none','Nothing chosen yet. Tick components below.');
+        tray.append(label,chips,none);
+        const all=Object.values(data.components||{}).flat();
+        const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        paintTray=()=>{
+          const want=all.filter(c=>st.kit.comps.has(c.library+'/'+c.slug));const ids=new Set(want.map(c=>c.library+'/'+c.slug));
+          chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)').forEach(ch=>{if(ids.has(ch.dataset.comp))return;
+            if(reduce()||!ch.isConnected){ch.remove();return;}
+            ch.classList.add('is-leaving');const w=ch.offsetWidth;
+            ch.animate([{width:w+'px',opacity:1,transform:'scale(1)'},{width:'0px',opacity:0,transform:'scale(.8)',marginRight:'-6px'}],{duration:220,easing:'cubic-bezier(0.22, 1, 0.36, 1)'}).onfinish=()=>ch.remove();});
+          const have=new Set([...chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)')].map(ch=>ch.dataset.comp));
+          want.forEach(c=>{const id=c.library+'/'+c.slug;if(have.has(id))return;
+            const chip=_psEl('span','ps-kit-tray-chip');chip.dataset.comp=id;
+            const go=_psEl('button','ps-kit-tray-go');go.type='button';
+            const th=_psEl('span','ps-kit-tray-thumb');
+            if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.decoding='async';img.draggable=false;th.append(img);}
+            else th.textContent=(c.name||'?').slice(0,1);
+            go.append(th,_psEl('span','ps-kit-tray-name',c.name));
+            go.onclick=()=>{const card=lists.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]');if(!card)return;
+              _psRevealInBody(card);card.classList.remove('is-flash');void card.offsetWidth;card.classList.add('is-flash');};
+            const rm=_psEl('button','ps-kit-tray-x');rm.type='button';rm.setAttribute('aria-label','Remove '+c.name);rm.innerHTML=_psIcon('x',12);
+            rm.onclick=()=>toggle(lists.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);
+            chip.append(go,rm);chips.append(chip);
+            if(have.size&&!reduce()) chip.animate([{opacity:0,transform:'scale(.85)',filter:'blur(2px)'},{opacity:1,transform:'none',filter:'none'}],{duration:260,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});});
+          tray.classList.toggle('is-empty',!want.length);
+        };
+        paintTray();
+        return tray;
+      }
       function paintLists(quiet){
         lists.innerHTML='';lists.classList.toggle('is-quiet',!!quiet);
         if(quiet){lists.classList.remove('is-refresh');void lists.offsetWidth;lists.classList.add('is-refresh');}
         const f=st.kit.filter,narrowed=!!(st.kit.q||f);
+        // Skills and Components open one at a time (all open while searching or filtering).
+        const both=data.visual&&roles.length&&data.libraries&&!f;
+        kitSteps=null;paintTray=()=>{};
+        let skillsBox=lists,compsBox=lists;
+        if(both){
+          st.kit.steps.all=narrowed;
+          kitSteps=_psSteps(st.kit.steps);lists.append(kitSteps.root);
+          skillsBox=kitSteps.add('skills','Skills',{summary:()=>st.kit.skills.size+' chosen'});
+          compsBox=kitSteps.add('comps','Components',{summary:()=>st.kit.comps.size+' chosen'});
+        }
         if(!f||f.startsWith('skill:')){
-          const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
-          head.append(_psEl('h4',null,'Skills'),count);lists.append(head);
-          if(!data.skills.length) lists.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
-          else lists.append(skillsTable(f,narrowed));
+          if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
+            head.append(_psEl('h4',null,'Skills'),count);lists.append(head);}
+          if(!data.skills.length) skillsBox.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
+          else skillsBox.append(skillsTable(f,narrowed));
         }
         if(data.visual&&(!f||f.startsWith('role:'))){
-          const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
-          head.append(_psEl('h4',null,'Components'),count);lists.append(head);
+          const listsOuter=lists;
+          if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
+            head.append(_psEl('h4',null,'Components'),count);lists.append(head);}
+          if(roles.length&&data.libraries) compsBox.append(makeTray());
+          // Library groups go into the Components section.
+          lists=compsBox;
           if(!data.libraries) lists.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));
           else if(!roles.length) lists.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));
           else{
@@ -11212,6 +11497,7 @@ async function _openProjectStarterWizard(profile){
             });
             if(!any) lists.append(_psEl('p','ps-kit-empty','No components match.'));
           }
+          lists=listsOuter;
         }
         counts();
       }
@@ -11225,7 +11511,7 @@ async function _openProjectStarterWizard(profile){
     function toolkitPayload(){
       const pal=st.look&&st.look.palette;
       const look=isVisual()&&st.look?{style:st.look.style,motion:st.look.motion,framework:st.look.framework,tailwind:!!st.look.tailwind,why:st.look.why||'',
-        palette:pal?{name:pal.name,source:pal.source,light:pal.light,dark:pal.dark,why:pal.why||''}:null}:null;
+        palette:pal?{name:pal.name,source:pal.source,light:pal.light,dark:pal.dark,why:pal.why||''}:null,custom:st.look.custom||null}:null;
       return {look,skills:chosenSkills().map(s=>s.name),components:chosenComponents().map(c=>({library:c.library,slug:c.slug}))};
     }
     function filesToCreate(){
@@ -11284,7 +11570,15 @@ async function _openProjectStarterWizard(profile){
           ['light','dark'].forEach(theme=>{const row=_psEl('span','ps-pal-swatch-row');row.dataset.theme=theme;row.style.background=l.palette[theme].bg;
             ['surface','text','primary','accent'].forEach(role=>{const chip=_psEl('span','ps-pal-chip');chip.style.background=l.palette[theme][role];row.append(chip);});sw.append(row);});
           palTiles.push(tile('Colours',l.palette.name||'Custom',sw));}
-        tiles.append(tile('Style',_psLabel(l.style),sample),...palTiles,tile('Motion',_psLabel(l.motion),demo),
+        // Typography, buttons and surfaces: the same samples the Customize step shows.
+        const czTiles=[];
+        if(l.custom){_psCustomVars(look,l.custom);
+          czTiles.push(tile('Typography',_psCustomLabel('font',l.custom.font)+' · '+_psCustomLabel('scale',l.custom.scale),_psCustomSample('font',l.custom.font)));
+          const b=_psCustomSample('btnShape',l.custom.btnShape);b.dataset.btnFill=l.custom.btnFill;
+          czTiles.push(tile('Buttons',['btnShape','btnFill','btnHover'].map(k=>_psCustomLabel(k,l.custom[k])).join(' · '),b));
+          const c=_psCustomSample('corners',l.custom.corners);c.dataset.depth=l.custom.depth;
+          czTiles.push(tile('Cards & spacing',['corners','depth','density'].map(k=>_psCustomLabel(k,l.custom[k])).join(' · '),c));}
+        tiles.append(tile('Style',_psLabel(l.style),sample),...palTiles,...czTiles,tile('Motion',_psLabel(l.motion),demo),
           tile('Built with',_psLabel(l.framework)+(l.tailwind?' + Tailwind CSS':''),stack));
         look.append(tiles);
       }

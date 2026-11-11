@@ -1,7 +1,7 @@
-"""Create-project wizard, Details / Look & feel / Toolkit: option text centred on
-its key, Look & feel sections split by evenly spaced dividers with no banner,
-stars in the top-right corner of cards, palette preview labels centred, skills
-as a table whose "Show all" opens category tabs, and component loops that play
+"""Create-project wizard, Details / Customize / Toolkit: option text centred on
+its key, Customize sections that open one at a time with no banner, stars in
+the top-right corner of cards, palette preview labels centred, skills as a
+table whose "Show all" opens category tabs, and component loops that play
 while on screen."""
 
 import base64
@@ -12,6 +12,7 @@ import pytest
 
 from tests import test_builder_and_skills_polish_browser as pol
 from tests import test_project_builder_palette_browser as palb
+from tests import test_project_builder_wizard_browser as wiz
 
 SKILLS = [{"name": n, "category": c, "description": n + " does things.", "score": s, "recommended": r}
           for n, c, s, r in [("impeccable", "ui-design", 9, True), ("better-ui", "ui-design", 7, True),
@@ -89,7 +90,7 @@ def _font_of(page, selector):
 def _to_look(page):
     pol._to_details(page)
     page.click(".ps-next")
-    page.wait_for_selector(".ps-pal-card")
+    page.wait_for_selector(".ps-pal-card", state="attached")
 
 
 def _to_kit(page):
@@ -113,32 +114,51 @@ def test_option_text_is_centred_on_its_key(page):
         assert abs(row["key"]) <= (1 if exact else 1.3), rows
 
 
-def test_look_sections_are_split_by_even_dividers_and_the_banner_is_gone(page):
+def test_customize_opens_one_section_at_a_time_and_a_pick_ticks_it_and_opens_the_next(page):
     _to_look(page)
-    _quiet(page)
     assert page.locator(".ps-look-rec").count() == 0
-    gaps = page.evaluate("""() => [...document.querySelectorAll('.ps-look-sec+.ps-look-sec')].map(sec => {
-      const prev = sec.previousElementSibling.lastElementChild.getBoundingClientRect(); const s = sec.getBoundingClientRect();
-      const l = sec.querySelector('.ps-look-label').getBoundingClientRect(); const line = parseFloat(getComputedStyle(sec).borderTopWidth);
-      return [sec.dataset.sec, Math.round(s.top - prev.bottom), Math.round(l.top - s.top - line), line]; })""")
-    assert [g[0] for g in gaps] == ["colours", "motion", "built with"], gaps
-    for _name, above, below, line in gaps:
-        assert line >= 1 and above == below, gaps
+    assert page.inner_text(".ps-prompt") == "Customize"
+    order = page.eval_on_selector_all(".ps-cz-sec", "els => els.map(e => e.dataset.sec)")
+    assert order == ["style", "colours", "type", "buttons", "surfaces", "motion", "built"], order
+    opened = lambda: page.eval_on_selector_all(".ps-cz-sec.is-open", "els => els.map(e => e.dataset.sec)")  # noqa: E731
+    assert opened() == ["style"]
+    page.click(".ps-look-card[data-style=playful]")
+    page.wait_for_selector(".ps-cz-sec[data-sec=colours].is-open")
+    assert opened() == ["colours"]
+    assert page.locator(".ps-cz-sec[data-sec=style].is-done").count() == 1
+    assert page.inner_text(".ps-cz-sec[data-sec=style] .ps-cz-summary") == "Playful"
+    # Untouched choices follow the style: playful buttons are pills.
+    assert "Pill" in page.inner_text(".ps-cz-sec[data-sec=buttons] .ps-cz-summary")
+    # A multi-part section moves on when its last part is picked, or with its Next button.
+    wiz.open_section(page, "buttons")
+    page.click(".ps-cz-opt[data-key=btnShape][data-value=square]")
+    assert opened() == ["buttons"]
+    page.click(".ps-cz-opt[data-key=btnHover][data-value=glow]")
+    page.wait_for_selector(".ps-cz-sec[data-sec=surfaces].is-open")
+    assert page.inner_text(".ps-cz-sec[data-sec=buttons] .ps-cz-summary") == "Square · Solid · Glow"
+    page.click(".ps-cz-sec[data-sec=surfaces] .ps-cz-next")
+    page.wait_for_selector(".ps-cz-sec[data-sec=motion].is-open")
+    # Clicking an open header folds it.
+    page.click(".ps-cz-sec[data-sec=motion] > .ps-cz-head")
+    page.wait_for_function("() => !document.querySelector('.ps-cz-sec.is-open')")
+    assert page.get_attribute(".ps-cz-sec[data-sec=motion] > .ps-cz-head", "aria-expanded") == "false"
 
 
 def test_stars_sit_in_the_top_right_corner_of_their_cards(page):
     _to_look(page)
     _quiet(page)
-    spots = page.evaluate("""() => [...document.querySelectorAll(':is(.ps-look-card,.ps-pal-card,.ps-motion-card) .ps-option-star')].map(s => {
+    spots = page.evaluate("""() => [...document.querySelectorAll(':is(.ps-look-card,.ps-pal-card,.ps-motion-card,.ps-cz-opt) .ps-option-star')].map(s => {
       const c = s.parentElement.getBoundingClientRect(), r = s.getBoundingClientRect();
-      return {top: r.top - c.top, right: c.right - r.right, inside: r.left >= c.left && r.top >= c.top && r.right <= c.right}; })""")
-    assert len(spots) == 3, spots  # style, colours, motion
+      return {card: s.parentElement.className, top: r.top - c.top, right: c.right - r.right, inside: r.left >= c.left && r.top >= c.top && r.right <= c.right}; })""")
+    # Style, colours, motion, and one per typography, button and surface choice.
+    assert len(spots) == 3 + 8, spots
     for spot in spots:
         assert spot["inside"] and 4 <= spot["top"] <= 16 and 4 <= spot["right"] <= 16, spots
 
 
 def test_palette_preview_labels_are_centred_in_their_buttons(page):
     _to_look(page)
+    wiz.open_section(page, "colours")
     page.evaluate("() => document.querySelector('.ps-pal-preview').scrollIntoView({block: 'center', behavior: 'instant'})")
     _quiet(page)
     page.wait_for_timeout(300)
@@ -177,6 +197,7 @@ def test_skills_are_a_table_and_show_all_opens_category_tabs_that_slide_the_rows
 
 def test_component_loops_play_while_on_screen_and_stars_replace_the_pill(page):
     _to_kit(page)
+    wiz.open_section(page, "comps")
     page.evaluate("() => document.querySelector('.ps-kit-comp').scrollIntoView({block: 'center'})")
     page.wait_for_function("() => [...document.querySelectorAll('.ps-kit-comp .ps-kit-thumb img')].some(i => i.getAttribute('src').includes('.loop.webp'))")
     assert page.locator(".ps-kit-comp .ps-kit-live").count() == 3
@@ -184,5 +205,6 @@ def test_component_loops_play_while_on_screen_and_stars_replace_the_pill(page):
     spot = page.evaluate("""() => { const s = document.querySelector(".ps-kit-comp[data-comp='calm/split'] .ps-option-star");
       const c = s.parentElement.getBoundingClientRect(), r = s.getBoundingClientRect(); return [r.top - c.top, c.right - r.right]; }""")
     assert all(4 <= v <= 16 for v in spot), spot
-    page.evaluate("() => { const b = document.querySelector('.ps-body'); b.scrollTop = 0; }")
+    # Folded away (or scrolled off), they go back to the still.
+    page.click(".ps-cz-sec[data-sec=comps] > .ps-cz-head")
     page.wait_for_function("() => [...document.querySelectorAll('.ps-kit-comp .ps-kit-thumb img')].every(i => !i.getAttribute('src').includes('.loop.webp'))")

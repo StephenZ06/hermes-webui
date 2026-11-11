@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import queue
 import re
 import threading
@@ -182,6 +183,7 @@ def start_analysis(*, name: str, brief: str, template: dict) -> str:
     )
     return _start_job("analysis", lambda report, on_run: parse_analysis(_run_ephemeral_turn(
         prompt, timeout=_ANALYSIS_TIMEOUT_SECONDS, progress=report, on_run=on_run,
+        estimate=getattr(report, "estimate", None),
         answer_label="Writing up its questions", **_planner_run())), with_progress=True)
 
 
@@ -200,7 +202,8 @@ def _start_job(kind: str, work, *, with_progress: bool = False, workspace: str |
 
     With ``with_progress`` the work is called with ``report(line)``, whose
     latest line ``get_job`` returns as ``progress`` while the job runs (so the
-    wizard can show what the agent is doing), and ``on_run(session_id,
+    wizard can show what the agent is doing; ``report.estimate(pct)`` sets the
+    job's estimated ``percent`` done), and ``on_run(session_id,
     stream_id)``, which records the hidden turn so ``stop_jobs`` can stop
     it. ``workspace``/``project_id`` name the folder and project the job works on.
     """
@@ -216,8 +219,12 @@ def _start_job(kind: str, work, *, with_progress: bool = False, workspace: str |
     if with_progress:
         inner = work
 
+        def report(line):
+            _report_progress(job_id, line)
+        report.estimate = lambda pct: _report_percent(job_id, pct)
+
         def work():
-            return inner(lambda line: _report_progress(job_id, line), lambda sid, stream: _note_run(job_id, sid, stream))
+            return inner(report, lambda sid, stream: _note_run(job_id, sid, stream))
     threading.Thread(target=_job_worker, args=(job_id, work), daemon=True).start()
     return job_id
 
@@ -237,6 +244,65 @@ def _report_progress(job_id: str, line: str) -> None:
         job = _jobs.get(job_id)
         if job is not None and job.get("status") == "running":
             job["progress"] = line[:_PROGRESS_MAX]
+
+
+def _report_percent(job_id: str, pct: int) -> None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is not None and job.get("status") == "running":
+            job["percent"] = max(0, min(99, int(pct)))
+
+
+# ── Completion estimate ─────────────────────────────────────────────────────
+# A hidden turn reports no real progress, so the wizard shows an estimate. The
+# working phase (reasoning and tool calls) eases toward about 60% over the time
+# the same kind of turn took last time; once the answer streams, the rest fills
+# by how much of a typical answer has arrived. It never goes backwards and stays
+# under 100% until the job is done. Typical times and lengths are learned per
+# kind of turn (its answer label), in memory only.
+
+_TYPICAL: dict[str, dict] = {}
+_TYPICAL_LOCK = threading.Lock()
+_TYPICAL_SECONDS, _TYPICAL_CHARS = 60.0, 3000.0
+
+
+class _Estimate:
+    def __init__(self, key: str, now: float | None = None):
+        with _TYPICAL_LOCK:
+            typical = dict(_TYPICAL.get(key) or {})
+        self.key = key
+        self.seconds = max(5.0, float(typical.get("seconds") or _TYPICAL_SECONDS))
+        self.chars = max(200.0, float(typical.get("chars") or _TYPICAL_CHARS))
+        self.start = time.time() if now is None else now
+        self.answer_at = None
+        self.answer_from = 0
+        self.received = 0
+        self.pct = 2
+
+    def tick(self, now: float | None = None) -> int:
+        now = time.time() if now is None else now
+        if self.answer_at is None:
+            raw = 5 + 65 * (1 - math.exp(-2 * (now - self.start) / self.seconds))
+        else:
+            raw = self.answer_from + (96 - self.answer_from) * min(1.0, self.received / self.chars)
+        self.pct = max(self.pct, min(96, int(raw)))
+        return self.pct
+
+    def answering(self, text: str, now: float | None = None) -> None:
+        if self.answer_at is None:
+            self.answer_at = time.time() if now is None else now
+            self.answer_from = self.tick(self.answer_at)
+        self.received += len(text or "")
+
+    def learn(self, answer: str, now: float | None = None) -> None:
+        end = time.time() if now is None else now
+        seconds = (self.answer_at or end) - self.start
+        chars = len(answer or "") or self.received
+        with _TYPICAL_LOCK:
+            old = _TYPICAL.get(self.key)
+            if old:
+                seconds, chars = (old["seconds"] + seconds) / 2, (old["chars"] + chars) / 2
+            _TYPICAL[self.key] = {"seconds": max(5.0, seconds), "chars": max(200.0, float(chars))}
 
 
 # ── Progress lines ──────────────────────────────────────────────────────────
@@ -342,6 +408,7 @@ def stop_jobs(*, under: str | Path | None = None, project_id: str | None = None,
                 continue
             job.update(status="cancelled", error=reason)
             job.pop("progress", None)
+            job.pop("percent", None)
             stopped.append({"job_id": job_id, "session_id": job.get("session_id"),
                             "stream_id": job.get("stream_id"), "workspace": job.get("workspace")})
     for item in stopped:
@@ -459,6 +526,11 @@ def parse_look(raw, *, palette_source: str = "recommended") -> dict | None:
     palette = normalize_palette(raw.get("palette"), default_source=palette_source)
     if palette:
         look["palette"] = palette
+    from api.project_look import normalize_custom
+
+    custom = normalize_custom(raw.get("custom"))
+    if custom:
+        look["custom"] = custom
     return look
 
 
@@ -480,15 +552,24 @@ def _profile_model(session) -> tuple[str | None, str | None]:
 def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = None, title: str = "Docs-Git",
                         profile: str = DOCS_PROFILE, model: str | None = None,
                         model_provider: str | None = None, progress=None,
-                        answer_label: str = "Writing its answer", on_run=None) -> str:
+                        answer_label: str = "Writing its answer", on_run=None, estimate=None) -> str:
     """Run one hidden agent turn under ``profile`` and return its final answer.
 
     ``model``/``model_provider`` pin the model; otherwise the profile's own
     default is used. ``progress`` receives a one-line description of what the
     turn is doing each time that changes; ``on_run(session_id, stream_id)`` is
-    called once the turn exists, so it can be stopped.
+    called once the turn exists, so it can be stopped. ``estimate(pct)``
+    receives the estimated percent done about once a second.
     """
     last_line = [""]
+    guess = _Estimate(answer_label)
+
+    def tell() -> None:
+        if estimate is not None:
+            try:
+                estimate(guess.tick())
+            except Exception:
+                pass
     reasoning = [""]
 
     def report(line: str) -> None:
@@ -542,6 +623,7 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
     deadline = time.time() + timeout
     try:
         while time.time() < deadline:
+            tell()
             try:
                 event = events.get(timeout=1.0)
             except queue.Empty:
@@ -556,6 +638,7 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                 reasoning[0] = (reasoning[0] + str(data.get("text") or ""))[-4000:]
                 report(reasoning_progress_line(reasoning[0]))
             elif name == "token":
+                guess.answering(str((data or {}).get("text") or "") if isinstance(data, dict) else "")
                 report(answer_label)
             elif name == "done":
                 payload = data or {}
@@ -563,6 +646,7 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                     # The model never answered: report why, not "unreadable".
                     detail = str(payload.get("failure_message") or "").strip()
                     raise RuntimeError(detail or f"{label}'s model failed ({payload['failure_reason']}).")
+                guess.learn(str(payload.get("answer") or ""))
                 return str(payload.get("answer") or "")
             if name in ("error", "apperror", "cancel"):
                 message = (data or {}).get("message") if isinstance(data, dict) else None
@@ -657,6 +741,7 @@ def start_docs_setup(project: dict, *, adopt: bool, template_label: str = "", fi
     workspace = project["workspace_path"]
     job_id = _start_job("setup", lambda report, on_run: {"summary": _run_ephemeral_turn(
         prompt, timeout=_SETUP_TIMEOUT_SECONDS, workspace=workspace, progress=report, on_run=on_run,
+        estimate=getattr(report, "estimate", None),
         answer_label="Writing up what it set up", **run).strip()}, with_progress=True, workspace=workspace,
         project_id=project.get("project_id"))
     return job_id
