@@ -1,7 +1,13 @@
 # Project status — hermes-webui
 
 
-## 2026-11-11 (latest): builder colour palettes, imported skills and libraries, imported-first ordering
+## 2026-11-11 (latest): builder steps 5-7 polish, real component previews
+
+- 45014ab0d: Details option text is trimmed with `text-box` and centred on its key (Courier New pixel ink 17.2 above / 17.0 below, was 19.2 / 16.1; Zeus 2.0 adds 1px because Courier New draws caps taller than declared). Look & feel lost its Recommended banner and gained dividers (20px above and below); stars sit inside each card's top-right corner. Toolkit skills are a table with category tabs behind "Show all"; component loops play while on screen. Tests: tests/test_builder_steps_567_browser.py (6).
+- Test gotchas: ink tests must wait for `document.fonts.ready` (the Zeus 2.0 font swaps in late and flips readings); Playwright cannot type into the custom colour editor while it is still opening (grid rows from 0), so tests wait for its animation; palette colours now fade, so colour reads wait two frames and then for subtree animations.
+- Live catalog previews captured on the host with Playwright (the container has no browser) and copied into the container: rare-ui 29/29 (the demo pane, centre-cropped to 16:10; 5 loops), transitions-dev 45/48 (each card's `.card-stage` on transitions.dev/library.html; 7 loops; 3 have no card there). obsidianui.dev returned HTTP 429 (Cloudflare rate limit), so obsidian-ui keeps its README pictures. Most demos only move on interaction, so few loops were recorded.
+
+## 2026-11-11: builder colour palettes, imported skills and libraries, imported-first ordering
 
 - Look & feel gained a Colours section and the Toolkit groups components by library with their licence (a3784def9); details in docs/UIUX-GUIDE.md. `api/project_palette.py` validates palettes and writes CSS tokens for both themes into the new project's docs/UI_UX.md.
 - Imported skills now lead (d471c025e): `/api/skills` marks a skill `imported` when the profile's `skills/.hub/lock.json` records its folder with a trust level other than `builtin`. The Toolkit step ranks imported skills that fit the project first; the Skills page lists their categories first and has an "Imported" filter.
