@@ -12,6 +12,7 @@ from tests import test_builder_steps_567_browser as t
 from tests import test_project_builder_palette_browser as palb
 from tests import test_project_builder_wizard_browser as wiz
 from tests.test_builder_steps_567_browser import page  # noqa: F401  (fixture)
+from tests.builder_nav import next_step  # noqa: E402
 
 
 def test_the_brief_review_shows_an_estimated_percent_that_eases_up_then_completes(page):
@@ -28,14 +29,14 @@ def test_the_brief_review_shows_an_estimated_percent_that_eases_up_then_complete
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "lex")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-template >> text=Website")
-    page.click(".ps-next")
+    next_step(page)
     page.fill(".ps-wizard textarea", "A boutique law firm site with service pages.")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review.is-busy .ps-review-pct")
     # It eases toward the figure instead of jumping.
     seen = page.evaluate("""() => new Promise(res => { const out = [], t0 = performance.now();
@@ -179,13 +180,13 @@ def test_button_and_type_choices_reach_the_preview_and_create(wpage):
     assert btn == "rgba(0, 0, 0, 0)", btn  # outline: no fill
     font = page.eval_on_selector(".ps-pal-hero strong", "e => getComputedStyle(e).fontFamily")
     assert "Georgia" in font, font
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review-look")
     review = page.inner_text(".ps-review-look")
     assert "Pill · Outline" in review and "Classic serif" in review, review
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_function("() => window.__launched.length === 1", timeout=10000)
     custom = page.created[-1]["toolkit"]["look"]["custom"]
     assert custom["btnShape"] == "pill" and custom["btnFill"] == "outline" and custom["font"] == "serif", custom
@@ -194,7 +195,7 @@ def test_button_and_type_choices_reach_the_preview_and_create(wpage):
 def test_the_toolkit_lists_the_chosen_components_and_a_chip_removes_one(page):
     t._to_kit(page)
     wiz.open_lib(page, "calm")
-    chips = lambda: page.eval_on_selector_all(".ps-kit-tray-chip:not(.is-leaving)", "els => els.map(e => e.dataset.comp)")  # noqa: E731
+    chips = lambda: page.eval_on_selector_all(".ps-kit-tray-group[data-kind=comps] .ps-kit-tray-chip:not(.is-leaving)", "els => els.map(e => e.dataset.comp)")  # noqa: E731
     chosen = page.eval_on_selector_all(".ps-kit-comp.is-selected", "els => els.map(e => e.dataset.comp)")
     assert chosen and chips() == chosen
     wiz.open_lib(page, "glow")

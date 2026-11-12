@@ -4,6 +4,7 @@ template cards, the centred "Pick a template" line, and the brief drop zone."""
 import pytest
 
 from tests.test_chat_optical_alignment_browser import _open, browser  # noqa: F401
+from tests.builder_nav import next_step  # noqa: E402
 
 
 @pytest.fixture()
@@ -32,10 +33,10 @@ def _to_template_step(page, templates=TEMPLATES):
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "demo")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-template")
     page.wait_for_timeout(450)
 
@@ -84,7 +85,7 @@ def test_a_brief_file_dropped_on_the_dashed_zone_fills_the_brief(real_2x):
     page = real_2x
     _to_template_step(page)
     page.click(".ps-template >> nth=1")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-dropzone")
     zone = page.evaluate("() => { const s = getComputedStyle(document.querySelector('.ps-dropzone')); return [s.borderTopStyle, s.borderRadius]; }")
     assert zone[0] == "dashed" and zone[1] != "0px"
@@ -136,9 +137,9 @@ def _to_details_step(page):
     page.route("**/api/projects/starter/analyze", lambda route: route.fulfill(json={"job_id": "j1"}))
     page.route("**/api/projects/starter/job?*", lambda route: route.fulfill(json=QUESTIONS))
     page.click(".ps-template >> nth=1")
-    page.click(".ps-next")
+    next_step(page)
     page.fill(".ps-brief", "An online candle shop.")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-options")
 
 
@@ -271,7 +272,7 @@ def test_brief_drop_zone_fills_the_step_with_even_gaps(real_2x):
     page = real_2x
     _to_template_step(page)
     page.click(".ps-template >> nth=1")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-dropzone")
     page.wait_for_timeout(350)
     gaps = page.evaluate("""() => { const q = s => document.querySelector(s).getBoundingClientRect();

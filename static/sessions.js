@@ -10202,7 +10202,7 @@ async function _openProjectStarterWizard(profile){
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false,
     look:null,startBuilding:false,
-    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),allSkills:false,cat:'',q:'',filter:''}};
+    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),cat:'',q:''}};
   const folderCache=new Map();
 
   return new Promise(resolve=>{
@@ -11049,8 +11049,10 @@ async function _openProjectStarterWizard(profile){
     // Sections that open one at a time (Customize, Toolkit): the current one is
     // open and the rest fold to a header with a summary. Finishing one ticks it
     // and opens the next. ``state`` keeps {open, done} across repaints.
-    function _psSteps(state,{onOpen}={}){
+    function _psSteps(state,{onOpen,onChange}={}){
       const root=_psEl('div','ps-cz');
+      // "n of N done": Next stays off until every section is ticked.
+      const progress=_psEl('p','ps-cz-progress');progress.setAttribute('aria-live','polite');
       const secs=[];
       if(!state.done) state.done=[];
       const isDone=(key)=>state.done.includes(key);
@@ -11060,7 +11062,13 @@ async function _openProjectStarterWizard(profile){
           s.head.setAttribute('aria-expanded',String(open));s.body.inert=!open;
           const text=s.summary?s.summary():'';if(s.sum.textContent!==text){s.sum.textContent=text;s.sum.classList.remove('is-new');void s.sum.offsetWidth;s.sum.classList.add('is-new');}
           if(s.next) s.next.textContent=secs.indexOf(s)===secs.length-1?'Done':'Next: '+secs[secs.indexOf(s)+1].title;});
+        const n=secs.filter(x=>isDone(x.key)).length;
+        progress.textContent=n===secs.length?'All '+n+' sections done.':n+' of '+secs.length+' sections done. Finish each one to continue.';
+        progress.classList.toggle('is-done',n===secs.length);
+        if(progress.parentNode!==root||root.lastChild!==progress) root.append(progress);
+        if(onChange) onChange(allDone());
       }
+      const allDone=()=>secs.length>0&&secs.every(x=>isDone(x.key));
       function open(key,{reveal=true}={}){
         if(state.open===key&&!state.all) return;
         state.open=key;paint();
@@ -11071,6 +11079,8 @@ async function _openProjectStarterWizard(profile){
       // Mark ``key`` done and open the one after it (or fold them all after the last).
       function finish(key){
         if(!isDone(key)) state.done.push(key);
+        // A delayed finish after the user already opened another section only ticks.
+        if(state.open&&state.open!==key&&!state.all){paint();return;}
         const i=secs.findIndex(x=>x.key===key);const nxt=secs[i+1];
         if(nxt) open(nxt.key); else {state.open='';paint();}
       }
@@ -11093,7 +11103,7 @@ async function _openProjectStarterWizard(profile){
         secs.push({key,title,sec,head,body,sum,summary,next:nextBtn});
         return content;
       }
-      return {root,add,paint,open,finish,isDone};
+      return {root,add,paint,open,finish,isDone,allDone};
     }
 
     // Customize: the parts of the look beyond style and colour. Each choice has a
@@ -11149,7 +11159,8 @@ async function _openProjectStarterWizard(profile){
       if(!look.custom){look.custom=_psCustomDefaults(look.style||(rec&&rec.style));look.touched=[];}
       if(!look.steps) look.steps={open:'style',done:[]};
       const recCustom=_psCustomDefaults(rec&&rec.style||look.style);
-      const steps=_psSteps(look.steps);wrap.append(steps.root);
+      const steps=_psSteps(look.steps,{onChange:()=>{if(renderLook.paint)setNav({canNext:lookReady()});}});wrap.append(steps.root);
+      const lookReady=()=>!!(look.style&&look.motion)&&steps.allDone();
       const later=(fn)=>setTimeout(fn,260);
       // Style
       const grid=_psEl('div','ps-look-grid');grid.setAttribute('role','radiogroup');grid.setAttribute('aria-label','Style');
@@ -11186,14 +11197,14 @@ async function _openProjectStarterWizard(profile){
             row.append(card);});
           g.append(row);box.append(g);groupGrids.push(row);});
       };
-      // Typography comes before Colours, so the colour previews show the chosen
-      // typeface and text size.
+      // Typography, Buttons and Cards & spacing come before Colours, so the
+      // colour previews show the chosen typeface, buttons and surfaces.
       customSec('type','Typography',['font','scale']);
-      // Colours: picking one only previews it; "Next: Buttons" moves on.
-      const colours=_psColours(look,()=>renderLook.paint());
-      steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
       customSec('buttons','Buttons',['btnShape','btnFill','btnHover']);
       customSec('surfaces','Cards & spacing',['corners','depth','density']);
+      // Colours: picking one only previews it; "Next: Motion" moves on.
+      const colours=_psColours(look,()=>renderLook.paint());
+      steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
       // Motion
       const motions=_psEl('div','ps-motion-grid');motions.setAttribute('role','radiogroup');motions.setAttribute('aria-label','Motion');
       _PS_MOTIONS.forEach(([key,label,desc])=>{
@@ -11232,7 +11243,7 @@ async function _openProjectStarterWizard(profile){
         stack.querySelectorAll('[data-framework]').forEach(c=>{const on=c.dataset.framework===look.framework;c.classList.toggle('is-on',on);c.setAttribute('aria-pressed',String(on));});
         const tw=stack.querySelector('[data-tailwind]');if(tw){tw.classList.toggle('is-on',!!look.tailwind);tw.setAttribute('aria-pressed',String(!!look.tailwind));}
         steps.paint();
-        setNav({canNext:!!(look.style&&look.motion)});
+        setNav({canNext:lookReady()});
         paintBuild();
       };
       renderLook.paint();
@@ -11257,7 +11268,7 @@ async function _openProjectStarterWizard(profile){
         const firstForTemplate=st.kit.template!==st.template;
         st.kit.data=data;st.kit.key=key;st.kit.template=st.template;
         // Recommended picks are ticked the first time; later visits keep the user's choice.
-        if(firstForTemplate){st.kit.skills=new Set();st.kit.comps=new Set();st.kit.seenSkills=new Set();st.kit.seenComps=new Set();st.kit.allSkills=false;}
+        if(firstForTemplate){st.kit.skills=new Set();st.kit.comps=new Set();st.kit.seenSkills=new Set();st.kit.seenComps=new Set();}
         data.skills.forEach(s=>{if(s.recommended&&!st.kit.seenSkills.has(s.name)){st.kit.skills.add(s.name);}st.kit.seenSkills.add(s.name);});
         Object.values(data.components||{}).forEach(list=>list.forEach(c=>{const id=c.library+'/'+c.slug;if(c.recommended&&!st.kit.seenComps.has(id))st.kit.comps.add(id);st.kit.seenComps.add(id);}));
         // Picks that no longer fit the new style or stack are dropped.
@@ -11265,8 +11276,8 @@ async function _openProjectStarterWizard(profile){
         [...st.kit.comps].forEach(id=>{if(!fits.has(id))st.kit.comps.delete(id);});
       }
       if(look&&look.palette) _psPaletteVars(holder,look.palette.light);
-      paintKit(holder);
-      setNav({canNext:true});
+      const ready=paintKit(holder);
+      setNav({canNext:ready()});
       paintBuild();
     }
     function _psCheck(on){return '<span class="ps-kit-check'+(on?' is-on':'')+'" aria-hidden="true">'+_psIcon('check',12)+'</span>';}
@@ -11276,58 +11287,40 @@ async function _openProjectStarterWizard(profile){
     // first entrance.
     function paintKit(holder){
       const data=st.kit.data;holder.innerHTML='';
-      const tools=_psEl('div','ps-kit-tools');
-      const search=_psEl('label','ps-kit-search sidebar-search');
-      search.innerHTML='<svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
-      const input=_psEl('input');input.type='search';input.placeholder=data.visual?'Search skills and components…':'Search skills…';
-      input.setAttribute('aria-label',input.placeholder);input.value=st.kit.q;input.autocomplete='off';
-      search.append(input);
-      tools.append(search);
-      tools.insertAdjacentHTML('beforeend',filterButtonHtml('psKitFilter','Filter skills and components'));
-      const filterBtn=tools.querySelector('.filter-btn');
-      holder.append(tools);
       let lists=_psEl('div','ps-kit-lists');holder.append(lists);
       const roles=Object.keys(data.components||{});
-      const categories=[...new Set(data.skills.map(s=>s.category).filter(Boolean))];
-      const paintFilter=()=>{filterBtn.classList.toggle('is-active',!!st.kit.filter);
-        const label=st.kit.filter?'Filter: '+_psLabel(st.kit.filter.split(':').slice(1).join(':')):'Filter skills and components';filterBtn.setAttribute('aria-label',label);};
-      paintFilter();
-      filterBtn.onclick=(event)=>{event.stopPropagation();
-        openFilterMenu(filterBtn,[
-          {items:[{value:'',label:'Everything'}]},
-          {label:'Skill categories',items:categories.map(c=>({value:'skill:'+c,label:_psLabel(c),count:data.skills.filter(s=>s.category===c).length}))},
-          {label:'Component types',items:data.visual?roles.map(r=>({value:'role:'+r,label:_psLabel(r),count:data.components[r].length})):[]},
-        ],st.kit.filter,(value)=>{st.kit.filter=value;paintFilter();paintLists(true);});};
-      let typing=0;
-      input.oninput=()=>{clearTimeout(typing);typing=setTimeout(()=>{st.kit.q=input.value.trim();paintLists(true);},90);};
-      input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';paintLists(true);}};
-      let kitSteps=null,paintTray=()=>{};
+      const categories=[...new Set(data.skills.map(s=>s.category||'other'))].sort((a,b)=>_psLabel(a).localeCompare(_psLabel(b)));
+      let kitSteps=null,paintTray=()=>{},nextReady=()=>true;
       const counts=()=>{lists.querySelectorAll('[data-count]').forEach(n=>{n.textContent=(n.dataset.count==='skills'?st.kit.skills.size:st.kit.comps.size)+' chosen';});if(kitSteps)kitSteps.paint();};
       const toggle=(card,set,id)=>{const on=!set.has(id);if(on)set.add(id);else set.delete(id);
         if(card){card.classList.toggle('is-selected',on);
           if(card.tagName==='TR'){const box=card.querySelector('[role=checkbox]');if(box)box.setAttribute('aria-checked',String(on));}
           else card.setAttribute('aria-pressed',String(on));
           const box=card.querySelector('.ps-kit-check');if(box)box.classList.toggle('is-on',on);}
-        counts();if(set===st.kit.comps)paintTray();paintBuild();};
+        counts();paintTray();paintBuild();};
       if(!st.kit.steps) st.kit.steps={open:'skills',done:[]};
       const words=()=>st.kit.q.toLowerCase().split(/\s+/).filter(Boolean);
       const hit=(text)=>{const w=words();const t=text.toLowerCase();return w.every(x=>t.includes(x));};
       // Skills as a table: tick, name, category, what it does, and a star for
       // the planner's picks. "Show all" opens category tabs; choosing one slides
       // the rows across and the table eases to its new height.
-      function skillsTable(f,narrowed){
+      // Skills: a search box and a category select over one table of every
+      // matching skill (tick, name, category, what it does, star). A new
+      // category slides the rows across; typing fades them in place.
+      function skillsTable(){
         const box=_psEl('div','ps-kit-skills');
-        const cats=[...new Set(data.skills.map(s=>s.category||'other'))].sort((a,b)=>_psLabel(a).localeCompare(_psLabel(b)));
-        const tabsWrap=_psEl('div','ps-kit-cats-wrap');const tabsInner=_psEl('div','ps-kit-cats-inner');
-        const tabs=_psEl('div','ps-kit-cats');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Skill categories');
-        const pill=_psEl('span','ps-kit-cats-pill');pill.setAttribute('aria-hidden','true');tabs.append(pill);
-        [['','All'],...cats.map(c=>[c,_psLabel(c)])].forEach(([value,label])=>{
-          const n=value?data.skills.filter(s=>(s.category||'other')===value).length:data.skills.length;
-          const tab=_psEl('button','ps-kit-cat');tab.type='button';tab.dataset.cat=value;tab.setAttribute('role','tab');
-          tab.append(_psEl('span','ps-kit-cat-label',label),_psEl('span','ps-kit-cat-n',String(n)));
-          tab.onclick=()=>{if(st.kit.cat===value)return;const from=cats.indexOf(st.kit.cat),to=cats.indexOf(value);st.kit.cat=value;paintTabs();fillRows(to>from?1:-1);};
-          tabs.append(tab);});
-        tabsInner.append(tabs);tabsWrap.append(tabsInner);
+        const bar=_psEl('div','ps-kit-libbar ps-kit-skillbar');
+        const find=_psEl('label','ps-kit-search sidebar-search ps-kit-libsearch');
+        find.innerHTML='<svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
+        const input=_psEl('input');input.type='search';input.placeholder='Search skills…';input.autocomplete='off';input.value=st.kit.q||'';input.setAttribute('aria-label','Search skills');
+        find.append(input);
+        const selWrap=_psEl('span','ps-kit-libselect');
+        const sel=_psEl('select');sel.setAttribute('aria-label','Skill category');
+        [['','All ('+data.skills.length+')'],...categories.map(c=>[c,_psLabel(c)+' ('+data.skills.filter(s=>(s.category||'other')===c).length+')'])].forEach(([v,l])=>{const o=_psEl('option',null,l);o.value=v;sel.append(o);});
+        if(![...sel.options].some(o=>o.value===(st.kit.cat||''))) st.kit.cat='';
+        sel.value=st.kit.cat||'';
+        selWrap.append(sel);selWrap.insertAdjacentHTML('beforeend',_psIcon('chevron',12));
+        bar.append(find,selWrap);
         const frame=_psEl('div','ps-kit-table-frame');
         const table=_psEl('table','ps-kit-table');
         const thead=_psEl('thead');const hr=_psEl('tr');
@@ -11336,13 +11329,7 @@ async function _openProjectStarterWizard(profile){
         thead.append(hr);table.append(thead);
         const tbody=_psEl('tbody');table.append(tbody);frame.append(table);
         const empty=_psEl('p','ps-kit-empty','No skills match.');
-        const open=()=>!narrowed&&st.kit.allSkills;
-        function rowsFor(){
-          const matches=data.skills.filter(s=>(!f||s.category===f.slice(6))&&hit([s.name,s.category,s.description].join(' ')));
-          if(narrowed) return matches;
-          if(open()) return matches.filter(s=>!st.kit.cat||(s.category||'other')===st.kit.cat);
-          return matches.filter((s,i)=>i<6||st.kit.skills.has(s.name));
-        }
+        const rowsFor=()=>data.skills.filter(s=>(!st.kit.cat||(s.category||'other')===st.kit.cat)&&hit([s.name,s.category,s.description].join(' ')));
         function row(s,i){
           const on=st.kit.skills.has(s.name);
           const tr=_psEl('tr','ps-kit-skill'+(on?' is-selected':''));tr.dataset.skill=s.name;tr.style.setProperty('--i',i);
@@ -11357,87 +11344,83 @@ async function _openProjectStarterWizard(profile){
           tr.onclick=(event)=>{if(event.target.closest('a'))return;toggle(tr,st.kit.skills,s.name);};
           return tr;
         }
+        const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const ease='cubic-bezier(0.22, 1, 0.36, 1)';
         function fillRows(dir){
           const list=rowsFor();
           const h0=frame.offsetHeight;
           const old=dir&&frame.isConnected?tbody.cloneNode(true):null;
           tbody.replaceChildren(...list.map(row));
           empty.hidden=!!list.length;table.hidden=!list.length;
-          if(!old||!h0) return;
-          // Old rows slide out one way while the new ones come in from the other
-          // (transitions.dev "Page side-by-side"), and the frame eases its height.
-          const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          if(reduce) return;
-          const ghost=_psEl('table','ps-kit-table ps-kit-ghost');ghost.setAttribute('aria-hidden','true');ghost.append(thead.cloneNode(true),old);
-          frame.append(ghost);
+          if(!h0||reduce()) return;
           const h1=frame.offsetHeight;
-          const ease='cubic-bezier(0.22, 1, 0.36, 1)';
-          frame.animate([{height:h0+'px'},{height:h1+'px'}],{duration:320,easing:ease});
-          ghost.animate([{transform:'translateX(0)',opacity:1,filter:'blur(0)'},{transform:'translateX('+(-24*dir)+'px)',opacity:0,filter:'blur(3px)'}],{duration:220,easing:ease,fill:'forwards'}).onfinish=()=>ghost.remove();
-          tbody.animate([{transform:'translateX('+(24*dir)+'px)',opacity:0,filter:'blur(3px)'},{transform:'translateX(0)',opacity:1,filter:'blur(0)'}],{duration:320,delay:60,easing:ease,fill:'backwards'});
+          if(Math.abs(h1-h0)>2) frame.animate([{height:h0+'px'},{height:h1+'px'}],{duration:320,easing:ease});
+          if(old&&list.length){
+            // Old rows slide out one way while the new ones come in from the other.
+            const ghost=_psEl('table','ps-kit-table ps-kit-ghost');ghost.setAttribute('aria-hidden','true');ghost.append(thead.cloneNode(true),old);
+            frame.append(ghost);
+            ghost.animate([{transform:'translateX(0)',opacity:1},{transform:'translateX('+(-24*dir)+'px)',opacity:0}],{duration:220,easing:ease,fill:'forwards'}).onfinish=()=>ghost.remove();
+            tbody.animate([{transform:'translateX('+(24*dir)+'px)',opacity:0},{transform:'translateX(0)',opacity:1}],{duration:320,delay:60,easing:ease,fill:'backwards'});
+          }else if(list.length) tbody.animate([{opacity:0},{opacity:1}],{duration:200,easing:ease});
         }
-        function paintTabs(){
-          tabsWrap.classList.toggle('is-open',open());tabsWrap.inert=!open();
-          tabs.querySelectorAll('.ps-kit-cat').forEach(t=>{const on=t.dataset.cat===(st.kit.cat||'');t.classList.toggle('is-on',on);t.setAttribute('aria-selected',String(on));
-            if(on) requestAnimationFrame(()=>{if(!t.offsetWidth)return;pill.style.width=t.offsetWidth+'px';pill.style.height=t.offsetHeight+'px';
-              pill.style.transform='translate('+t.offsetLeft+'px,'+t.offsetTop+'px)';tabs.classList.add('has-pill');});});
-        }
-        box.append(tabsWrap,frame,empty);
-        fillRows(0);paintTabs();
-        // Tabs re-wrap when the dialog resizes; keep the pill on the chosen one.
-        if(window.ResizeObserver) new ResizeObserver(()=>{if(tabs.isConnected&&open())paintTabs();}).observe(tabs);
-        if(!narrowed&&data.skills.length>6){
-          const more=_psEl('button','ps-link ps-kit-more',st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills');more.type='button';
-          more.setAttribute('aria-expanded',String(!!st.kit.allSkills));
-          more.onclick=()=>{
-            const h0=frame.offsetHeight;st.kit.allSkills=!st.kit.allSkills;if(!st.kit.allSkills)st.kit.cat='';
-            more.textContent=st.kit.allSkills?'Show fewer':'Show all '+data.skills.length+' skills';more.setAttribute('aria-expanded',String(st.kit.allSkills));
-            tbody.replaceChildren(...rowsFor().map(row));paintTabs();
-            const h1=frame.offsetHeight;
-            if(h0&&h1&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches))
-              frame.animate([{height:h0+'px'},{height:h1+'px'}],{duration:360,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});
-          };
-          box.append(more);
-        }
+        let typing=0;
+        input.oninput=()=>{clearTimeout(typing);typing=setTimeout(()=>{st.kit.q=input.value.trim();fillRows(0);},90);};
+        input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';fillRows(0);}};
+        sel.onchange=()=>{const from=categories.indexOf(st.kit.cat||''),to=categories.indexOf(sel.value);st.kit.cat=sel.value;fillRows(to>from?1:-1);};
+        box.append(bar,frame,empty);
+        fillRows(0);
         return box;
       }
-      // The chosen components as removable chips above the cards; a chip
-      // scrolls to its card. Chips come and go with a short animation.
+      // Chosen: everything picked, as text chips under a Skills and a
+      // Components heading, at the end of the toolkit. A chip shows its row or
+      // card; its x removes it. Chips come and go with a short animation.
       function makeTray(){
-        const tray=_psEl('div','ps-kit-tray');tray.setAttribute('aria-label','Chosen components');
-        const label=_psEl('span','ps-kit-tray-label','Chosen');const chips=_psEl('div','ps-kit-tray-chips');
-        const none=_psEl('span','ps-kit-tray-none','Nothing chosen yet. Tick components below.');
-        tray.append(label,chips,none);
-        const all=Object.values(data.components||{}).flat();
+        const tray=_psEl('div','ps-kit-tray');tray.setAttribute('aria-label','Chosen');
+        tray.append(_psEl('p','ps-kit-tray-label','Chosen'));
+        const none=_psEl('p','ps-kit-tray-none','Nothing chosen yet.');
+        const allComps=Object.values(data.components||{}).flat();
+        const groups=[{kind:'skills',title:'Skills',items:()=>data.skills.filter(x=>st.kit.skills.has(x.name)).map(x=>({id:x.name,name:x.name}))}];
+        if(data.visual&&allComps.length) groups.push({kind:'comps',title:'Components',items:()=>allComps.filter(c=>st.kit.comps.has(c.library+'/'+c.slug)).map(c=>({id:c.library+'/'+c.slug,name:c.name,c}))});
+        groups.forEach(g=>{g.node=_psEl('div','ps-kit-tray-group');g.node.dataset.kind=g.kind;
+          const head=_psEl('p','ps-kit-tray-cat');g.count=_psEl('span','ps-kit-tray-n');head.append(_psEl('span',null,g.title),g.count);
+          g.chips=_psEl('div','ps-kit-tray-chips');g.node.append(head,g.chips);tray.append(g.node);});
+        tray.append(none);
         const reduce=()=>window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const flashIn=(area,sel)=>{const el=area&&area.querySelector(sel);if(!el)return;_psRevealInBody(el);el.classList.remove('is-flash');void el.offsetWidth;el.classList.add('is-flash');};
+        const show=(g,it)=>{
+          if(g.kind==='skills'){
+            const sec='skills';const wasOpen=!kitSteps||st.kit.steps.open===sec;
+            if(kitSteps&&!wasOpen) kitSteps.open(sec,{reveal:false});
+            const go=()=>flashIn(holder,'.ps-kit-skill[data-skill="'+CSS.escape(it.id)+'"]');
+            if(wasOpen) go(); else setTimeout(go,440);return;}
+          const c=it.c;const area=holder.querySelector('.ps-kit-libarea[data-lib="'+CSS.escape(c.library)+'"]');if(!area)return;
+          if(area._show) area._show(it.id);
+          const wasOpen=!kitSteps||st.kit.steps.open==='lib:'+c.library;
+          if(kitSteps&&!wasOpen) kitSteps.open('lib:'+c.library,{reveal:false});
+          const go=()=>flashIn(area,'.ps-kit-comp[data-comp="'+CSS.escape(it.id)+'"]');
+          if(wasOpen) go(); else setTimeout(go,440);
+        };
+        const remove=(g,it)=>{if(g.kind==='skills')toggle(holder.querySelector('.ps-kit-skill[data-skill="'+CSS.escape(it.id)+'"]'),st.kit.skills,it.id);
+          else toggle(holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(it.id)+'"]'),st.kit.comps,it.id);};
         paintTray=()=>{
-          const want=all.filter(c=>st.kit.comps.has(c.library+'/'+c.slug));const ids=new Set(want.map(c=>c.library+'/'+c.slug));
-          chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)').forEach(ch=>{if(ids.has(ch.dataset.comp))return;
-            if(reduce()||!ch.isConnected){ch.remove();return;}
-            ch.classList.add('is-leaving');const w=ch.offsetWidth;
-            ch.animate([{width:w+'px',opacity:1,transform:'scale(1)'},{width:'0px',opacity:0,transform:'scale(.8)',marginRight:'-6px'}],{duration:220,easing:'cubic-bezier(0.22, 1, 0.36, 1)'}).onfinish=()=>ch.remove();});
-          const have=new Set([...chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)')].map(ch=>ch.dataset.comp));
-          want.forEach(c=>{const id=c.library+'/'+c.slug;if(have.has(id))return;
-            const chip=_psEl('span','ps-kit-tray-chip');chip.dataset.comp=id;
-            const go=_psEl('button','ps-kit-tray-go');go.type='button';
-            const th=_psEl('span','ps-kit-tray-thumb');
-            if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.decoding='async';img.draggable=false;th.append(img);}
-            else th.textContent=(c.name||'?').slice(0,1);
-            go.append(th,_psEl('span','ps-kit-tray-name',c.name));
-            // Show the card: open its library's section (and widen its view if
-            // the current category hides it), then scroll to it and flash it.
-            go.onclick=()=>{const area=holder.querySelector('.ps-kit-libarea[data-lib="'+CSS.escape(c.library)+'"]');if(!area)return;
-              if(area._show) area._show(id);
-              const wasOpen=!kitSteps||st.kit.steps.open==='lib:'+c.library||st.kit.steps.all;
-              if(kitSteps&&!wasOpen) kitSteps.open('lib:'+c.library,{reveal:false});
-              const flash=()=>{const card=area.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]');if(!card)return;
-                _psRevealInBody(card);card.classList.remove('is-flash');void card.offsetWidth;card.classList.add('is-flash');};
-              if(wasOpen) flash(); else setTimeout(flash,440);};
-            const rm=_psEl('button','ps-kit-tray-x');rm.type='button';rm.setAttribute('aria-label','Remove '+c.name);rm.innerHTML=_psIcon('x',12);
-            rm.onclick=()=>toggle(holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);
-            chip.append(go,rm);chips.append(chip);
-            if(have.size&&!reduce()) chip.animate([{opacity:0,transform:'scale(.85)',filter:'blur(2px)'},{opacity:1,transform:'none',filter:'none'}],{duration:260,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});});
-          tray.classList.toggle('is-empty',!want.length);
+          let total=0;
+          groups.forEach(g=>{
+            const want=g.items();total+=want.length;const ids=new Set(want.map(x=>x.id));
+            g.count.textContent=String(want.length);g.node.classList.toggle('is-empty',!want.length);
+            g.chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)').forEach(ch=>{if(ids.has(ch.dataset.id))return;
+              if(reduce()||!ch.isConnected){ch.remove();return;}
+              ch.classList.add('is-leaving');const w=ch.offsetWidth;
+              ch.animate([{width:w+'px',opacity:1,transform:'scale(1)'},{width:'0px',opacity:0,transform:'scale(.8)',marginRight:'-6px'}],{duration:220,easing:'cubic-bezier(0.22, 1, 0.36, 1)'}).onfinish=()=>ch.remove();});
+            const have=new Set([...g.chips.querySelectorAll('.ps-kit-tray-chip:not(.is-leaving)')].map(ch=>ch.dataset.id));
+            const first=!have.size;
+            want.forEach(it=>{if(have.has(it.id))return;
+              const chip=_psEl('span','ps-kit-tray-chip');chip.dataset.id=it.id;if(g.kind==='comps')chip.dataset.comp=it.id;else chip.dataset.skill=it.id;
+              const go=_psEl('button','ps-kit-tray-go');go.type='button';go.append(_psEl('span','ps-kit-tray-name',it.name));go.onclick=()=>show(g,it);
+              const rm=_psEl('button','ps-kit-tray-x');rm.type='button';rm.setAttribute('aria-label','Remove '+it.name);rm.innerHTML=_psIcon('x',12);rm.onclick=()=>remove(g,it);
+              chip.append(go,rm);g.chips.append(chip);
+              if(!first&&!reduce()) chip.animate([{opacity:0,transform:'scale(.85)'},{opacity:1,transform:'none'}],{duration:240,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});});
+          });
+          tray.classList.toggle('is-empty',!total);
         };
         paintTray();
         return tray;
@@ -11445,45 +11428,38 @@ async function _openProjectStarterWizard(profile){
       function paintLists(quiet){
         lists.innerHTML='';lists.classList.toggle('is-quiet',!!quiet);
         if(quiet){lists.classList.remove('is-refresh');void lists.offsetWidth;lists.classList.add('is-refresh');}
-        const f=st.kit.filter,narrowed=!!(st.kit.q||f);
-        // Skills and Components open one at a time (all open while searching or filtering).
-        const both=data.visual&&roles.length&&data.libraries&&!f;
-        kitSteps=null;paintTray=()=>{};
+        // Skills and each component library open one at a time; Next waits
+        // until every section is ticked.
+        const both=!!(data.visual&&roles.length&&data.libraries);
+        kitSteps=null;paintTray=()=>{};nextReady=()=>true;
         let skillsBox=lists;
         if(both){
-          st.kit.steps.all=narrowed;
-          kitSteps=_psSteps(st.kit.steps);lists.append(kitSteps.root);
+          st.kit.steps.all=false;
+          kitSteps=_psSteps(st.kit.steps,{onChange:(ok)=>{if(st.step===8)setNav({canNext:ok});}});lists.append(kitSteps.root);
+          nextReady=()=>kitSteps.allDone();
           skillsBox=kitSteps.add('skills','Skills',{summary:()=>st.kit.skills.size+' chosen'});
-        }
-        if(!f||f.startsWith('skill:')){
-          if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
-            head.append(_psEl('h4',null,'Skills'),count);lists.append(head);}
-          if(!data.skills.length) skillsBox.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
-          else skillsBox.append(skillsTable(f,narrowed));
-        }
-        if(data.visual&&(!f||f.startsWith('role:'))){
-          const listsOuter=lists;
+        }else{const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
+          head.append(_psEl('h4',null,'Skills'),count);lists.append(head);}
+        if(!data.skills.length) skillsBox.append(_psEl('p','ps-kit-empty','No skills installed yet. Add some on the Skills page.'));
+        else skillsBox.append(skillsTable());
+        if(data.visual){
           if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
             head.append(_psEl('h4',null,'Components'),count);lists.append(head);}
           if(!data.libraries) lists.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));
           else if(!roles.length) lists.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));
           else{
             // One section per library (Components 1/3 · ObsidianUI …), each with
-            // its own search box and a category select that starts on the picks
-            // for this brief; the chosen tray sits above them.
+            // its own search box and a category select that starts on the picks.
             const groups=new Map();
-            roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
-              data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' '))).forEach(c=>{
+            roles.forEach(role=>{
+              data.components[role].forEach(c=>{
                 if(!groups.has(c.library)) groups.set(c.library,{slug:c.library,name:c.library_name,license:c.license||'',items:[]});
                 groups.get(c.library).items.push(c);});
             });
             const libs=[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name));
-            const tray=makeTray();
-            if(both) kitSteps.root.append(tray); else lists.append(tray);
             const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             const loops=!reduce&&'IntersectionObserver' in window?new IntersectionObserver((entries)=>entries.forEach(e=>{
               const img=e.target;const want=e.isIntersecting?img.dataset.loop:img.dataset.still;if(img.getAttribute('src')!==want)img.src=want;}),{root:holder.closest('.ps-body'),rootMargin:'40px'}):null;
-            if(!libs.length) lists.append(_psEl('p','ps-kit-empty','No components match.'));
             libs.forEach((group,gi)=>{
               group.items.sort((a,b)=>(b.recommended-a.recommended)||((b.score||0)-(a.score||0))||a.name.localeCompare(b.name));
               const title=(both?'Components '+(gi+1)+'/'+libs.length+' · ':'')+group.name;
@@ -11493,8 +11469,10 @@ async function _openProjectStarterWizard(profile){
               libraryBlock(group,box,loops);
             });
           }
-          lists=listsOuter;
         }
+        // Chosen sits at the end, after every section.
+        const tray=makeTray();
+        if(kitSteps) kitSteps.root.append(tray); else lists.append(tray);
         counts();
       }
       // Category names for the component select; "loaders" reads as Loading.
@@ -11515,7 +11493,8 @@ async function _openProjectStarterWizard(profile){
           if(peekPop.showPopover) peekPop.popover='auto';
           peekPop.addEventListener('keydown',(e)=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();closePeek();}});
           holder.append(peekPop);
-          const scroller=holder.closest('.ps-body');if(scroller)scroller.addEventListener('scroll',()=>closePeek(),{passive:true});}
+          // The user scrolling the wizard closes it (not the wizard's own reveal scrolls).
+          const scroller=holder.closest('.ps-body');if(scroller)['wheel','touchmove'].forEach(ev=>scroller.addEventListener(ev,(e)=>{if(!peekPop.contains(e.target))closePeek();},{passive:true}));}
         const pop=peekPop;pop.innerHTML='';pop.setAttribute('aria-label',c.name);
         const media=_psEl('div','ps-kit-peek-media');const img=document.createElement('img');img.alt='';img.decoding='async';img.draggable=false;
         const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -11632,6 +11611,7 @@ async function _openProjectStarterWizard(profile){
         fill(false);
       }
       paintLists(false);
+      return ()=>nextReady();
     }
     function chosenComponents(){
       const data=st.kit.data;if(!data||!data.visual) return [];

@@ -13,6 +13,7 @@ import pytest
 from tests import test_builder_and_skills_polish_browser as pol
 from tests import test_project_builder_palette_browser as palb
 from tests import test_project_builder_wizard_browser as wiz
+from tests.builder_nav import next_step  # noqa: E402
 
 SKILLS = [{"name": n, "category": c, "description": n + " does things.", "score": s, "recommended": r}
           for n, c, s, r in [("impeccable", "ui-design", 9, True), ("better-ui", "ui-design", 7, True),
@@ -89,13 +90,13 @@ def _font_of(page, selector):
 
 def _to_look(page):
     pol._to_details(page)
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-pal-card", state="attached")
 
 
 def _to_kit(page):
     _to_look(page)
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
 
 
@@ -120,7 +121,7 @@ def test_customize_opens_one_section_at_a_time_and_a_pick_ticks_it_and_opens_the
     assert page.inner_text(".ps-prompt") == "Customize"
     order = page.eval_on_selector_all(".ps-cz-sec", "els => els.map(e => e.dataset.sec)")
     # Typography comes before Colours so the colour previews show the typeface.
-    assert order == ["style", "type", "colours", "buttons", "surfaces", "motion", "built"], order
+    assert order == ["style", "type", "buttons", "surfaces", "colours", "motion", "built"], order
     opened = lambda: page.eval_on_selector_all(".ps-cz-sec.is-open", "els => els.map(e => e.dataset.sec)")  # noqa: E731
     assert opened() == ["style"]
     page.click(".ps-look-card[data-style=playful]")
@@ -138,11 +139,20 @@ def test_customize_opens_one_section_at_a_time_and_a_pick_ticks_it_and_opens_the
     page.wait_for_selector(".ps-cz-sec[data-sec=surfaces].is-open")
     assert page.inner_text(".ps-cz-sec[data-sec=buttons] .ps-cz-summary") == "Square · Solid · Glow"
     page.click(".ps-cz-sec[data-sec=surfaces] .ps-cz-next")
-    page.wait_for_selector(".ps-cz-sec[data-sec=motion].is-open")
+    page.wait_for_selector(".ps-cz-sec[data-sec=colours].is-open")
     # Clicking an open header folds it.
-    page.click(".ps-cz-sec[data-sec=motion] > .ps-cz-head")
+    page.click(".ps-cz-sec[data-sec=colours] > .ps-cz-head")
     page.wait_for_function("() => !document.querySelector('.ps-cz-sec.is-open')")
-    assert page.get_attribute(".ps-cz-sec[data-sec=motion] > .ps-cz-head", "aria-expanded") == "false"
+    assert page.get_attribute(".ps-cz-sec[data-sec=colours] > .ps-cz-head", "aria-expanded") == "false"
+    # Next stays off until every section is ticked; the progress line says how many.
+    assert page.is_disabled(".ps-next")
+    assert page.inner_text(".ps-cz-progress").startswith("3 of 7 sections done")
+    for key in ("type", "colours", "motion", "built"):
+        wiz.open_section(page, key)
+        assert page.is_disabled(".ps-next")
+        page.click(f".ps-cz-sec[data-sec={key}] .ps-cz-next")
+    page.wait_for_function("() => !document.querySelector('.ps-next').disabled")
+    assert page.inner_text(".ps-cz-progress") == "All 7 sections done."
 
 
 def test_stars_sit_in_the_top_right_corner_of_their_cards_and_bottom_right_on_colours(page):
@@ -171,31 +181,29 @@ def test_palette_preview_labels_are_centred_in_their_buttons(page):
         assert abs(row["above"] - row["below"]) <= 1.2, rows
 
 
-def test_skills_are_a_table_and_show_all_opens_category_tabs_that_slide_the_rows(page):
+def test_skills_are_one_table_and_the_category_select_slides_the_rows(page):
     _to_kit(page)
     assert page.locator(".ps-kit-rec").count() == 0
     heads = page.eval_on_selector_all(".ps-kit-table thead th", "els => els.map(e => e.innerText.trim().toLowerCase())")
     assert heads[1:4] == ["skill", "category", "what it does"], heads
-    assert page.locator(".ps-kit-skill").count() == 6
+    # Every skill is listed; there is no "Show all" button or tab strip.
+    assert page.locator(".ps-kit-skill").count() == 8
+    assert page.locator(".ps-kit-more, .ps-kit-cats").count() == 0
     assert page.locator(".ps-kit-skill[data-skill=impeccable] .ps-kit-col-star .ps-option-star").count() == 1
     assert page.locator(".ps-kit-skill[data-skill=pdf] .ps-option-star").count() == 0
-    assert not page.evaluate("() => document.querySelector('.ps-kit-cats-wrap').classList.contains('is-open')")
-    page.click(".ps-kit-more")
-    page.wait_for_function("() => document.querySelectorAll('.ps-kit-skill').length === 8")
-    assert page.evaluate("() => document.querySelector('.ps-kit-cats-wrap').classList.contains('is-open')")
-    tabs = page.eval_on_selector_all(".ps-kit-cat .ps-kit-cat-label", "els => els.map(e => e.textContent)")
-    assert tabs == ["All", "Creative", "Documents", "Marketing", "Research", "UI design", "Writing"], tabs
-    page.click(".ps-kit-cat[data-cat=ui-design]")
+    sel = ".ps-kit-skillbar select"
+    labels = page.locator(f"{sel} option").all_inner_texts()
+    assert labels == ["All (8)", "Creative (2)", "Documents (1)", "Marketing (1)", "Research (1)", "UI design (2)", "Writing (1)"], labels
+    page.select_option(sel, "ui-design")
     # The rows slide across and the frame eases to its new height.
-    assert page.evaluate("() => document.querySelector('.ps-kit-table-frame').getAnimations().length") >= 1
+    assert page.evaluate("() => document.querySelector('.ps-kit-table-frame').getAnimations({subtree: true}).length") >= 1
     assert page.eval_on_selector_all(".ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill", "els => els.map(e => e.dataset.skill)") == ["impeccable", "better-ui"]
     page.wait_for_function("() => !document.querySelector('.ps-kit-ghost')")
     row = page.locator(".ps-kit-skill[data-skill=better-ui]")
     row.click()
     assert row.locator("[role=checkbox]").get_attribute("aria-checked") == "false"
-    page.click(".ps-kit-more")
-    page.wait_for_function("() => document.querySelectorAll('.ps-kit-skill').length === 6")
-    assert not page.evaluate("() => document.querySelector('.ps-kit-cats-wrap').classList.contains('is-open')")
+    page.select_option(sel, "")
+    page.wait_for_function("() => document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill').length === 8")
 
 
 def test_component_loops_play_while_on_screen_and_stars_replace_the_pill(page):

@@ -21,8 +21,7 @@ def test_colour_previews_use_the_typeface_and_size_chosen_just_before(page):
     wiz.open_section(page, "type")
     page.click(".ps-cz-opt[data-key=font][data-value=slab]")
     page.click(".ps-cz-opt[data-key=scale][data-value=large]")
-    # The last Typography pick moves on to Colours.
-    page.wait_for_selector(".ps-cz-sec[data-sec=colours].is-open")
+    wiz.open_section(page, "colours")
     for theme in ("light", "dark"):
         fonts = _fonts(page, theme)
         # Every piece of text in both previews has one typeface: the chosen one.

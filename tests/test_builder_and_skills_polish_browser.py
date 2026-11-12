@@ -8,6 +8,7 @@ import pytest
 
 from tests._pytest_port import BASE
 from tests.test_project_builder_wizard_browser import KIT, LOOK, TEMPLATES
+from tests.builder_nav import next_step  # noqa: E402
 
 QUESTIONS = [{"id": "stack", "question": "Which stack?", "options": ["Astro", "Next.js", "Plain HTML"],
               "details": ["Static", "React", "No build"],
@@ -45,15 +46,15 @@ def _to_details(page):
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "lex")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-template")
     page.click(".ps-template >> text=Website")
-    page.click(".ps-next")
+    next_step(page)
     page.fill(".ps-wizard textarea", "A boutique law firm site with service pages.")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-option")
 
 
@@ -77,25 +78,28 @@ def test_the_reasoning_card_explains_whichever_option_is_chosen_and_morphs_betwe
     assert page.inner_text(".ps-rec-why-title") == "Your own answer"
 
 
-def test_toolkit_search_and_filter_narrow_the_lists_and_ticks_update_in_place(page):
+def test_toolkit_skill_search_and_category_select_narrow_the_table_and_ticks_update_in_place(page):
     _to_details(page)
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-look-card")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
-    page.click("#psKitFilter")
-    labels = page.locator(".filter-menu-item .filter-menu-text").all_inner_texts()
-    assert labels == ["Everything", "Marketing", "Design", "Documents", "Hero"], labels
-    page.click(".filter-menu-item >> text=Design")
-    assert page.evaluate("() => [...document.querySelectorAll('.ps-kit-skill')].map(c => c.dataset.skill)") == ["ui-polish"]
-    assert page.locator(".ps-kit-comp").count() == 0
-    assert page.evaluate("() => document.getElementById('psKitFilter').classList.contains('is-active')")
-    page.click("#psKitFilter")
-    page.click(".filter-menu-item >> text=Everything")
-    page.fill(".ps-kit-search input", "aurora")
-    page.wait_for_function("() => document.querySelectorAll('.ps-kit-comp').length === 1")
-    assert page.locator(".ps-kit-skill").count() == 0
-    page.fill(".ps-kit-search input", "")
+    # The search box and category select sit at the top of the Skills section.
+    bar = ".ps-cz-sec[data-sec=skills] .ps-kit-skillbar"
+    assert page.locator(f"{bar} input[type=search]").count() == 1
+    labels = page.locator(f"{bar} select option").all_inner_texts()
+    assert labels == ["All (3)", "Design (1)", "Documents (1)", "Marketing (1)"], labels
+    assert page.locator(".ps-kit-more").count() == 0  # no "Show all" button
+    page.select_option(f"{bar} select", "design")
+    page.wait_for_function("() => document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill').length === 1")
+    assert page.evaluate("() => [...document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill')].map(c => c.dataset.skill)") == ["ui-polish"]
+    comps = page.locator(".ps-kit-comp").count()
+    page.select_option(f"{bar} select", "")
+    # Searching skills narrows the table only; the component sections keep their cards.
+    page.fill(f"{bar} input", "pdf")
+    page.wait_for_function("() => document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill').length === 1")
+    assert page.locator(".ps-kit-comp").count() == comps
+    page.fill(f"{bar} input", "")
     page.wait_for_function("() => document.querySelectorAll('.ps-kit-skill').length === 3")
     card = page.locator(".ps-kit-skill[data-skill=pdf]")
     handle = card.element_handle()
@@ -121,10 +125,10 @@ def test_builder_divider_has_equal_space_each_side_and_the_dialog_even_margins(p
 
 def test_review_titles_are_larger_and_the_step_hides_its_scrollbar(page):
     _to_details(page)
-    page.click(".ps-next")
-    page.click(".ps-next")
+    next_step(page)
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review-card")
     info = page.evaluate("""() => ({size: parseFloat(getComputedStyle(document.querySelector('.ps-review-card h4')).fontSize),
       bar: getComputedStyle(document.querySelector('.ps-body')).scrollbarWidth})""")

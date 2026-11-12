@@ -209,13 +209,17 @@ percent and a 2px meter that ease up (the server's `_Estimate` in
 under 100% until the job is done, then the meter fills before moving on).
 Website, Web app, iOS and Android projects get a Customize step preselected from
 the brief (stars mark the planner's picks; there is no separate banner). Its
-sections (Style, Typography, Colours, Buttons, Cards & spacing, Motion, Built
+sections (Style, Typography, Buttons, Cards & spacing, Colours, Motion, Built
 with) open one at a time: picking in a section ticks it and opens the next
 (sections with several parts move on when their last part is picked, or with
 their "Next" button; Colours never moves on by itself, so palettes can be
-previewed until "Next: Buttons"), and a folded section's header shows its
-choice. Typography comes before Colours so both colour previews render every
-piece of text in the chosen typeface and text size. Section header ticks and
+previewed until "Next: Motion"), and a folded section's header shows its
+choice. Typography, Buttons and Cards & spacing come before Colours so both
+colour previews render the chosen typeface, text size, buttons and surfaces.
+The wizard's Next stays disabled until every section is ticked; a line under
+the sections reads "n of N sections done" (Customize and the Toolkit alike). A
+pick's delayed auto-advance only ticks its section when the user has already
+opened another one. Section header ticks and
 texts sit 1px below the box centre (optical centring). A folded section uses `content-visibility: hidden` once its fold ends,
 so its looping samples and colour changes cost no style or paint work, and a new
 palette fades each preview mock as a whole instead of transitioning every
@@ -228,20 +232,23 @@ Review step whose primary action is Create & start building. Between 721px and
 
 Toolkit lists skills as a table (tick, skill, category, what it does, star):
 recommended skills are ticked and imported skills that fit the project come
-first. "Show all N skills" opens category tabs with a sliding pill; choosing a
-category slides the rows across and eases the table to its new height. At 560px
+first. A search box and a category select (All, then each category with its
+count) sit at the top of the Skills section; every matching skill is listed
+(no "Show all"), a new category slides the rows across and typing fades them in
+place. The skill search only narrows the table. At 560px
 and below the category and description columns fold into the skill cell. Visual
 templates also get catalog components, grouped by library with its licence, best
 fits for the style first; a component with a captured loop plays it while it is
 on screen (a "Live" badge marks it; the still stays under reduced motion). For
 visual templates Skills and each component library are folding sections like
-Customize's ("Components 1/3 · ObsidianUI" and so on; all open while searching or
-filtering). Each library section has its own search box and a category select:
+Customize's ("Components 1/3 · ObsidianUI" and so on). Each library section has
+its own search box and a category select:
 Recommended (the starred and best-scoring picks, at most eight, plus anything
 chosen), All (grouped under category headings), then one entry per role
-(Navigation, Loading, Forms & buttons, …). A "Chosen" tray above the library
-sections lists each picked component as a chip that opens its section, widens
-the view if needed, scrolls to the card or removes it. A chosen skill row shows
+(Navigation, Loading, Forms & buttons, …). A "Chosen" block after every section
+lists the picks as text chips under a Skills and a Components heading (each with
+a divider and count); a chip opens its section, widens the view if needed and
+flashes the row or card, and its x removes the pick. A chosen skill row shows
 its tick only (no row fill), and the table's header labels are centred over
 their columns. A corner button on each component's preview (shown on hover,
 always on touch) opens a larger preview in a light-dismiss popover kept inside
@@ -259,7 +266,8 @@ description wraps past two lines lifts its title and description 1px (`is-tall`)
 The 1-4 key art sits 1px below the option's centre line.
 
 Colours fill three rows of four (the recommended star sits bottom right on these
-cards): the planner's palette for the brief (starred),
+cards; "Use logo colours" and "Your own" draw their icon 1px low on a checkerboard
+"no colour" swatch): the planner's palette for the brief (starred),
 presets ordered by the chosen style, then "Use logo colours" and "Your own" at
 the end of the last row. The logo card imports a logo (click or drop; read in the
 browser with a canvas and never uploaded) and then shows that palette, which

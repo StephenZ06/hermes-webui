@@ -18854,3 +18854,32 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 @media (prefers-reduced-motion:reduce){.ps-kit-peek{transition:none;}}
 /* Thumbs show a soft placeholder while their preview loads. */
 .ps-kit-thumb:not(.is-empty){background:color-mix(in srgb,var(--text) 6%,transparent);}
+
+/* Builder round 6 */
+/* Build summary: 24px from the stepper, the footer rule, the divider and the dialog edge. */
+@media (min-width:900px){.ps-builder .ps-build{margin:12px 0 8px;}}
+/* "Use logo colours" / "Your own": icon 1px lower on a transparent (checkerboard) swatch. */
+.ps-pal-swatch-tool{background:repeating-conic-gradient(color-mix(in srgb,var(--text) 13%,transparent) 0 25%,color-mix(in srgb,var(--text) 4%,transparent) 0 50%) 0 0/10px 10px;}
+.ps-pal-tool:hover .ps-pal-swatch-tool{background:repeating-conic-gradient(color-mix(in srgb,var(--accent) 22%,transparent) 0 25%,color-mix(in srgb,var(--accent) 6%,transparent) 0 50%) 0 0/10px 10px;}
+.ps-pal-swatch-tool>svg{position:relative;top:1px;}
+/* Sections: "n of N done" under the list; Next waits for all of them. */
+.ps-cz-progress{margin:8px 2px 0;font-size:12px;line-height:16px;color:var(--muted);}
+.ps-cz-progress.is-done{color:color-mix(in srgb,var(--accent) 80%,var(--text));}
+/* Skills: search + category select above the table. */
+.ps-kit-skillbar{margin-bottom:10px;}
+.ps-kit-skill.is-flash td{animation:ps-kit-row-flash 1s cubic-bezier(.22,1,.36,1);}
+@keyframes ps-kit-row-flash{0%,30%{background:color-mix(in srgb,var(--accent) 16%,transparent);}100%{background:transparent;}}
+/* Chosen: text chips under Skills / Components headings, at the end. */
+.ps-kit-tray{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:12px 14px 14px;}
+.ps-kit-tray-label{margin:0;}
+.ps-kit-tray-group{display:flex;flex-direction:column;gap:8px;}
+.ps-kit-tray-group.is-empty{display:none;}
+.ps-kit-tray-cat{display:flex;align-items:center;gap:8px;margin:0;font-size:12px;font-weight:700;color:var(--text);}
+.ps-kit-tray-cat::after{content:"";flex:1;height:1px;background:color-mix(in srgb,var(--border2) 80%,transparent);}
+.ps-kit-tray-n{font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;}
+.ps-kit-tray .ps-kit-tray-chips{display:flex;}
+.ps-kit-tray-go{padding:0 2px 0 12px;}
+.ps-kit-tray-none{display:none;margin:0;}
+.ps-kit-tray.is-empty .ps-kit-tray-none{display:block;}
+.ps-cz>.ps-kit-tray{margin:6px 0 0;}
+@media (prefers-reduced-motion:reduce){.ps-kit-skill.is-flash td{animation:none;}}

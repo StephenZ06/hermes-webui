@@ -6,6 +6,7 @@ import json
 import pytest
 
 from tests._pytest_port import BASE
+from tests.builder_nav import next_step  # noqa: E402
 
 TEMPLATES = {
     "templates": [
@@ -78,20 +79,20 @@ def _to_template(page, key):
     page.evaluate("() => { window.__launched = []; window._startProjectChat = (project, opts) => { window.__launched.push([project.project_id, opts && opts.kickoff || '']); }; window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "lex")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-template")
     page.click(f".ps-template >> text={key}")
 
 
 def _through_brief(page):
-    page.click(".ps-next")
+    next_step(page)
     page.fill(".ps-wizard textarea", "A boutique law firm site with service pages.")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review.is-ok")
-    page.click(".ps-next")
+    next_step(page)
 
 
 def open_section(page, key):
@@ -143,7 +144,7 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     _to_template(page, "Website")
     _through_brief(page)
     page.wait_for_selector(".ps-look-card")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
     req = page.toolkit_requests[-1]
     assert (req["template"], req["style"], req["motion"], req["framework"], req["tailwind"]) == ("website", "elegant", "subtle", "react", True)
@@ -153,12 +154,12 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     open_lib(page, "glow")
     page.click(".ps-kit-comp[data-comp='glow/aurora']")
     assert "1" in page.inner_text(".ps-build-row:has(dt:text('Skills')) dd")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review-card")
     assert page.inner_text(".ps-extra") == "Create project"
     assert page.inner_text(".ps-next") == "Create & start building"
     assert "vendor/ui/glow/" in page.inner_text(".ps-files")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_function("() => window.__launched.length === 1", timeout=10000)
     body = page.created[-1]
     assert body["toolkit"]["skills"] == ["seo-audit"]
@@ -171,9 +172,9 @@ def test_create_project_alone_sends_no_build_message(page):
     _to_template(page, "Website")
     _through_brief(page)
     page.wait_for_selector(".ps-look-card")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-extra")
     page.wait_for_selector(".ps-done-actions .project-starter-submit:not([disabled])")
     page.wait_for_timeout(900)
