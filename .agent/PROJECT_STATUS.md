@@ -1,7 +1,12 @@
 # Project status — hermes-webui
 
 
-## 2026-11-13 (latest): builder round 8 — Toolkit recommends what the app needs
+## 2026-11-13 (latest): performance checklist in new projects; anti-slop for Hermes agents
+
+- Commit a10a49045 (deployed): web, website, iOS and Android templates write `docs/PERFORMANCE.md` (from `api/starter_performance.md`) plus an AGENTS.md rule, both between `hermes:performance` markers the setup agent keeps word for word. Adopted projects with their own AGENTS.md get the doc but not the rule (the adopt path only appends Hermes' continuity section).
+- anti-slop 3.2.29 (github.com/miqdadbadjuber/anti-slop @54e39872aeba, MIT) installed for Hermes agents only, outside this repo: six skill folders in host `~/workspace/ecc-minimal-skills/` (= container `/workspace/ecc-minimal-skills`, already an external skills dir of the default profile and architecture, coding-claude, coding-codex, docs-gits); `local-model` profile config gained that dir (backup `config.yaml.bak-20261113-antislop`). Gateway container `hermes-migrated` got a copy under `/opt/data/skills/antislop/`. Mode saved as `during` in `~/.config/antislop/settings.json` under each Hermes `home/` (default, every profile, and `/opt/data/home`). Verified with `tools.skills_tool` per profile: all six skills load everywhere. No installer, no MCP contrast server.
+
+## 2026-11-13: builder round 8 — Toolkit recommends what the app needs
 
 - Commit 92c57adc1 (deployed, health 200). The planner prompt asks for "needs" (keys of `api/library_catalog.NEEDS`, 20 of them, each tied to component-name words and brief words in `_FIT`); `parse_analysis` keeps known keys; the wizard sends `st.analysis.needs` to the toolkit; `project_toolkit.resolve_needs` falls back to `TEMPLATE_NEEDS` when the planner gave none (or no planner is configured).
 - Each need stars its best component per library and ticks its best overall; reasons "Your app needs: X" / "Fits your brief: Y".
