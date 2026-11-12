@@ -20427,7 +20427,17 @@ def _route_post_api_projects_starter_toolkit(handler, parsed, body, diag):
     body = body if isinstance(body, dict) else {}
     template = str(body.get("template") or "blank").strip().lower()
     skills = _skills_list_from_dir(_active_skills_dir()).get("skills", [])
-    out = {"skills": tk.suggest_skills(skills, template=template, brief=str(body.get("brief") or "")[:20000]),
+    # The brief plus the planner's questions and the user's answers: the more
+    # the user wrote, the better the picks fit.
+    answers = body.get("answers") if isinstance(body.get("answers"), list) else []
+    # A "no" answer keeps its question out, so "Do you need a login? No" adds nothing.
+    def _said(a):
+        answer = str(a.get("answer") or "").strip()
+        negative = re.match(r"(?i)^(no|none|not|nope|skip|n/a)\b", answer)
+        return answer if negative else f"{a.get('question') or ''} {answer}"
+    brief = " ".join([str(body.get("brief") or "")[:20000]] + [
+        _said(a) for a in answers[:40] if isinstance(a, dict)])[:30000]
+    out = {"skills": tk.suggest_skills(skills, template=template, brief=brief),
            "components": {}, "visual": tk.is_visual(template), "frameworks": list(lc.FRAMEWORKS), "libraries": 0}
     if tk.is_visual(template):
         framework = str(body.get("framework") or "").strip().lower()
@@ -20438,7 +20448,8 @@ def _route_post_api_projects_starter_toolkit(handler, parsed, body, diag):
         out.update(framework=framework, platform=platform, libraries=len(libraries),
                    components=lc.match_components(libraries, platform=platform, framework=framework,
                                                   tailwind=body.get("tailwind") is True,
-                                                  style=str(body.get("style") or ""), motion=str(body.get("motion") or "")))
+                                                  style=str(body.get("style") or ""), motion=str(body.get("motion") or ""),
+                                                  brief=brief))
     return j(handler, out)
 
 

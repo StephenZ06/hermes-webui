@@ -186,14 +186,18 @@ def test_skills_are_one_table_and_the_category_select_slides_the_rows(page):
     assert page.locator(".ps-kit-rec").count() == 0
     heads = page.eval_on_selector_all(".ps-kit-table thead th", "els => els.map(e => e.innerText.trim().toLowerCase())")
     assert heads[1:4] == ["skill", "category", "what it does"], heads
-    # Every skill is listed; there is no "Show all" button or tab strip.
-    assert page.locator(".ps-kit-skill").count() == 8
+    # The table starts on the brief's picks; there is no "Show all" button or tab strip.
+    sel = ".ps-kit-skillbar select"
+    assert page.input_value(sel) == "picks"
+    assert page.eval_on_selector_all(".ps-kit-skill", "els => els.map(e => e.dataset.skill)") == ["impeccable", "better-ui", "seo-audit"]
     assert page.locator(".ps-kit-more, .ps-kit-cats").count() == 0
+    page.select_option(sel, "")
+    page.wait_for_function("() => document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill').length === 8")
+    page.wait_for_function("() => !document.querySelector('.ps-kit-ghost')")
     assert page.locator(".ps-kit-skill[data-skill=impeccable] .ps-kit-col-star .ps-option-star").count() == 1
     assert page.locator(".ps-kit-skill[data-skill=pdf] .ps-option-star").count() == 0
-    sel = ".ps-kit-skillbar select"
     labels = page.locator(f"{sel} option").all_inner_texts()
-    assert labels == ["All (8)", "Creative (2)", "Documents (1)", "Marketing (1)", "Research (1)", "UI design (2)", "Writing (1)"], labels
+    assert labels == ["Recommended (3)", "All (8)", "Creative (2)", "Documents (1)", "Marketing (1)", "Research (1)", "UI design (2)", "Writing (1)"], labels
     page.select_option(sel, "ui-design")
     # The rows slide across and the frame eases to its new height.
     assert page.evaluate("() => document.querySelector('.ps-kit-table-frame').getAnimations({subtree: true}).length") >= 1

@@ -149,3 +149,11 @@ def test_kickoff_message_names_the_approved_pieces_and_local_installs():
     assert "version 1" in text and "Lex & Co" in text
     assert "inside the project" in text and "docs/UI_UX.md" in text
     assert "ECC_HANDOFF" in text and "preview" in text
+
+
+def test_a_detailed_brief_outweighs_the_template_hints():
+    skills = SKILLS + [{"name": "pdf-invoices", "category": "documents", "description": "Generate invoices as PDF."}]
+    out = tk.suggest_skills(skills, template="website", brief="Clients download their invoices as PDF from the site.")
+    by = {s["name"]: s for s in out}
+    assert by["pdf-invoices"]["recommended"] and by["pdf-invoices"]["fit"] == ["invoices", "pdf"]
+    assert out[0]["name"] == "pdf-invoices"

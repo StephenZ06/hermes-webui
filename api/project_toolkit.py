@@ -11,7 +11,6 @@ files into ``vendor/ui/<library>/``. ``kickoff_message`` is the first message
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
@@ -32,8 +31,6 @@ _TEMPLATE_HINTS = {
     "research": "research source paper writing literature citation analysis",
     "blank": "",
 }
-_STOP = set("the and for with that this from into your our are was were has have will can a an in of to on at by "
-            "it its be as or is we us they them their want wants need needs well very more most".split())
 
 
 def is_visual(template: str) -> bool:
@@ -51,19 +48,19 @@ def platform_for(template: str, framework: str) -> str:
 
 
 def _words(text: str) -> set[str]:
-    out = set()
-    for word in re.findall(r"[a-z0-9]+", str(text or "").lower()):
-        if len(word) < 2 or word in _STOP:
-            continue
-        out.add(word[:-1] if len(word) > 3 and word.endswith("s") else word)
-    return out
+    return lc.words(text)
 
 
-def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int = 5) -> list[dict]:
+def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int = 6) -> list[dict]:
     """Every skill with a score; the best ``limit`` scoring 2 or more are recommended,
-    imported skills that fit the project first."""
+    imported skills that fit the project first.
+
+    A word the brief shares with a skill counts twice as much as a word from
+    the template's hints, so a detailed brief decides the picks; ``fit`` lists
+    the brief's words a skill matched."""
     hints = _words(_TEMPLATE_HINTS.get(template, ""))
-    brief_words = _words(brief)
+    forms = lc.word_forms(brief)
+    brief_words = set(forms)
     scored = []
     for skill in skills:
         name = str(skill.get("name") or "")
@@ -71,9 +68,11 @@ def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int 
             continue
         own = _words(" ".join([name.replace("-", " ").replace("_", " "), str(skill.get("category") or ""),
                                str(skill.get("description") or "")]))
-        score = 2 * len(own & hints) + len(own & brief_words)
+        fit = sorted(own & brief_words)
+        score = len(own & hints) + 2 * len(fit)
         scored.append({"name": name, "category": str(skill.get("category") or ""),
                        "description": str(skill.get("description") or "")[:240], "score": score,
+                       "fit": [forms[w] for w in fit[:4]],
                        "imported": bool(skill.get("imported")), "recommended": False})
     # Skills the user imported come ahead of built-ins, but only when they fit the project.
     scored.sort(key=lambda s: (not (s["imported"] and s["score"] >= 2), -s["score"], s["name"]))

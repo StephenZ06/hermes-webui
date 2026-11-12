@@ -88,7 +88,8 @@ def test_toolkit_skill_search_and_category_select_narrow_the_table_and_ticks_upd
     bar = ".ps-cz-sec[data-sec=skills] .ps-kit-skillbar"
     assert page.locator(f"{bar} input[type=search]").count() == 1
     labels = page.locator(f"{bar} select option").all_inner_texts()
-    assert labels == ["All (3)", "Design (1)", "Documents (1)", "Marketing (1)"], labels
+    assert labels[1:] == ["All (3)", "Design (1)", "Documents (1)", "Marketing (1)"], labels
+    assert labels[0].startswith("Recommended (") and page.input_value(f"{bar} select") == "picks"
     assert page.locator(".ps-kit-more").count() == 0  # no "Show all" button
     page.select_option(f"{bar} select", "design")
     page.wait_for_function("() => document.querySelectorAll('.ps-kit-table:not(.ps-kit-ghost) .ps-kit-skill').length === 1")

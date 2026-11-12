@@ -147,6 +147,7 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     next_step(page)
     page.wait_for_selector(".ps-kit-skill")
     req = page.toolkit_requests[-1]
+    assert req["answers"] == []  # the planner asked nothing here
     assert (req["template"], req["style"], req["motion"], req["framework"], req["tailwind"]) == ("website", "elegant", "subtle", "react", True)
     assert sorted(page.eval_on_selector_all(".ps-kit-skill.is-selected", "els => els.map(e => e.dataset.skill)")) == ["seo-audit", "ui-polish"]
     assert page.eval_on_selector_all(".ps-kit-comp.is-selected", "els => els.map(e => e.dataset.comp)") == ["calm/split"]

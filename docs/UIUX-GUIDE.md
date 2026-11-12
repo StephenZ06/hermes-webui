@@ -230,11 +230,22 @@ tokens (`api/project_look.py`). Every template then gets a Toolkit step and a
 Review step whose primary action is Create & start building. Between 721px and
 1023px the stepper shows only the current label.
 
+Toolkit picks come from the whole brief: the brief text plus the planner's
+questions and the user's answers (a "no" answer leaves its question out). A word
+the brief shares with a skill counts twice a template hint; components match on
+their names and a table of brief words that call for them (booking calls for a
+calendar, "log in with a one-time code" for an OTP input; `api/library_catalog.py`
+`_FIT`). Each recommended skill or component says why ("Fits your brief: booking,
+calendar", the brief's own words). Only the best component per category is
+ticked; the other recommendations are starred. A brief that calls for nothing in
+the catalogue falls back to the best style match per category.
+
 Toolkit lists skills as a table (tick, skill, category, what it does, star):
 recommended skills are ticked and imported skills that fit the project come
-first. A search box and a category select (All, then each category with its
-count) sit at the top of the Skills section; every matching skill is listed
-(no "Show all"), a new category slides the rows across and typing fades them in
+first. A search box and a category select (Recommended, All, then each category
+with its count) sit at the top of the Skills section; the table starts on
+Recommended (the picks plus anything chosen; typing there searches every
+skill), a new category slides the rows across and typing fades them in
 place. The skill search only narrows the table. At 560px
 and below the category and description columns fold into the skill cell. Visual
 templates also get catalog components, grouped by library with its licence, best
@@ -243,8 +254,8 @@ on screen (a "Live" badge marks it; the still stays under reduced motion). For
 visual templates Skills and each component library are folding sections like
 Customize's ("Components 1/3 · ObsidianUI" and so on). Each library section has
 its own search box and a category select:
-Recommended (the starred and best-scoring picks, at most eight, plus anything
-chosen), All (grouped under category headings), then one entry per role
+Recommended (the brief's starred picks plus anything chosen; the starred and
+best style matches, at most eight, when the brief calls for nothing in that library), All (grouped under category headings), then one entry per role
 (Navigation, Loading, Forms & buttons, …). A "Chosen" block after every section
 lists the picks as text chips under a Skills and a Components heading (each with
 a divider and count); a chip opens its section, widens the view if needed and

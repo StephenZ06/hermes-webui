@@ -18883,3 +18883,10 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-kit-tray.is-empty .ps-kit-tray-none{display:block;}
 .ps-cz>.ps-kit-tray{margin:6px 0 0;}
 @media (prefers-reduced-motion:reduce){.ps-kit-skill.is-flash td{animation:none;}}
+
+/* Builder round 7: why a toolkit pick was recommended (the brief's own words). */
+.ps-kit-fit{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:4px;font-size:11px;line-height:15px;color:var(--muted);}
+.ps-kit-fit-narrow{display:none;}
+@media (max-width:560px){.ps-kit-fit-narrow{display:-webkit-box;}}
+.ps-kit-fit-label{color:var(--accent-text,var(--accent));font-weight:600;}
+.ps-kit-peek-body .ps-kit-fit{white-space:normal;font-size:12px;line-height:17px;}

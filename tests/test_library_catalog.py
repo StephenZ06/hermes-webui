@@ -149,3 +149,62 @@ def test_untagged_components_are_never_suggested():
     libs = [_lib("raw", ["react"], False, [("x", "", [], "", [])])]
     libs[0]["components"][0]["needs_details"] = True
     assert lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal", motion="subtle") == {}
+
+
+BRIEF_LIBS = [_lib("kit", ["react"], False, [
+    ("calendar", "forms", ["minimal"], "subtle", ["web"]),
+    ("input-otp", "forms", ["minimal"], "subtle", ["web"]),
+    ("password-input", "forms", ["bold"], "subtle", ["web"]),
+    ("switch", "forms", ["minimal"], "subtle", ["web"]),
+    ("art-gallery", "cards", ["minimal"], "subtle", ["web"]),
+    ("table", "cards", ["minimal"], "subtle", ["web"]),
+])]
+
+
+def _picks(out):
+    return sorted(c["slug"] for items in out.values() for c in items if c["recommended"])
+
+
+def test_the_brief_decides_which_components_are_recommended():
+    kw = dict(platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    booking = lc.match_components(BRIEF_LIBS, brief="A clinic booking site: patients log in and pick an appointment.", **kw)
+    assert _picks(booking) == ["calendar", "input-otp", "password-input"]  # not Switch: a login is not a setting
+    cal = next(c for c in booking["forms"] if c["slug"] == "calendar")
+    assert cal["fit"] == ["appointment", "booking"]  # the brief's own words, shown as the reason
+    gallery = lc.match_components(BRIEF_LIBS, brief="A photographer's portfolio with an admin dashboard.", **kw)
+    assert _picks(gallery) == ["art-gallery", "table"]  # roles the brief does not call for get no pick
+    # Brief-fitting components rank first in their role.
+    assert gallery["cards"][0]["slug"] in ("art-gallery", "table") and gallery["cards"][0]["fit"]
+    # Without a brief, the style match alone decides, as before.
+    plain = lc.match_components(BRIEF_LIBS, **kw)
+    assert all(not c["fit"] for items in plain.values() for c in items)
+    assert sum(c["recommended"] for c in plain["forms"]) == 1
+
+
+def test_brief_words_drop_filler_and_fold_plurals():
+    assert lc.words("We want users to book appointments for the app") == {"book", "appointment"}
+
+
+def test_two_word_phrases_and_reasons_keep_the_briefs_own_words():
+    assert lc.words("Patients log in with a one-time code") == {"patient", "login", "otp"}
+    kw = dict(platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    out = lc.match_components(BRIEF_LIBS, brief="Staff check bookings; patients log in with a one-time code.", **kw)
+    otp = next(c for c in out["forms"] if c["slug"] == "input-otp")
+    assert otp["recommended"] and otp["fit"] == ["login", "otp"]
+    cal = next(c for c in out["forms"] if c["slug"] == "calendar")
+    assert cal["fit"] == ["bookings"]  # shown as the brief wrote it, not folded to "booking"
+
+
+def test_a_component_the_brief_names_outranks_its_neighbours():
+    libs = [_lib("k", ["react"], False, [(s, "forms", ["minimal"], "subtle", ["web"]) for s in
+                                         ("input", "input-group", "field", "input-otp")])]
+    out = lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal",
+                              motion="subtle", brief="Patients log in with a one-time code.")
+    assert out["forms"][0]["slug"] == "input-otp"
+
+
+def test_only_the_best_brief_pick_per_role_is_ticked_the_rest_are_starred():
+    kw = dict(platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    out = lc.match_components(BRIEF_LIBS, brief="A clinic booking site: patients log in and pick an appointment.", **kw)
+    assert [c["slug"] for c in out["forms"] if c["pick"]] == ["calendar"]
+    assert sum(c["recommended"] for c in out["forms"]) == 3

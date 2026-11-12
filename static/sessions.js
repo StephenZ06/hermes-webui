@@ -10202,7 +10202,7 @@ async function _openProjectStarterWizard(profile){
   const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false,
     look:null,startBuilding:false,
-    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),cat:'',q:''}};
+    kit:{key:'',data:null,template:'',skills:new Set(),comps:new Set(),seenSkills:new Set(),seenComps:new Set(),cat:undefined,q:''}};
   const folderCache=new Map();
 
   return new Promise(resolve=>{
@@ -11252,25 +11252,28 @@ async function _openProjectStarterWizard(profile){
 
     // Step 8 — Toolkit: suggested skills (and components for visual projects)
     async function renderToolkit(){
-      sub.textContent='Recommended picks are ticked. Untick anything you do not want.';
+      sub.textContent='Picks from your brief and answers are ticked. Untick anything you do not want.';
       const wrap=section('Pick your toolkit:');
       const holder=_psEl('div','ps-kit');wrap.append(holder);
       const look=isVisual()?ensureLook():null;
-      const key=JSON.stringify([st.template,st.brief.trim(),look&&look.style,look&&look.motion,look&&look.framework,look&&look.tailwind]);
+      // The brief and the planner's answers both shape the picks.
+      const answers=(st.questions||[]).map(q=>({question:q.question,answer:st.answers[q.id]||''})).filter(a=>a.answer);
+      const key=JSON.stringify([st.template,st.brief.trim(),answers,look&&look.style,look&&look.motion,look&&look.framework,look&&look.tailwind]);
       setNav({canNext:false});
       if(st.kit.key!==key||!st.kit.data){
         holder.innerHTML='<div class="ps-kit-loading"><span class="ps-pulse"></span><span>Finding skills and components that fit…</span></div>';
         let data;
-        try{data=await api('/api/projects/starter/toolkit',{method:'POST',body:JSON.stringify({template:st.template,brief:st.brief.trim(),
+        try{data=await api('/api/projects/starter/toolkit',{method:'POST',body:JSON.stringify({template:st.template,brief:st.brief.trim(),answers,
           style:look&&look.style,motion:look&&look.motion,framework:look&&look.framework,tailwind:!!(look&&look.tailwind)})});}
         catch(error){if(done||st.step!==8)return;holder.innerHTML='';holder.append(_psEl('p','ps-kit-empty','Could not load suggestions: '+(error.message||error)));setNav({canNext:true,nextLabel:'Skip'});return;}
         if(done||st.step!==8) return;
         const firstForTemplate=st.kit.template!==st.template;
         st.kit.data=data;st.kit.key=key;st.kit.template=st.template;
         // Recommended picks are ticked the first time; later visits keep the user's choice.
-        if(firstForTemplate){st.kit.skills=new Set();st.kit.comps=new Set();st.kit.seenSkills=new Set();st.kit.seenComps=new Set();}
+        if(firstForTemplate){st.kit.skills=new Set();st.kit.comps=new Set();st.kit.seenSkills=new Set();st.kit.seenComps=new Set();st.kit.cat=undefined;}
         data.skills.forEach(s=>{if(s.recommended&&!st.kit.seenSkills.has(s.name)){st.kit.skills.add(s.name);}st.kit.seenSkills.add(s.name);});
-        Object.values(data.components||{}).forEach(list=>list.forEach(c=>{const id=c.library+'/'+c.slug;if(c.recommended&&!st.kit.seenComps.has(id))st.kit.comps.add(id);st.kit.seenComps.add(id);}));
+        // Components: the best pick per category is ticked; the other recommendations are starred.
+        Object.values(data.components||{}).forEach(list=>list.forEach(c=>{const id=c.library+'/'+c.slug;if((c.pick===undefined?c.recommended:c.pick)&&!st.kit.seenComps.has(id))st.kit.comps.add(id);st.kit.seenComps.add(id);}));
         // Picks that no longer fit the new style or stack are dropped.
         const fits=new Set(Object.values(data.components||{}).flat().map(c=>c.library+'/'+c.slug));
         [...st.kit.comps].forEach(id=>{if(!fits.has(id))st.kit.comps.delete(id);});
@@ -11280,6 +11283,8 @@ async function _openProjectStarterWizard(profile){
       setNav({canNext:ready()});
       paintBuild();
     }
+    // Why a pick was recommended: the brief's own words it matched.
+    function _psFit(fit,extra){const p=_psEl('span','ps-kit-fit'+(extra?' '+extra:''));p.append(_psEl('span','ps-kit-fit-label','Fits your brief:'),document.createTextNode(' '+fit.join(', ')));return p;}
     function _psCheck(on){return '<span class="ps-kit-check'+(on?' is-on':'')+'" aria-hidden="true">'+_psIcon('check',12)+'</span>';}
     // The toolkit: a search box and a filter (skill categories, component
     // types) over two sections. Ticking a card updates it in place; search and
@@ -11316,9 +11321,15 @@ async function _openProjectStarterWizard(profile){
         find.append(input);
         const selWrap=_psEl('span','ps-kit-libselect');
         const sel=_psEl('select');sel.setAttribute('aria-label','Skill category');
-        [['','All ('+data.skills.length+')'],...categories.map(c=>[c,_psLabel(c)+' ('+data.skills.filter(s=>(s.category||'other')===c).length+')'])].forEach(([v,l])=>{const o=_psEl('option',null,l);o.value=v;sel.append(o);});
-        if(![...sel.options].some(o=>o.value===(st.kit.cat||''))) st.kit.cat='';
-        sel.value=st.kit.cat||'';
+        // "Recommended" (the picks for this brief, plus anything chosen) comes
+        // first and is where the table starts.
+        const picks=()=>data.skills.filter(s=>s.recommended||st.kit.skills.has(s.name));
+        const opts=[...(picks().length?[['picks','Recommended ('+picks().length+')']]:[]),['','All ('+data.skills.length+')'],...categories.map(c=>[c,_psLabel(c)+' ('+data.skills.filter(s=>(s.category||'other')===c).length+')'])];
+        opts.forEach(([v,l])=>{const o=_psEl('option',null,l);o.value=v;sel.append(o);});
+        const order=opts.map(o=>o[0]);
+        if(st.kit.cat===undefined) st.kit.cat=picks().length?'picks':'';
+        if(!order.includes(st.kit.cat)) st.kit.cat=order[0];
+        sel.value=st.kit.cat;
         selWrap.append(sel);selWrap.insertAdjacentHTML('beforeend',_psIcon('chevron',12));
         bar.append(find,selWrap);
         const frame=_psEl('div','ps-kit-table-frame');
@@ -11329,7 +11340,10 @@ async function _openProjectStarterWizard(profile){
         thead.append(hr);table.append(thead);
         const tbody=_psEl('tbody');table.append(tbody);frame.append(table);
         const empty=_psEl('p','ps-kit-empty','No skills match.');
-        const rowsFor=()=>data.skills.filter(s=>(!st.kit.cat||(s.category||'other')===st.kit.cat)&&hit([s.name,s.category,s.description].join(' ')));
+        // Typing under Recommended searches every skill.
+        const rowsFor=()=>{const q=words().length;const cat=st.kit.cat;
+          const pool=cat==='picks'?(q?data.skills:picks()):data.skills.filter(s=>!cat||(s.category||'other')===cat);
+          return pool.filter(s=>hit([s.name,s.category,s.description].join(' ')));};
         function row(s,i){
           const on=st.kit.skills.has(s.name);
           const tr=_psEl('tr','ps-kit-skill'+(on?' is-selected':''));tr.dataset.skill=s.name;tr.style.setProperty('--i',i);
@@ -11337,8 +11351,11 @@ async function _openProjectStarterWizard(profile){
           check.setAttribute('aria-checked',String(on));check.setAttribute('aria-label',s.name);check.innerHTML=_psCheck(on);c0.append(check);
           const c1=_psEl('td','ps-kit-col-name');c1.append(_psEl('span','ps-kit-name',s.name));
           if(s.description) c1.append(_psEl('span','ps-kit-sub',s.description));
+          // Why it was picked: under the description (or, on a phone, under the name).
+          if(s.recommended&&s.fit&&s.fit.length) c1.append(_psFit(s.fit,'ps-kit-fit-narrow'));
           const c2=_psEl('td','ps-kit-col-cat',s.category?_psLabel(s.category):'');
           const c3=_psEl('td','ps-kit-col-desc');c3.append(_psEl('span','ps-kit-desc',s.description||''));
+          if(s.recommended&&s.fit&&s.fit.length) c3.append(_psFit(s.fit));
           const c4=_psEl('td','ps-kit-col-star');if(s.recommended)c4.append(_psRecStar());
           tr.append(c0,c1,c2,c3,c4);
           tr.onclick=(event)=>{if(event.target.closest('a'))return;toggle(tr,st.kit.skills,s.name);};
@@ -11366,7 +11383,7 @@ async function _openProjectStarterWizard(profile){
         let typing=0;
         input.oninput=()=>{clearTimeout(typing);typing=setTimeout(()=>{st.kit.q=input.value.trim();fillRows(0);},90);};
         input.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';st.kit.q='';fillRows(0);}};
-        sel.onchange=()=>{const from=categories.indexOf(st.kit.cat||''),to=categories.indexOf(sel.value);st.kit.cat=sel.value;fillRows(to>from?1:-1);};
+        sel.onchange=()=>{const from=order.indexOf(st.kit.cat),to=order.indexOf(sel.value);st.kit.cat=sel.value;fillRows(to>from?1:-1);};
         box.append(bar,frame,empty);
         fillRows(0);
         return box;
@@ -11478,11 +11495,14 @@ async function _openProjectStarterWizard(profile){
       // Category names for the component select; "loaders" reads as Loading.
       const _roleLabel=(r)=>({loaders:'Loading',forms:'Forms & buttons',background:'Backgrounds','text-effect':'Text effects',hero:'Hero sections'})[r]||_psLabel(r);
       const ROLE_ORDER=['navigation','hero','cards','forms','loaders','transitions','text-effect','background','icons'];
-      // The picks for this brief: starred and best-scoring first, at most eight,
-      // plus anything already chosen.
+      // The picks for this brief plus anything already chosen. When the brief
+      // calls for components in this library (they carry "fit"), those starred
+      // picks are the list; otherwise the starred and best style matches, at
+      // most eight.
       function picksOf(items){
-        const scored=items.filter(c=>c.recommended||(c.score||0)>0).slice(0,8);
-        const base=scored.length>=4?scored:items.slice(0,8);
+        let base;
+        if(items.some(c=>c.fit&&c.fit.length)) base=items.filter(c=>c.recommended);
+        else{const scored=items.filter(c=>c.recommended||(c.score||0)>0).slice(0,8);base=scored.length>=4?scored:items.slice(0,8);}
         return items.filter(c=>base.includes(c)||st.kit.comps.has(c.library+'/'+c.slug));
       }
       // The larger preview: one shared popover (top layer, light dismiss).
@@ -11509,7 +11529,9 @@ async function _openProjectStarterWizard(profile){
         const paintPick=()=>{const on=st.kit.comps.has(id);pick.classList.toggle('is-on',on);pick.setAttribute('aria-pressed',String(on));pick.innerHTML=on?_psIcon('check',14)+'<span>Chosen</span>':'<span>Choose</span>';};
         pick.onclick=()=>{toggle(card.isConnected?card:holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);paintPick();};
         paintPick();
-        body.append(head,meta,chips,pick);pop.append(media,body);
+        body.append(head,meta,chips);
+        if(c.fit&&c.fit.length) body.append(_psFit(c.fit));
+        body.append(pick);pop.append(media,body);
         // Beside the card when there is room, else centred over the wizard.
         // Kept inside the wizard's content column (or the viewport).
         const r=card.getBoundingClientRect(),area=(holder.closest('.ps-body')||document.documentElement).getBoundingClientRect();
@@ -11567,7 +11589,9 @@ async function _openProjectStarterWizard(profile){
           if(c.recommended) el.append(_psRecStar());
           text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
           const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
-          text.append(chips);el.append(thumb,text);
+          text.append(chips);
+          if(c.recommended&&c.fit&&c.fit.length) text.append(_psFit(c.fit));
+          el.append(thumb,text);
           el.onclick=()=>toggle(el,st.kit.comps,id);
           // A bigger look: the card's preview, larger, with its details and a
           // Choose button, in a light-dismiss popover beside the card.

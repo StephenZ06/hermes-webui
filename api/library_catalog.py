@@ -188,7 +188,107 @@ def _score(comp: dict, style: str, motion: str) -> int:
     return score
 
 
-def match_components(libraries, *, platform, framework, tailwind, style, motion) -> dict:
+# What a brief has to talk about for a component to fit it. Each entry pairs
+# words found in component names (and roles) with the brief words that call for
+# them, so "a booking site with a login" reaches Calendar, Input OTP and
+# Password Input, not only components in the chosen style.
+_FIT = [
+    ("dashboard analytic chart table status shell activity counter number sidebar",
+     "dashboard admin analytic analytics metric metrics kpi kpis report reports reporting stats statistic insight insights monitor monitoring internal backoffice saas crm portal data"),
+    ("input otp password field form",
+     "login log signin sign signup register registration account accounts auth authentication password verification verify 2fa otp onboarding checkout"),
+    ("input field form button error",
+     "form forms contact subscribe newsletter enquiry enquiries inquiry quote survey application apply"),
+    ("checkbox switch toggle select radio slider",
+     "settings setting preference preferences profile filter filters option options configure configuration"),
+    ("ai reasoning thinking stream streaming text-stream generation matrix orb voice search web-search placeholder",
+     "ai assistant agent agents chatbot chat llm gpt copilot generate generative generation prompt prompts model models ml automation voice search"),
+    ("pro get-pro pricing gradient badge",
+     "pricing price prices plan plans subscription subscriptions premium upgrade paid billing tier tiers saas"),
+    ("gallery art image hover-image parallax carousel showcase split marquee tilt halftone sketch",
+     "portfolio gallery photo photos photography art artist artwork showcase product products image images visual creative studio agency design designer fashion brand"),
+    ("faq accordion collapsible",
+     "faq faqs question questions help support docs documentation knowledge guide"),
+    ("code block toc rail breadcrumb command pagination",
+     "docs documentation developer developers api sdk blog article articles tutorial knowledge guide technical"),
+    ("calendar duration picker task list",
+     "booking book appointment appointments schedule scheduling calendar event events reservation reservations task tasks todo planner productivity time timer"),
+    ("toast sonner notification bell alert banner",
+     "notification notifications alert alerts message messages feedback reminder reminders inbox activity"),
+    ("hero showcase footer navigation menu menubar nav header scroll smooth text reveal headline",
+     "landing homepage marketing startup launch campaign agency brand"),
+    ("emoji reaction like avatar session sessions family drawer",
+     "social community profile profiles feed comment comments chat friend friends member members team share sharing"),
+    ("theme selector",
+     "theme themes dark light customise customize customization personalise personalize"),
+    ("confetti success check spark click",
+     "celebrate celebration reward rewards game gamification achievement achievements success onboarding signup"),
+    ("cart card stack tilt hover like",
+     "shop store ecommerce commerce product products catalog catalogue retail marketplace cart checkout"),
+    ("404 golden-gate",
+     "error errors"),
+    ("tabs dropdown context menu sheet drawer dialog modal popover tooltip",
+     "app apps tool tools editor workspace productivity settings"),
+    ("drag drop folder",
+     "upload uploads file files drag kanban board organise organize"),
+    ("loader loaders spinner skeleton progress shimmer",
+     "loading upload uploads progress performance fast async"),
+]
+_FIT_STOP = set("the and for with that this from into your our are was were has have will can a an in of to on at by "
+                "it its be as or is we us they them their want wants need needs well very more most app build make "
+                "user users like also should would just using use new one all some page pages site website read get see "
+                "pick show add let check fill able each every when then there what who how".split())
+
+
+# Phrases a brief writes as two words that mean one thing.
+_PHRASES = [(re.compile(r"\bone[\s-]*time\s+(?:pass)?codes?\b"), "otp"), (re.compile(r"\blog[\s-]*ins?\b"), "login"),
+            (re.compile(r"\bsign[\s-]*ins?\b"), "signin"), (re.compile(r"\bsign[\s-]*ups?\b"), "signup"),
+            (re.compile(r"\bdark\s+mode\b"), "dark")]
+
+
+def word_forms(text: str) -> dict[str, str]:
+    """Each folded word of ``text`` (see ``words``) and the form the text used."""
+    text = str(text or "").lower()
+    for pattern, repl in _PHRASES:
+        text = pattern.sub(repl, text)
+    out: dict[str, str] = {}
+    for word in re.findall(r"[a-z0-9]+", text):
+        if len(word) < 2 or word in _FIT_STOP:
+            continue
+        out.setdefault(word[:-1] if len(word) > 3 and word.endswith("s") else word, word)
+    return out
+
+
+def words(text: str) -> set[str]:
+    """Lower-case words of a brief or description, plural ``s`` folded, filler dropped."""
+    return set(word_forms(text))
+
+
+_FIT_SETS = [(words(c), words(b)) for c, b in _FIT]
+
+
+def brief_fit(comp: dict, brief_words: set[str]) -> list[str]:
+    """The brief's words that call for this component (its own name words count too).
+
+    Only the name counts, not the role: every "forms" component is not a login form."""
+    if not brief_words:
+        return []
+    own = words(" ".join([str(comp.get("name") or ""), str(comp.get("slug") or "").replace("-", " ")]))
+    hits = set(own & brief_words)
+    for comp_words, wanted in _FIT_SETS:
+        if own & comp_words:
+            hits |= wanted & brief_words
+    return sorted(hits)
+
+
+def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "") -> dict:
+    """Catalogued components that fit the stack, ranked by the brief, then style and motion.
+
+    In each role the components the brief calls for are recommended (up to
+    three per library, best style match first); when the brief calls for nothing in the
+    catalogue, the best style match per role is."""
+    forms = word_forms(brief)
+    brief_words = set(forms)
     by_role: dict[str, list[dict]] = {}
     for lib in libraries:
         if framework not in lib.get("frameworks", []):
@@ -198,17 +298,37 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion)
         for comp in lib.get("components", []):
             if comp.get("needs_details") or platform not in comp.get("platform", []):
                 continue
+            fit = brief_fit(comp, brief_words)
+            # The brief naming the component itself ("an FAQ", "OTP") counts most.
+            named = words(" ".join([str(comp.get("name") or ""), str(comp.get("slug") or "").replace("-", " ")])) & brief_words
+            look = _score(comp, style, motion)
             item = dict(comp, library=lib["slug"], library_name=lib.get("name") or lib["slug"],
                         kind=lib.get("kind", ""), install=lib.get("install", ""), source=lib.get("source", ""),
-                        license=lib.get("license", ""),
-                        score=_score(comp, style, motion), recommended=False)
+                        license=lib.get("license", ""), fit=[forms[w] for w in fit[:4]],
+                        score=look + 6 * min(3, len(fit)) + 8 * len(named), recommended=False, pick=False)
+            item["_look"] = look
             by_role.setdefault(comp["role"], []).append(item)
+    any_fit = any(c["fit"] for items in by_role.values() for c in items)
     out = {}
     for role in ROLES:
         items = sorted(by_role.get(role, []), key=lambda c: (-c["score"], c["library"], c["slug"]))
-        if items:
-            items[0]["recommended"] = items[0]["score"] > 0
-            out[role] = items
+        if not items:
+            continue
+        if any_fit:  # the brief decides: up to three per role in each library that it calls for
+            # The best of them is "pick" (ticked for the user); the rest are only starred.
+            best = next((c for c in items if c["fit"]), None)
+            if best:
+                best["pick"] = True
+            per_lib: dict[str, int] = {}
+            for c in items:
+                if c["fit"] and per_lib.get(c["library"], 0) < 3:
+                    per_lib[c["library"]] = per_lib.get(c["library"], 0) + 1
+                    c["recommended"] = True
+        elif items[0]["score"] > 0:  # a brief that names nothing: the best style match
+            items[0]["recommended"] = items[0]["pick"] = True
+        for c in items:
+            c.pop("_look", None)
+        out[role] = items
     return out
 
 
