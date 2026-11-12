@@ -40,15 +40,15 @@ _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)
 _TEMPLATES = {
     "blank": ("Blank Project", "Just the continuity files; shape it later.", ()),
     "web": ("Web App", "Sites, dashboards and SaaS front ends.",
-            ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md")),
+            ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
     "ios": ("iOS App", "iPhone and iPad apps in Swift.",
-            ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md")),
+            ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
     "android": ("Android App", "Phone and tablet apps in Kotlin.",
-                ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md")),
+                ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
     "api": ("API/Backend", "Services, endpoints and data stores.",
             ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
     "website": ("Website", "Marketing sites, portfolios and content pages.",
-                ("PRODUCT.md", "PAGES.md", "UI_UX.md", "SEO.md", "TESTING.md")),
+                ("PRODUCT.md", "PAGES.md", "UI_UX.md", "SEO.md", "TESTING.md", "PERFORMANCE.md")),
     "cli": ("CLI Tool", "Command-line tools and automation scripts.",
             ("PRODUCT.md", "ARCHITECTURE.md", "CLI.md", "TESTING.md")),
     "research": ("Research", "Investigations, reviews and write-ups.",
@@ -257,7 +257,15 @@ def _brief_block(brief: str) -> str:
     return brief or "_No brief yet. Ask the owner what this project is for before making product decisions._"
 
 
+# The owner's performance checklist, given to every web, website and app
+# project as docs/PERFORMANCE.md (between hermes:performance markers, which
+# the setup agent keeps word for word).
+_PERFORMANCE_DOC = Path(__file__).with_name("starter_performance.md")
+
+
 def _doc(name: str, brief: str) -> str:
+    if name == "PERFORMANCE.md":
+        return _PERFORMANCE_DOC.read_text(encoding="utf-8")
     title, sections = _DOC_SECTIONS.get(name, (name.removesuffix(".md").replace("_", " ").title(), []))
     body = [f"# {title}", "", "## Project brief", "", _brief_block(brief), ""]
     for heading, prompt in sections:
@@ -290,6 +298,10 @@ _Started from the Hermes **{label}** template._
 
 def _agents(name: str, docs: tuple[str, ...] = ()) -> str:
     doc_list = "\n".join(f"- `docs/{d}`" for d in docs) or "- (add docs/ files as the project grows)"
+    perf = ("- <!-- hermes:performance:begin -->Before calling any work done, run `docs/PERFORMANCE.md`: do every\n"
+            "  item that applies, skip the rest with a reason, and end your summary with a short\n"
+            "  \"Performance checklist\" note (applied, already in place, skipped and why).<!-- hermes:performance:end -->\n"
+            if "PERFORMANCE.md" in docs else "")
     return f"""# {name}: agent instructions
 
 These rules apply to every AI agent working in this repository.
@@ -308,7 +320,7 @@ These rules apply to every AI agent working in this repository.
 
 - Keep the change to the requested scope; note adjacent problems instead of fixing them silently.
 - Follow the commands and checks in `docs/TESTING.md` (or the README) before calling work done.
-- Install dependencies inside the project only: a virtual environment in `.venv`
+{perf}- Install dependencies inside the project only: a virtual environment in `.venv`
   for Python (`python -m venv .venv`, then its own `pip`), `node_modules` from the
   project's `package.json` (or `npx`) for JavaScript, and the platform's own
   project-local tooling elsewhere. Never install globally: no `pip install`

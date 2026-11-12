@@ -227,7 +227,11 @@ element's colours. Typography offers eight typefaces in two rows of four. Typogr
 button and surface choices default from the style until the user touches them,
 apply to the palette preview and the samples, and reach `docs/UI_UX.md` with CSS
 tokens (`api/project_look.py`). Every template then gets a Toolkit step and a
-Review step whose primary action is Create & start building. Between 721px and
+Review step whose primary action is Create & start building. Web app, website, iOS and
+Android projects also get `docs/PERFORMANCE.md` (the owner's performance
+checklist, `api/starter_performance.md`) and an AGENTS.md rule to run it before
+calling work done; both sit between `hermes:performance` markers that the setup
+agent keeps word for word. Between 721px and
 1023px the stepper shows only the current label.
 
 Toolkit picks come from what the app needs, said or not: the planner's review

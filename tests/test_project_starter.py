@@ -295,7 +295,7 @@ def test_website_template_takes_the_cli_slot_and_writes_website_documents(tmp_pa
     assert keys[4:] == ["api", "website", "cli", "research"]
     project_starter.create_starter_pack(tmp_path, "site", "website", "A portfolio site.")
     docs = sorted(p.name for p in (tmp_path / "site" / "docs").iterdir())
-    assert docs == ["PAGES.md", "PRODUCT.md", "SEO.md", "TESTING.md", "UI_UX.md"]
+    assert docs == ["PAGES.md", "PERFORMANCE.md", "PRODUCT.md", "SEO.md", "TESTING.md", "UI_UX.md"]
     assert "## Sitemap" in (tmp_path / "site" / "docs" / "PAGES.md").read_text(encoding="utf-8")
     assert "## Hosting and domain" in (tmp_path / "site" / "docs" / "SEO.md").read_text(encoding="utf-8")
 
@@ -338,3 +338,22 @@ def test_rollback_keeps_edits_the_user_made_around_the_section(tmp_path: Path):
     path.write_text(path.read_text(encoding="utf-8") + "\nAdded later.\n", encoding="utf-8")
     project_starter.rollback_adopted(project, result)
     assert path.read_text(encoding="utf-8") == "# Rules\n\nAdded later.\n"
+
+
+def test_web_and_app_projects_get_the_performance_checklist_and_the_rule_to_run_it():
+    from api import project_starter as ps
+    for key in ("web", "website", "ios", "android"):
+        files = ps._pack_files("demo", key, "A clinic site.")
+        perf = files["docs/PERFORMANCE.md"]
+        assert "Debounce search and autocomplete inputs" in perf and "Self-host fonts" in perf
+        # The setup agent is told to keep the marked text word for word.
+        assert perf.count("<!-- hermes:performance:begin -->") == 1 and "<!-- hermes:performance:end -->" in perf
+        assert "run `docs/PERFORMANCE.md`" in files["AGENTS.md"] and '"Performance checklist" note' in files["AGENTS.md"]
+    for key in ("cli", "api", "research", "blank"):
+        files = ps._pack_files("demo", key, "")
+        assert "docs/PERFORMANCE.md" not in files and "PERFORMANCE.md" not in files["AGENTS.md"]
+
+
+def test_the_setup_agent_keeps_the_performance_block():
+    from api import project_starter_agent as agent
+    assert "hermes:performance:begin" in agent._new_project_prompt("demo", "Web App", ["docs/PERFORMANCE.md"])
