@@ -91,10 +91,11 @@ def test_a_preset_and_your_own_colours_reach_create(page):
     _to_look(page)
     page.click(".ps-pal-card[data-pal=forest]")
     assert _mock_bg(page, "light") == _rgb("#f4f7f2")
-    # Picking a palette ticks Colours and opens the next section; come back.
-    page.wait_for_selector(".ps-cz-sec[data-sec=type].is-open")
-    assert page.locator(".ps-cz-sec[data-sec=colours].is-done").count() == 1
-    wiz.open_section(page, "colours")
+    # Picking a palette only previews it: Colours stays open until "Next: Typography".
+    page.wait_for_timeout(400)
+    assert page.locator(".ps-cz-sec[data-sec=colours].is-open").count() == 1
+    assert page.locator(".ps-cz-sec[data-sec=colours].is-done").count() == 0
+    assert page.inner_text(".ps-cz-sec[data-sec=colours] .ps-cz-next") == "Next: Typography"
     page.click(".ps-pal-card[data-pal=custom]")
     assert page.locator(".ps-pal-editor").is_visible()
     # The editor opens like an accordion; type once it has.
@@ -164,8 +165,13 @@ def test_narrow_screens_switch_between_light_and_dark(page):
 def test_toolkit_components_are_grouped_by_library_with_their_licence(page):
     _to_look(page)
     page.click(".ps-next")
-    page.wait_for_selector(".ps-kit-lib", state="attached")
-    wiz.open_section(page, "comps")
-    heads = page.eval_on_selector_all(".ps-kit-lib", "els => els.map(e => e.innerText.replace(/\\s+/g, ' ').trim())")
-    assert heads == ["Calm UI 1 component MIT", "Glow 2 components Glow licence (personal use)"]
+    page.wait_for_selector(".ps-kit-libarea", state="attached")
+    # One section per library: "Components n/N · name", its count, and its licence.
+    titles = page.eval_on_selector_all(".ps-cz-sec[data-sec^='lib:'] .ps-cz-title", "els => els.map(e => e.textContent)")
+    assert titles == ["Components 1/2 · Calm UI", "Components 2/2 · Glow"], titles
+    sums = page.eval_on_selector_all(".ps-cz-sec[data-sec^='lib:'] .ps-cz-summary", "els => els.map(e => e.textContent)")
+    assert sums == ["1 chosen · 1 component", "0 chosen · 2 components"], sums
+    wiz.open_lib(page, "glow")
+    assert page.inner_text(".ps-cz-sec[data-sec='lib:glow'] .ps-kit-lib-license") == "Glow licence (personal use)"
+    wiz.open_lib(page, "calm")
     assert page.inner_text(".ps-kit-comp[data-comp='calm/split'] .ps-kit-meta") == "Hero · npm"

@@ -92,8 +92,11 @@ def test_options_with_long_details_are_centred_like_short_ones(page):
         rows = _card_rows(page, ".ps-option:not(.ps-option-typed)")
         lines = page.eval_on_selector_all(".ps-option-detail", "els => els.map(e => Math.round(e.getBoundingClientRect().height / 16))")
         assert max(lines) >= 3, lines  # the long ones really wrap
-        for row in rows:
-            assert abs(row["above"] - row["below"]) <= 1.5, (width, rows)
+        tall = page.eval_on_selector_all(".ps-option:not(.ps-option-typed)", "els => els.map(e => e.classList.contains('is-tall'))")
+        assert tall == [n >= 3 for n in lines], (tall, lines)
+        for row, lifted in zip(rows, tall):
+            # Past two lines, the text sits 1px higher (the user's call on Windows).
+            assert abs(row["below"] - row["above"] - (1 if lifted else 0)) <= 1.5, (width, rows)
 
 
 def _to_colours(page):
@@ -190,17 +193,25 @@ def test_button_and_type_choices_reach_the_preview_and_create(wpage):
 
 def test_the_toolkit_lists_the_chosen_components_and_a_chip_removes_one(page):
     t._to_kit(page)
-    wiz.open_section(page, "comps")
+    wiz.open_lib(page, "calm")
     chips = lambda: page.eval_on_selector_all(".ps-kit-tray-chip:not(.is-leaving)", "els => els.map(e => e.dataset.comp)")  # noqa: E731
     chosen = page.eval_on_selector_all(".ps-kit-comp.is-selected", "els => els.map(e => e.dataset.comp)")
     assert chosen and chips() == chosen
-    other = page.eval_on_selector_all(".ps-kit-comp:not(.is-selected)", "els => els.map(e => e.dataset.comp)")[0]
+    wiz.open_lib(page, "glow")
+    other = page.eval_on_selector_all(".ps-cz-sec[data-sec='lib:glow'] .ps-kit-comp:not(.is-selected)", "els => els.map(e => e.dataset.comp)")[0]
     page.click(f".ps-kit-comp[data-comp='{other}']")
     assert chips() == chosen + [other]
-    assert page.inner_text(".ps-cz-sec[data-sec=comps] .ps-cz-summary") == f"{len(chosen) + 1} chosen"
+    sums = page.eval_on_selector_all(".ps-cz-sec[data-sec^='lib:'] .ps-cz-summary", "els => els.map(e => parseInt(e.textContent))")
+    assert sum(sums) == len(chosen) + 1, sums
     page.click(f".ps-kit-tray-chip[data-comp='{chosen[0]}'] .ps-kit-tray-x")
     page.wait_for_function("id => !document.querySelector(`.ps-kit-tray-chip[data-comp='${id}']`)", arg=chosen[0])
     assert page.get_attribute(f".ps-kit-comp[data-comp='{chosen[0]}']", "aria-pressed") == "false"
     # A chip scrolls to and flashes its card.
     page.click(f".ps-kit-tray-chip[data-comp='{other}'] .ps-kit-tray-go")
     assert "is-flash" in page.get_attribute(f".ps-kit-comp[data-comp='{other}']", "class")
+    # A chip whose library is folded opens that section first.
+    page.click(".ps-cz-sec[data-sec='lib:glow'] > .ps-cz-head")
+    page.wait_for_function("() => !document.querySelector(\".ps-cz-sec[data-sec='lib:glow']\").classList.contains('is-open')")
+    page.click(f".ps-kit-tray-chip[data-comp='{other}'] .ps-kit-tray-go")
+    page.wait_for_selector(".ps-cz-sec[data-sec='lib:glow'].is-open")
+    page.wait_for_function("id => document.querySelector(`.ps-kit-comp[data-comp='${id}']`).classList.contains('is-flash')", arg=other)

@@ -18125,7 +18125,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-pal-preview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 .ps-pal-pane{display:flex;flex-direction:column;gap:6px;}
 .ps-pal-pane-label{font-size:11px;font-weight:600;color:var(--muted);}
-.ps-pal-mock{display:flex;flex-direction:column;gap:12px;padding:12px;border-radius:10px;background:var(--pal-bg);color:var(--pal-text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pal-text) 12%,transparent);transition:background .24s ease,color .24s ease;font-family:var(--font-ui,system-ui),sans-serif;}
+.ps-pal-mock{display:flex;flex-direction:column;gap:12px;padding:12px;border-radius:10px;background:var(--pal-bg);color:var(--pal-text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pal-text) 12%,transparent);font-family:var(--font-ui,system-ui),sans-serif;}
 .ps-pal-nav{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;}
 .ps-pal-dot{width:10px;height:10px;border-radius:3px;background:var(--pal-primary);}
 .ps-pal-brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;}
@@ -18514,7 +18514,9 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-pal-card .ps-option-star,.ps-look-card .ps-option-star,.ps-kit-comp .ps-option-star{position:absolute;top:13px;right:13px;z-index:2;}
 .ps-pal-logo{top:auto;bottom:10px;right:10px;width:22px;height:22px;}
 /* Palette changes fade instead of snapping. */
-:is(.ps-pal-mock,.ps-pal-mock *,.ps-look-sample,.ps-look-sample *,.ps-motion-demo span){transition:background-color .32s cubic-bezier(.22,1,.36,1),color .32s cubic-bezier(.22,1,.36,1),box-shadow .32s cubic-bezier(.22,1,.36,1),border-color .32s cubic-bezier(.22,1,.36,1);}
+/* The colour preview mocks fade as whole panes (see _psColours) instead of
+   transitioning each element's colours, which cost a style pass per frame. */
+:is(.ps-look-sample,.ps-look-sample *,.ps-motion-demo span){transition:background-color .32s cubic-bezier(.22,1,.36,1),color .32s cubic-bezier(.22,1,.36,1),box-shadow .32s cubic-bezier(.22,1,.36,1),border-color .32s cubic-bezier(.22,1,.36,1);}
 .ps-pal-btn{padding:7px 10px;text-box:trim-both cap alphabetic;}
 .ps-pal-tag{padding:4px 6px;text-box:trim-both cap alphabetic;}
 .ps-pal-field{padding:8px;text-box:trim-both cap alphabetic;}
@@ -18568,7 +18570,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 @keyframes ps-kit-row-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 .ps-kit-lists.is-quiet .ps-kit-skill{animation:none;}
 .ps-kit-skill:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
-.ps-kit-skill.is-selected{background:var(--accent-bg);}
+/* A chosen skill shows by its tick alone (no row fill). */
 .ps-kit-tick{display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer;border-radius:6px;}
 .ps-kit-tick:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 .ps-kit-table .ps-kit-name{display:block;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:18px;}
@@ -18632,9 +18634,14 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-cz-sec.is-open .ps-cz-chev{transform:rotate(90deg);color:var(--text);}
 .ps-cz-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .42s cubic-bezier(.22,1,.36,1);}
 .ps-cz-sec.is-open .ps-cz-body{grid-template-rows:1fr;}
-.ps-cz-inner{min-height:0;overflow:hidden;}
-.ps-cz-content,.ps-cz-foot{opacity:0;transform:translateY(-6px);filter:blur(2px);visibility:hidden;transition:opacity .2s ease,transform .42s cubic-bezier(.22,1,.36,1),filter .3s ease,visibility 0s linear .42s;}
-.ps-cz-sec.is-open :is(.ps-cz-content,.ps-cz-foot){opacity:1;transform:none;filter:none;visibility:visible;transition:opacity .3s ease .08s,transform .42s cubic-bezier(.22,1,.36,1) .04s,filter .3s ease .04s,visibility 0s;}
+/* Once folded, a section skips style, layout and paint entirely
+   (content-visibility), so its looping samples and colour crossfades cost
+   nothing; it switches back on the moment the section opens. Opacity and
+   transform only (no blur filter) keep the fold on the compositor. */
+.ps-cz-inner{min-height:0;overflow:hidden;content-visibility:hidden;transition:content-visibility 0s linear .42s;transition-behavior:allow-discrete;}
+.ps-cz-sec.is-open .ps-cz-inner{content-visibility:visible;transition-delay:0s;}
+.ps-cz-content,.ps-cz-foot{opacity:0;transform:translateY(-6px);visibility:hidden;transition:opacity .2s ease,transform .42s cubic-bezier(.22,1,.36,1),visibility 0s linear .42s;}
+.ps-cz-sec.is-open :is(.ps-cz-content,.ps-cz-foot){opacity:1;transform:none;visibility:visible;transition:opacity .3s ease .08s,transform .42s cubic-bezier(.22,1,.36,1) .04s,visibility 0s;}
 .ps-cz-content{display:flex;flex-direction:column;gap:18px;padding:6px 14px 4px;}
 .ps-cz-foot{display:flex;justify-content:flex-end;padding:14px;}
 .ps-cz-next{display:inline-flex;align-items:center;height:30px;padding:0 12px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:border-color .2s,background-color .2s,transform .2s cubic-bezier(.22,1,.36,1);}
@@ -18657,6 +18664,10 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 [data-font=serif] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=serif] .ps-pal-hero strong{font-family:Georgia,"Times New Roman",serif;}
 [data-font=geometric] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=geometric] .ps-pal-hero strong{font-family:"Avenir Next","Century Gothic",Futura,"Trebuchet MS",sans-serif;}
 [data-font=mono] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=mono] .ps-pal-hero strong{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;}
+[data-font=humanist] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=humanist] .ps-pal-hero strong{font-family:"Gill Sans","Gill Sans MT",Optima,Candara,"Segoe UI",sans-serif;}
+[data-font=slab] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=slab] .ps-pal-hero strong{font-family:Rockwell,"Roboto Slab","Courier New",serif;font-weight:700;}
+[data-font=rounded] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=rounded] .ps-pal-hero strong{font-family:ui-rounded,"SF Pro Rounded","Arial Rounded MT Bold",Nunito,sans-serif;}
+[data-font=condensed] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=condensed] .ps-pal-hero strong{font-family:"Avenir Next Condensed","Roboto Condensed",Bahnschrift,"Arial Narrow",sans-serif;font-stretch:condensed;}
 .ps-cz-head-line{font-weight:700;line-height:1.1;transition:font-size .3s cubic-bezier(.22,1,.36,1);}
 .ps-cz-body-line{line-height:1.2;opacity:.75;}
 [data-scale=compact] .ps-cz-head-line{font-size:13px;}[data-scale=compact] .ps-cz-body-line{font-size:9.5px;}
@@ -18708,7 +18719,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-cz-bar{display:block;height:6px;border-radius:3px;background:color-mix(in srgb,var(--pal-primary,var(--accent)) 55%,transparent);transition:margin .3s cubic-bezier(.22,1,.36,1);}
 .ps-cz-bar:nth-child(2){width:78%;opacity:.7;}.ps-cz-bar:nth-child(3){width:56%;opacity:.5;}
 .ps-cz-sample[data-density=compact]{gap:3px;}.ps-cz-sample[data-density=comfortable]{gap:6px;}.ps-cz-sample[data-density=airy]{gap:10px;}
-.ps-customize .ps-pal-btn{transition:border-radius .3s cubic-bezier(.22,1,.36,1),background-color .32s,color .32s,box-shadow .32s;}
+.ps-customize .ps-pal-btn{transition:border-radius .3s cubic-bezier(.22,1,.36,1);}
 .ps-customize .ps-look-label{display:none;}
 
 /* Colours: "Use logo colours" and "Your own" end the last row. */
@@ -18778,3 +18789,27 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
   .ps-cz-sec,.ps-cz-ring,.ps-cz-tick,.ps-cz-summary,.ps-cz-chev,.ps-cz-body,.ps-cz-content,.ps-cz-foot,.ps-cz-opt,.ps-cz-btn,.ps-cz-card,.ps-cz-field,.ps-cz-bar,.ps-hex-chip,.ps-kit-tray-chip,.ps-kit-comp.is-flash,:is(.ps-hex-comb,.ps-hex-greys) polygon{transition:none!important;animation:none!important;}
   .ps-cz-content,.ps-cz-foot{filter:none;transform:none;}
 }
+
+/* ── Builder round 4: colour star, per-library component sections ── */
+/* Colour cards: the recommended star sits bottom right, beside the name. */
+.ps-pal-card .ps-option-star,.ps-pal-card:has(.ps-pal-logo) .ps-option-star{top:auto;left:auto;right:10px;bottom:10px;}
+.ps-pal-card:has(>.ps-option-star) .ps-look-text{padding-right:24px;}
+/* Step 5: a description past two lines lifts with its title by 1px. */
+.ps-option.is-tall .ps-option-text{position:relative;top:-1px;}
+/* Component libraries: search + category select, then the cards. */
+.ps-kit-libbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;}
+.ps-kit-libbar .ps-kit-lib-license{order:3;}
+.ps-kit-libsearch.sidebar-search{flex:1 1 220px;}
+.ps-kit-libselect{position:relative;flex:0 0 auto;display:inline-flex;align-items:center;}
+.ps-kit-libselect select{appearance:none;-webkit-appearance:none;height:32px;box-sizing:border-box;padding:0 30px 0 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:12.5px;cursor:pointer;transition:border-color .16s,box-shadow .16s;}
+.ps-kit-libselect select:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));}
+.ps-kit-libselect select:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);}
+.ps-kit-libselect .ps-icon{position:absolute;right:10px;pointer-events:none;color:var(--muted);transform:rotate(90deg);}
+.ps-kit-libarea{display:flex;flex-direction:column;gap:10px;overflow:hidden;}
+.ps-kit-libarea .ps-kit-grid{margin:0;}
+.ps-kit-libarea.is-quiet .ps-kit-comp{animation:none;}
+.ps-kit-cat-head{display:flex;align-items:baseline;gap:8px;margin:6px 0 0;font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--muted);text-transform:uppercase;}
+.ps-kit-cat-head:first-child{margin-top:0;}
+.ps-kit-cat-head-n{font-weight:500;opacity:.8;}
+.ps-cz>.ps-kit-tray{margin:6px 0;}
+@media (prefers-reduced-motion:reduce){.ps-kit-libselect select{transition:none;}}

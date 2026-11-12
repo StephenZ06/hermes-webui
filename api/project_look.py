@@ -15,6 +15,10 @@ CHOICES: dict[str, tuple[str, dict[str, tuple[str, str]]]] = {
         "serif": ("Classic serif", "serif headings with a sans-serif body"),
         "geometric": ("Geometric", "a geometric sans with round letterforms"),
         "mono": ("Mono accents", "monospace headings and labels with a sans-serif body"),
+        "humanist": ("Humanist", "a humanist sans with calligraphic, open letterforms"),
+        "slab": ("Slab serif", "slab-serif headings with a sans-serif body"),
+        "rounded": ("Rounded", "a rounded sans with soft stroke ends"),
+        "condensed": ("Condensed", "condensed headings with a regular sans-serif body"),
     }),
     "scale": ("Text size", {
         "compact": ("Compact", "15px body text, a tight type scale"),
@@ -66,6 +70,10 @@ _FONTS = {
     "serif": ('Georgia, "Times New Roman", serif', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'),
     "geometric": ('"Avenir Next", "Century Gothic", Futura, sans-serif', '"Avenir Next", "Century Gothic", Futura, sans-serif'),
     "mono": ('ui-monospace, "SF Mono", Menlo, Consolas, monospace', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'),
+    "humanist": ('"Gill Sans", "Gill Sans MT", Optima, Candara, "Segoe UI", sans-serif', '"Gill Sans", "Gill Sans MT", Optima, Candara, "Segoe UI", sans-serif'),
+    "slab": ('Rockwell, "Roboto Slab", "Courier New", serif', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'),
+    "rounded": ('ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", Nunito, sans-serif', 'ui-rounded, "SF Pro Rounded", Nunito, system-ui, sans-serif'),
+    "condensed": ('"Avenir Next Condensed", "Roboto Condensed", Bahnschrift, "Arial Narrow", sans-serif', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'),
 }
 
 

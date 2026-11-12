@@ -31,3 +31,11 @@ def test_the_look_carries_custom_choices_into_the_ui_doc(tmp_path):
     assert "--radius-button: 999px;" in ui and "--radius-surface: 16px;" in ui and "--space-unit: 4px;" in ui
     # Nothing chosen, nothing written.
     assert "custom" not in agent.parse_look({"style": "bold", "motion": "none"})
+
+
+def test_the_four_newer_typefaces_are_kept_and_get_font_tokens():
+    from api import project_look as pl
+    for font in ("humanist", "slab", "rounded", "condensed"):
+        assert pl.normalize_custom({"font": font}) == {"font": font}
+        text = "\n".join(pl.custom_lines({"font": font}))
+        assert "--font-heading:" in text and "--font-body:" in text, text

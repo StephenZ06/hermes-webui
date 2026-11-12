@@ -212,7 +212,12 @@ the brief (stars mark the planner's picks; there is no separate banner). Its
 sections (Style, Colours, Typography, Buttons, Cards & spacing, Motion, Built
 with) open one at a time: picking in a section ticks it and opens the next
 (sections with several parts move on when their last part is picked, or with
-their "Next" button), and a folded section's header shows its choice. Typography,
+their "Next" button; Colours never moves on by itself, so palettes can be
+previewed until "Next: Typography"), and a folded section's header shows its
+choice. A folded section uses `content-visibility: hidden` once its fold ends,
+so its looping samples and colour changes cost no style or paint work, and a new
+palette fades each preview mock as a whole instead of transitioning every
+element's colours. Typography offers eight typefaces in two rows of four. Typography,
 button and surface choices default from the style until the user touches them,
 apply to the palette preview and the samples, and reach `docs/UI_UX.md` with CSS
 tokens (`api/project_look.py`). Every template then gets a Toolkit step and a
@@ -227,16 +232,24 @@ and below the category and description columns fold into the skill cell. Visual
 templates also get catalog components, grouped by library with its licence, best
 fits for the style first; a component with a captured loop plays it while it is
 on screen (a "Live" badge marks it; the still stays under reduced motion). For
-visual templates Skills and Components are folding sections like Customize's (all
-open while searching or filtering), and a "Chosen" tray above the components
-lists each picked one as a chip that scrolls to its card or removes it.
+visual templates Skills and each component library are folding sections like
+Customize's ("Components 1/3 · ObsidianUI" and so on; all open while searching or
+filtering). Each library section has its own search box and a category select:
+Recommended (the starred and best-scoring picks, at most eight, plus anything
+chosen), All (grouped under category headings), then one entry per role
+(Navigation, Loading, Forms & buttons, …). A "Chosen" tray above the library
+sections lists each picked component as a chip that opens its section, widens
+the view if needed, scrolls to the card or removes it. A chosen skill row shows
+its tick only (no row fill).
 
 Text in option cards, palette preview buttons and contrast checks is trimmed to
 its capitals and baseline (`text-box: trim-both cap alphabetic`) so padding
 centres it; Zeus 2.0 adds 1px to option text because Courier New draws its
-capitals taller than it declares.
+capitals taller than it declares. In the brief questions, an option whose
+description wraps past two lines lifts its title and description 1px (`is-tall`).
 
-Colours fill three rows of four: the planner's palette for the brief (starred),
+Colours fill three rows of four (the recommended star sits bottom right on these
+cards): the planner's palette for the brief (starred),
 presets ordered by the chosen style, then "Use logo colours" and "Your own" at
 the end of the last row. The logo card imports a logo (click or drop; read in the
 browser with a canvas and never uploaded) and then shows that palette, which

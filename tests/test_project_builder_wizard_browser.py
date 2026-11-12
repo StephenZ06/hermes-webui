@@ -106,6 +106,11 @@ def open_section(page, key):
       && !e.getAnimations({subtree: true}).some(a => a instanceof CSSTransition); }""", arg=sec)
 
 
+def open_lib(page, slug):
+    """The Toolkit has one Components section per library (``lib:<slug>``)."""
+    open_section(page, f"lib:{slug}")
+
+
 def test_look_is_preselected_from_the_brief_with_its_reason(page):
     _to_template(page, "Website")
     assert "Customize" in page.locator(".ps-step-label").all_inner_texts()
@@ -145,7 +150,7 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     assert sorted(page.eval_on_selector_all(".ps-kit-skill.is-selected", "els => els.map(e => e.dataset.skill)")) == ["seo-audit", "ui-polish"]
     assert page.eval_on_selector_all(".ps-kit-comp.is-selected", "els => els.map(e => e.dataset.comp)") == ["calm/split"]
     page.click(".ps-kit-skill[data-skill=ui-polish]")
-    open_section(page, "comps")
+    open_lib(page, "glow")
     page.click(".ps-kit-comp[data-comp='glow/aurora']")
     assert "1" in page.inner_text(".ps-build-row:has(dt:text('Skills')) dd")
     page.click(".ps-next")
@@ -183,6 +188,8 @@ def test_builder_cards_share_sizes_on_the_8px_grid_without_overflow(page, width)
     page.wait_for_selector(".ps-look-card")
     page.wait_for_function("() => document.querySelector('.ps-body').getAnimations({subtree: true}).every(a => a.playState === 'finished' || a.effect.getTiming().iterations === Infinity)")
     for sel in (".ps-look-grid", ".ps-motion-grid"):
+        # A folded section does no layout, so open the one being measured.
+        open_section(page, "style" if sel == ".ps-look-grid" else "motion")
         geo = page.evaluate("""(sel) => { const cards = [...document.querySelector(sel).children];
           return cards.map(c => { const r = c.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }); }""", sel)
         rows = {}

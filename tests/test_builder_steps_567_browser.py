@@ -144,16 +144,18 @@ def test_customize_opens_one_section_at_a_time_and_a_pick_ticks_it_and_opens_the
     assert page.get_attribute(".ps-cz-sec[data-sec=motion] > .ps-cz-head", "aria-expanded") == "false"
 
 
-def test_stars_sit_in_the_top_right_corner_of_their_cards(page):
+def test_stars_sit_in_the_top_right_corner_of_their_cards_and_bottom_right_on_colours(page):
     _to_look(page)
     _quiet(page)
     spots = page.evaluate("""() => [...document.querySelectorAll(':is(.ps-look-card,.ps-pal-card,.ps-motion-card,.ps-cz-opt) .ps-option-star')].map(s => {
       const c = s.parentElement.getBoundingClientRect(), r = s.getBoundingClientRect();
-      return {card: s.parentElement.className, top: r.top - c.top, right: c.right - r.right, inside: r.left >= c.left && r.top >= c.top && r.right <= c.right}; })""")
+      return {card: s.parentElement.className, top: r.top - c.top, bottom: c.bottom - r.bottom, right: c.right - r.right, inside: r.left >= c.left && r.top >= c.top && r.right <= c.right && r.bottom <= c.bottom}; })""")
     # Style, colours, motion, and one per typography, button and surface choice.
     assert len(spots) == 3 + 8, spots
     for spot in spots:
-        assert spot["inside"] and 4 <= spot["top"] <= 16 and 4 <= spot["right"] <= 16, spots
+        # Colour cards carry theirs bottom right, where it is noticed.
+        edge = spot["bottom"] if "ps-pal-card" in spot["card"] else spot["top"]
+        assert spot["inside"] and 4 <= edge <= 16 and 4 <= spot["right"] <= 16, spots
 
 
 def test_palette_preview_labels_are_centred_in_their_buttons(page):
@@ -197,8 +199,8 @@ def test_skills_are_a_table_and_show_all_opens_category_tabs_that_slide_the_rows
 
 def test_component_loops_play_while_on_screen_and_stars_replace_the_pill(page):
     _to_kit(page)
-    wiz.open_section(page, "comps")
-    page.evaluate("() => document.querySelector('.ps-kit-comp').scrollIntoView({block: 'center'})")
+    wiz.open_lib(page, "calm")
+    page.evaluate("() => document.querySelector('.ps-cz-sec[data-sec=\\'lib:calm\\'] .ps-kit-comp').scrollIntoView({block: 'center'})")
     page.wait_for_function("() => [...document.querySelectorAll('.ps-kit-comp .ps-kit-thumb img')].some(i => i.getAttribute('src').includes('.loop.webp'))")
     assert page.locator(".ps-kit-comp .ps-kit-live").count() == 3
     assert page.locator(".ps-kit-comp[data-comp='calm/split'] .ps-option-star").count() == 1
@@ -206,5 +208,5 @@ def test_component_loops_play_while_on_screen_and_stars_replace_the_pill(page):
       const c = s.parentElement.getBoundingClientRect(), r = s.getBoundingClientRect(); return [r.top - c.top, c.right - r.right]; }""")
     assert all(4 <= v <= 16 for v in spot), spot
     # Folded away (or scrolled off), they go back to the still.
-    page.click(".ps-cz-sec[data-sec=comps] > .ps-cz-head")
+    page.click(".ps-cz-sec[data-sec='lib:calm'] > .ps-cz-head")
     page.wait_for_function("() => [...document.querySelectorAll('.ps-kit-comp .ps-kit-thumb img')].every(i => !i.getAttribute('src').includes('.loop.webp'))")

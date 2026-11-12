@@ -10737,6 +10737,12 @@ async function _openProjectStarterWizard(profile){
         opts.querySelectorAll('.ps-option').forEach(n=>mark(n,n===typed&&!!v));showWhy(v);updateNav();};
       other.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
       wrap.append(opts,why);
+      // A description that wraps past two lines sits 1px high in its card, so
+      // lift the title and description together; re-check when the cards resize.
+      const markTall=()=>opts.querySelectorAll('.ps-option').forEach(o=>{const d=o.querySelector('.ps-option-detail');
+        const lh=d&&parseFloat(getComputedStyle(d).lineHeight);o.classList.toggle('is-tall',!!(d&&lh&&d.offsetHeight>lh*2+1));});
+      requestAnimationFrame(markTall);
+      if(window.ResizeObserver) new ResizeObserver(()=>{if(opts.isConnected)markTall();}).observe(opts);
       function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
       updateNav();
       opts.onkeydown=(event)=>{if(event.target===other)return;const n=Number(event.key);
@@ -11003,9 +11009,14 @@ async function _openProjectStarterWizard(profile){
       const check=(label,a,b,need)=>{const r=_psContrast(a,b);const ok=r>=need;
         const el=_psEl('span','ps-pal-check'+(ok?' is-ok':' is-low'));el.innerHTML=_psIcon(ok?'check':'alert',12);
         el.append(_psEl('span','ps-pal-check-text',label+' '+r.toFixed(1)+':1'+(ok?'':' · low')));return el;};
+      let paintedKey=null;
       function paint(){
         const pal=look.palette;if(!pal) return;
         const key=pal.key||pal.source;
+        // A new palette fades each preview pane in as a whole (compositor only).
+        if(paintedKey!==null&&paintedKey!==key&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches))
+          Object.values(panes).forEach(({pane})=>{const mock=pane.querySelector('.ps-pal-mock');if(mock&&mock.offsetWidth)mock.animate([{opacity:.4,transform:'scale(.985)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});});
+        paintedKey=key;
         options.querySelectorAll('.ps-pal-card').forEach(c=>{const on=c.dataset.pal===key;c.classList.toggle('is-selected',on);c.setAttribute('aria-checked',String(on));});
         ['light','dark'].forEach(theme=>{const {pane,checks}=panes[theme];_psPaletteVars(pane,pal[theme]);
           pane.classList.toggle('is-shown',shown===theme);checks.innerHTML='';
@@ -11087,7 +11098,7 @@ async function _openProjectStarterWizard(profile){
     // Customize: the parts of the look beyond style and colour. Each choice has a
     // default per style; picks the user has not touched follow the style.
     const _PS_CUSTOM=[
-      ['font','Typeface',[['sans','Modern sans','Clean and neutral.'],['serif','Classic serif','Bookish headings, warm.'],['geometric','Geometric','Round letters, friendly.'],['mono','Mono accents','Monospace headings, data feel.']]],
+      ['font','Typeface',[['sans','Modern sans','Clean and neutral.'],['serif','Classic serif','Bookish headings, warm.'],['geometric','Geometric','Round letters, friendly.'],['mono','Mono accents','Monospace headings, data feel.'],['humanist','Humanist','Warm, hand-drawn strokes.'],['slab','Slab serif','Sturdy blocks, confident.'],['rounded','Rounded','Soft ends, approachable.'],['condensed','Condensed','Narrow and tall, punchy.']]],
       ['scale','Text size',[['compact','Compact','More on screen.'],['comfortable','Comfortable','The balanced default.'],['large','Large','Big and easy to read.']]],
       ['btnShape','Shape',[['square','Square','Straight corners.'],['soft','Soft','Slightly rounded.'],['rounded','Rounded','Clearly rounded.'],['pill','Pill','Fully round ends.']]],
       ['btnFill','Fill',[['solid','Solid','Full colour.'],['tint','Soft tint','See-through colour.'],['outline','Outline','Border only.'],['ghost','Ghost','Text, fills on hover.']]],
@@ -11157,7 +11168,8 @@ async function _openProjectStarterWizard(profile){
       });
       steps.add('Style'.toLowerCase(),'Style',{summary:()=>_psLabel(look.style)}).append(grid);
       // Colours
-      const colours=_psColours(look,(why)=>{renderLook.paint();if(why==='pick')later(()=>steps.finish('colours'));});
+      // Picking a colour only previews it; "Next: Typography" moves on.
+      const colours=_psColours(look,()=>renderLook.paint());
       steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
       // Typography, Buttons, Cards & spacing: groups of custom options.
       const groupGrids=[];
@@ -11165,7 +11177,7 @@ async function _openProjectStarterWizard(profile){
         const box=steps.add(key,title,{summary:()=>keys.map(k=>_psCustomLabel(k,look.custom[k])).join(' · ')});
         keys.forEach(k=>{const [,label,opts]=_PS_CUSTOM.find(g=>g[0]===k);
           const g=_psEl('div','ps-cz-group');g.append(_psEl('p','ps-cz-label',label));
-          const row=_psEl('div','ps-cz-grid');row.setAttribute('role','radiogroup');row.setAttribute('aria-label',title+': '+label);row.style.setProperty('--n',opts.length);
+          const row=_psEl('div','ps-cz-grid');row.setAttribute('role','radiogroup');row.setAttribute('aria-label',title+': '+label);row.style.setProperty('--n',Math.min(4,opts.length));
           opts.forEach(([value,name,desc],i)=>{
             const card=_psEl('button','ps-cz-opt');card.type='button';card.dataset.key=k;card.dataset.value=value;card.setAttribute('role','radio');card.style.setProperty('--i',i);
             const text=_psEl('span','ps-look-text');text.append(_psEl('span','ps-look-name',name),_psEl('span','ps-look-desc',desc));
@@ -11410,10 +11422,17 @@ async function _openProjectStarterWizard(profile){
             if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.decoding='async';img.draggable=false;th.append(img);}
             else th.textContent=(c.name||'?').slice(0,1);
             go.append(th,_psEl('span','ps-kit-tray-name',c.name));
-            go.onclick=()=>{const card=lists.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]');if(!card)return;
-              _psRevealInBody(card);card.classList.remove('is-flash');void card.offsetWidth;card.classList.add('is-flash');};
+            // Show the card: open its library's section (and widen its view if
+            // the current category hides it), then scroll to it and flash it.
+            go.onclick=()=>{const area=holder.querySelector('.ps-kit-libarea[data-lib="'+CSS.escape(c.library)+'"]');if(!area)return;
+              if(area._show) area._show(id);
+              const wasOpen=!kitSteps||st.kit.steps.open==='lib:'+c.library||st.kit.steps.all;
+              if(kitSteps&&!wasOpen) kitSteps.open('lib:'+c.library,{reveal:false});
+              const flash=()=>{const card=area.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]');if(!card)return;
+                _psRevealInBody(card);card.classList.remove('is-flash');void card.offsetWidth;card.classList.add('is-flash');};
+              if(wasOpen) flash(); else setTimeout(flash,440);};
             const rm=_psEl('button','ps-kit-tray-x');rm.type='button';rm.setAttribute('aria-label','Remove '+c.name);rm.innerHTML=_psIcon('x',12);
-            rm.onclick=()=>toggle(lists.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);
+            rm.onclick=()=>toggle(holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);
             chip.append(go,rm);chips.append(chip);
             if(have.size&&!reduce()) chip.animate([{opacity:0,transform:'scale(.85)',filter:'blur(2px)'},{opacity:1,transform:'none',filter:'none'}],{duration:260,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});});
           tray.classList.toggle('is-empty',!want.length);
@@ -11428,12 +11447,11 @@ async function _openProjectStarterWizard(profile){
         // Skills and Components open one at a time (all open while searching or filtering).
         const both=data.visual&&roles.length&&data.libraries&&!f;
         kitSteps=null;paintTray=()=>{};
-        let skillsBox=lists,compsBox=lists;
+        let skillsBox=lists;
         if(both){
           st.kit.steps.all=narrowed;
           kitSteps=_psSteps(st.kit.steps);lists.append(kitSteps.root);
           skillsBox=kitSteps.add('skills','Skills',{summary:()=>st.kit.skills.size+' chosen'});
-          compsBox=kitSteps.add('comps','Components',{summary:()=>st.kit.comps.size+' chosen'});
         }
         if(!f||f.startsWith('skill:')){
           if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='skills';
@@ -11445,61 +11463,124 @@ async function _openProjectStarterWizard(profile){
           const listsOuter=lists;
           if(!both){const head=_psEl('div','ps-kit-head');const count=_psEl('span','ps-kit-count');count.dataset.count='comps';
             head.append(_psEl('h4',null,'Components'),count);lists.append(head);}
-          if(roles.length&&data.libraries) compsBox.append(makeTray());
-          // Library groups go into the Components section.
-          lists=compsBox;
           if(!data.libraries) lists.append(_psEl('p','ps-kit-empty','No UI libraries yet. Import them on the Skills page: + → Import → Library.'));
           else if(!roles.length) lists.append(_psEl('p','ps-kit-empty','None of your libraries fit '+_psLabel(data.framework)+' on this platform yet. You can still create the project; Hermes picks components as it builds.'));
           else{
-            // Grouped by library (name, licence, count); the best fits for the
-            // chosen style and motion come first in each group.
-            let n=0,any=false;
+            // One section per library (Components 1/3 · ObsidianUI …), each with
+            // its own search box and a category select that starts on the picks
+            // for this brief; the chosen tray sits above them.
             const groups=new Map();
+            roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
+              data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' '))).forEach(c=>{
+                if(!groups.has(c.library)) groups.set(c.library,{slug:c.library,name:c.library_name,license:c.license||'',items:[]});
+                groups.get(c.library).items.push(c);});
+            });
+            const libs=[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name));
+            const tray=makeTray();
+            if(both) kitSteps.root.append(tray); else lists.append(tray);
             const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             const loops=!reduce&&'IntersectionObserver' in window?new IntersectionObserver((entries)=>entries.forEach(e=>{
               const img=e.target;const want=e.isIntersecting?img.dataset.loop:img.dataset.still;if(img.getAttribute('src')!==want)img.src=want;}),{root:holder.closest('.ps-body'),rootMargin:'40px'}):null;
-            roles.filter(role=>!f||role===f.slice(5)).forEach(role=>{
-              data.components[role].filter(c=>hit([c.name,c.library_name,role,...(c.style||[]),c.motion].join(' '))).forEach(c=>{
-                if(!groups.has(c.library)) groups.set(c.library,{name:c.library_name,license:c.license||'',items:[]});
-                groups.get(c.library).items.push(c);});
+            if(!libs.length) lists.append(_psEl('p','ps-kit-empty','No components match.'));
+            libs.forEach((group,gi)=>{
+              group.items.sort((a,b)=>(b.recommended-a.recommended)||((b.score||0)-(a.score||0))||a.name.localeCompare(b.name));
+              const title=(both?'Components '+(gi+1)+'/'+libs.length+' · ':'')+group.name;
+              let box;
+              if(both) box=kitSteps.add('lib:'+group.slug,title,{summary:()=>{const n=group.items.filter(c=>st.kit.comps.has(c.library+'/'+c.slug)).length;return n+' chosen · '+group.items.length+(group.items.length===1?' component':' components');}});
+              else{box=lists;const gh=_psEl('div','ps-kit-lib');gh.append(_psEl('span','ps-kit-lib-name',group.name),_psEl('span','ps-kit-lib-count',group.items.length+(group.items.length===1?' component':' components')));lists.append(gh);}
+              libraryBlock(group,box,loops);
             });
-            [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(group=>{
-              const items=group.items.sort((a,b)=>(b.recommended-a.recommended)||((b.score||0)-(a.score||0))||a.name.localeCompare(b.name));
-              any=true;
-              const gh=_psEl('div','ps-kit-lib');
-              gh.append(_psEl('span','ps-kit-lib-name',group.name),_psEl('span','ps-kit-lib-count',items.length+(items.length===1?' component':' components')));
-              if(group.license) gh.append(_psEl('span','ps-kit-lib-license',group.license));
-              lists.append(gh);
-              const grid=_psEl('div','ps-kit-grid ps-kit-comps');
-              items.forEach(c=>{
-                const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
-                const card=_psEl('button','ps-kit-card ps-kit-comp'+(on?' is-selected':''));card.type='button';card.dataset.comp=id;
-                card.setAttribute('aria-pressed',String(on));card.style.setProperty('--i',n++);
-                const thumb=_psEl('span','ps-kit-thumb');
-                if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
-                  // Moving components play their captured loop while on screen (the
-                  // still stays for reduced motion); a badge says it moves.
-                  if(c.loop){img.dataset.still=img.src;img.dataset.loop='api/libraries/preview?path='+encodeURIComponent(c.loop);thumb.classList.add('has-loop');
-                    const badge=_psEl('span','ps-kit-live');badge.innerHTML=_psIcon('play',10);badge.append(_psEl('span',null,'Live'));thumb.append(badge);
-                    if(loops) loops.observe(img);}}
-                else{thumb.classList.add('is-empty');thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));}
-                thumb.insertAdjacentHTML('beforeend',_psCheck(on));
-                const text=_psEl('span','ps-kit-text');
-                const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
-                if(c.recommended) card.append(_psRecStar());
-                text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
-                const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
-                text.append(chips);card.append(thumb,text);
-                card.onclick=()=>toggle(card,st.kit.comps,id);
-                grid.append(card);
-              });
-              lists.append(grid);
-            });
-            if(!any) lists.append(_psEl('p','ps-kit-empty','No components match.'));
           }
           lists=listsOuter;
         }
         counts();
+      }
+      // Category names for the component select; "loaders" reads as Loading.
+      const _roleLabel=(r)=>({loaders:'Loading',forms:'Forms & buttons',background:'Backgrounds','text-effect':'Text effects',hero:'Hero sections'})[r]||_psLabel(r);
+      const ROLE_ORDER=['navigation','hero','cards','forms','loaders','transitions','text-effect','background','icons'];
+      // The picks for this brief: starred and best-scoring first, at most eight,
+      // plus anything already chosen.
+      function picksOf(items){
+        const scored=items.filter(c=>c.recommended||(c.score||0)>0).slice(0,8);
+        const base=scored.length>=4?scored:items.slice(0,8);
+        return items.filter(c=>base.includes(c)||st.kit.comps.has(c.library+'/'+c.slug));
+      }
+      // One library: search + category select over a grid of cards.
+      function libraryBlock(group,box,loops){
+        if(!st.kit.libs) st.kit.libs={};
+        const ls=st.kit.libs[group.slug]||(st.kit.libs[group.slug]={q:'',cat:'picks'});
+        const bar=_psEl('div','ps-kit-libbar');
+        if(group.license) bar.append(_psEl('span','ps-kit-lib-license',group.license));
+        const find=_psEl('label','ps-kit-search sidebar-search ps-kit-libsearch');
+        find.innerHTML='<svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
+        const q=_psEl('input');q.type='search';q.placeholder='Search '+group.name+'…';q.autocomplete='off';q.value=ls.q;q.setAttribute('aria-label','Search '+group.name);
+        find.append(q);
+        const selWrap=_psEl('span','ps-kit-libselect');
+        const sel=_psEl('select');sel.setAttribute('aria-label',group.name+' category');
+        const present=ROLE_ORDER.filter(r=>group.items.some(c=>c.role===r)).concat([...new Set(group.items.map(c=>c.role))].filter(r=>!ROLE_ORDER.includes(r)));
+        [['picks','Recommended ('+picksOf(group.items).length+')'],['all','All ('+group.items.length+')'],...present.map(r=>[r,_roleLabel(r)+' ('+group.items.filter(c=>c.role===r).length+')'])].forEach(([v,l])=>{const o=_psEl('option',null,l);o.value=v;sel.append(o);});
+        if(![...sel.options].some(o=>o.value===ls.cat)) ls.cat='picks';
+        sel.value=ls.cat;
+        selWrap.append(sel);selWrap.insertAdjacentHTML('beforeend',_psIcon('chevron',12));
+        bar.prepend(find,selWrap);
+        const area=_psEl('div','ps-kit-libarea');
+        box.append(bar,area);
+        let n=0;
+        const card=(c)=>{
+          const id=c.library+'/'+c.slug,on=st.kit.comps.has(id);
+          const el=_psEl('button','ps-kit-card ps-kit-comp'+(on?' is-selected':''));el.type='button';el.dataset.comp=id;
+          el.setAttribute('aria-pressed',String(on));el.style.setProperty('--i',Math.min(n++,12));
+          const thumb=_psEl('span','ps-kit-thumb');
+          if(c.preview){const img=document.createElement('img');img.src='api/libraries/preview?path='+encodeURIComponent(c.preview);img.alt='';img.loading='lazy';img.decoding='async';img.draggable=false;thumb.append(img);
+            // Moving components play their captured loop while on screen (the
+            // still stays for reduced motion); a badge says it moves.
+            if(c.loop){img.dataset.still=img.src;img.dataset.loop='api/libraries/preview?path='+encodeURIComponent(c.loop);thumb.classList.add('has-loop');
+              const badge=_psEl('span','ps-kit-live');badge.innerHTML=_psIcon('play',10);badge.append(_psEl('span',null,'Live'));thumb.append(badge);
+              if(loops) loops.observe(img);}}
+          else{thumb.classList.add('is-empty');thumb.append(_psEl('span','ps-kit-thumb-empty',(c.name||'?').slice(0,1)));}
+          thumb.insertAdjacentHTML('beforeend',_psCheck(on));
+          const text=_psEl('span','ps-kit-text');
+          const top=_psEl('span','ps-kit-name');top.append(_psEl('span',null,c.name));
+          if(c.recommended) el.append(_psRecStar());
+          text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
+          const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
+          text.append(chips);el.append(thumb,text);
+          el.onclick=()=>toggle(el,st.kit.comps,id);
+          return el;
+        };
+        function fill(quiet){
+          n=0;
+          const words=ls.q.toLowerCase().split(/\s+/).filter(Boolean);
+          const match=(c)=>{const t=[c.name,c.role,_roleLabel(c.role),...(c.style||[]),c.motion].join(' ').toLowerCase();return words.every(w=>t.includes(w));};
+          let items=ls.cat==='picks'&&!words.length?picksOf(group.items):ls.cat==='picks'||ls.cat==='all'?group.items:group.items.filter(c=>c.role===ls.cat);
+          items=items.filter(match);
+          const nodes=[];
+          if(!items.length) nodes.push(_psEl('p','ps-kit-empty','No components match.'));
+          else if(ls.cat==='all'||(ls.cat==='picks'&&words.length)){
+            // Everything, under a small heading per category.
+            const order=ROLE_ORDER.concat([...new Set(items.map(c=>c.role))].filter(r=>!ROLE_ORDER.includes(r)));
+            order.forEach(r=>{const of=items.filter(c=>c.role===r);if(!of.length)return;
+              const h=_psEl('p','ps-kit-cat-head');h.append(_psEl('span',null,_roleLabel(r)),_psEl('span','ps-kit-cat-head-n',String(of.length)));
+              const g=_psEl('div','ps-kit-grid ps-kit-comps');of.forEach(c=>g.append(card(c)));nodes.push(h,g);});
+          }else{const g=_psEl('div','ps-kit-grid ps-kit-comps');items.forEach(c=>g.append(card(c)));nodes.push(g);}
+          const h0=quiet&&area.isConnected?area.offsetHeight:0;
+          area.querySelectorAll('img[data-loop]').forEach(img=>loops&&loops.unobserve(img));
+          area.replaceChildren(...nodes);
+          area.classList.toggle('is-quiet',!!quiet);
+          if(quiet&&h0&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+            const h1=area.offsetHeight;
+            if(Math.abs(h1-h0)>2) area.animate([{height:h0+'px'},{height:h1+'px'}],{duration:280,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});
+            area.animate([{opacity:0,transform:'translateY(4px)'},{opacity:1,transform:'none'}],{duration:220,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});
+          }
+        }
+        let typingLib=0;
+        q.oninput=()=>{clearTimeout(typingLib);typingLib=setTimeout(()=>{ls.q=q.value.trim();fill(true);},90);};
+        q.onkeydown=(event)=>{event.stopPropagation();if(event.key==='Escape'&&q.value){event.preventDefault();q.value='';ls.q='';fill(true);}};
+        sel.onchange=()=>{ls.cat=sel.value;fill(true);};
+        // The tray can ask to show a card that this view hides.
+        area._show=(id)=>{if(area.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'))return;ls.cat='all';ls.q='';sel.value='all';q.value='';fill(false);};
+        area.dataset.lib=group.slug;
+        fill(false);
       }
       paintLists(false);
     }
