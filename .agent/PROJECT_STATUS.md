@@ -1,7 +1,14 @@
 # Project status — hermes-webui
 
 
-## 2026-11-13 (latest): builder round 7 — every preview loops, brief-driven toolkit picks
+## 2026-11-13 (latest): builder round 8 — Toolkit recommends what the app needs
+
+- Commit 92c57adc1 (deployed, health 200). The planner prompt asks for "needs" (keys of `api/library_catalog.NEEDS`, 20 of them, each tied to component-name words and brief words in `_FIT`); `parse_analysis` keeps known keys; the wizard sends `st.analysis.needs` to the toolkit; `project_toolkit.resolve_needs` falls back to `TEMPLATE_NEEDS` when the planner gave none (or no planner is configured).
+- Each need stars its best component per library and ticks its best overall; reasons "Your app needs: X" / "Fits your brief: Y".
+- Not verified against a real planner reply yet: checks used a mocked planner result ("A website for a physiotherapy clinic." + six needs) on a trial server; the live model's choice of needs is untested.
+- Trial-server gotcha: the planner is unavailable there, so the wizard skips Details and analysis entirely; verify scripts must mock `planner.available` in /api/projects/starter/templates.
+
+## 2026-11-13: builder round 7 — every preview loops, brief-driven toolkit picks
 
 - Commit c35faeb7f (deployed, health 200, sw.js gc35faeb7f). Toolkit endpoint now takes `answers`; scoring lives in `api/library_catalog.py` (`_FIT` table of component-name words vs brief words, `word_forms` with phrase folding, `brief_fit`, `pick` flag = the one pre-ticked per role) and `api/project_toolkit.suggest_skills` (brief words x2, `fit`). Skills select starts on "Recommended". Tests: tests/test_builder_round7_browser.py plus catalog/toolkit unit tests.
 - All 137 catalogued components now have a loop (live container ~/.hermes/libraries, persisted across the recreate). The 19 that were stills or barely moved were re-recorded with new recorder options in the Windows scratch cdp_rec2.py: `js` drive (run the demo's own state changes at marks, e.g. shadcn progress indicator, light/dark class for alert/avatar/badge), `drag2` (press, carry, release between two targets), per-mark `buttons` (right-click for context-menu) and `keys`, `cropsel` + `around` [w,h,dx] for demos whose element rect is narrower than what it draws. transitions.dev drag-drop is recorded on detail.html?t=drag-drop-with-physics (pressing the library card navigates there).
