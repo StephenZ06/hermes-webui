@@ -18660,14 +18660,15 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-cz-sample{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:64px;padding:0 10px;border-radius:8px;overflow:hidden;background:var(--pal-bg,color-mix(in srgb,var(--text) 5%,transparent));color:var(--pal-text,var(--text));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pal-text,var(--text)) 10%,transparent);transition:background-color .32s cubic-bezier(.22,1,.36,1),color .32s cubic-bezier(.22,1,.36,1);}
 .ps-cz-aa{font-size:22px;line-height:24px;font-weight:700;}
 .ps-cz-quick{font-size:11px;line-height:14px;opacity:.75;}
-[data-font=sans] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=sans] .ps-pal-hero strong{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
-[data-font=serif] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=serif] .ps-pal-hero strong{font-family:Georgia,"Times New Roman",serif;}
-[data-font=geometric] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=geometric] .ps-pal-hero strong{font-family:"Avenir Next","Century Gothic",Futura,"Trebuchet MS",sans-serif;}
-[data-font=mono] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=mono] .ps-pal-hero strong{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;}
-[data-font=humanist] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=humanist] .ps-pal-hero strong{font-family:"Gill Sans","Gill Sans MT",Optima,Candara,"Segoe UI",sans-serif;}
-[data-font=slab] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=slab] .ps-pal-hero strong{font-family:Rockwell,"Roboto Slab","Courier New",serif;font-weight:700;}
-[data-font=rounded] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=rounded] .ps-pal-hero strong{font-family:ui-rounded,"SF Pro Rounded","Arial Rounded MT Bold",Nunito,sans-serif;}
-[data-font=condensed] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=condensed] .ps-pal-hero strong{font-family:"Avenir Next Condensed","Roboto Condensed",Bahnschrift,"Arial Narrow",sans-serif;font-stretch:condensed;}
+[data-font=sans] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=sans] .ps-pal-mock{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+[data-font=serif] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=serif] .ps-pal-mock{font-family:Georgia,"Times New Roman",serif;}
+[data-font=geometric] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=geometric] .ps-pal-mock{font-family:"Avenir Next","Century Gothic",Futura,"Trebuchet MS",sans-serif;}
+[data-font=mono] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=mono] .ps-pal-mock{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;}
+[data-font=humanist] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=humanist] .ps-pal-mock{font-family:"Gill Sans","Gill Sans MT",Optima,Candara,"Segoe UI",sans-serif;}
+[data-font=slab] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=slab] .ps-pal-mock{font-family:Rockwell,"Roboto Slab","Courier New",serif;}
+[data-font=slab] :is(.ps-cz-aa,.ps-cz-quick){font-weight:700;}
+[data-font=rounded] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=rounded] .ps-pal-mock{font-family:ui-rounded,"SF Pro Rounded","Arial Rounded MT Bold",Nunito,sans-serif;}
+[data-font=condensed] :is(.ps-cz-aa,.ps-cz-quick),.ps-customize[data-cz-font=condensed] .ps-pal-mock{font-family:"Avenir Next Condensed","Roboto Condensed",Bahnschrift,"Arial Narrow",sans-serif;font-stretch:condensed;}
 .ps-cz-head-line{font-weight:700;line-height:1.1;transition:font-size .3s cubic-bezier(.22,1,.36,1);}
 .ps-cz-body-line{line-height:1.2;opacity:.75;}
 [data-scale=compact] .ps-cz-head-line{font-size:13px;}[data-scale=compact] .ps-cz-body-line{font-size:9.5px;}
@@ -18813,3 +18814,43 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .ps-kit-cat-head-n{font-weight:500;opacity:.8;}
 .ps-cz>.ps-kit-tray{margin:6px 0;}
 @media (prefers-reduced-motion:reduce){.ps-kit-libselect select{transition:none;}}
+
+/* Builder round 5 */
+/* Brief options: the 1-4 key art sits 1px lower, on the text's optical centre. */
+.ps-option-key.has-art{position:relative;top:1px;}
+/* Customize / Toolkit section headers: tick and texts 1px lower. */
+.ps-cz-head :is(.ps-cz-mark,.ps-cz-title,.ps-cz-summary){position:relative;top:1px;}
+/* Colours preview follows Typography: one typeface and text size for the whole mock. */
+.ps-customize[data-cz-scale=compact] .ps-pal-hero strong{font-size:13px;line-height:17px;}
+.ps-customize[data-cz-scale=compact] .ps-pal-hero>span{font-size:10px;line-height:14px;}
+.ps-customize[data-cz-scale=large] .ps-pal-hero strong{font-size:16px;line-height:20px;}
+.ps-customize[data-cz-scale=large] .ps-pal-hero>span{font-size:12px;line-height:16px;}
+/* Skills table: header labels centred over their columns. */
+.ps-kit-table th{text-align:center;}
+/* Toolkit component cards: a corner button opens a larger preview. */
+.ps-kit-cell{position:relative;display:flex;min-width:0;container-type:inline-size;}
+.ps-kit-cell>.ps-kit-comp{flex:1 1 auto;min-width:0;}
+.ps-kit-peek{position:absolute;right:16px;top:calc(9px + (100cqw - 18px) * .625 - 32px);z-index:3;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:7px;background:color-mix(in srgb,#000 55%,transparent);color:#fff;cursor:pointer;opacity:0;transform:scale(.9);transition:opacity .18s cubic-bezier(.22,1,.36,1),transform .18s cubic-bezier(.22,1,.36,1),background-color .18s;}
+.ps-kit-cell:hover .ps-kit-peek,.ps-kit-peek:focus-visible{opacity:1;transform:none;}
+.ps-kit-peek:hover{background:color-mix(in srgb,var(--accent) 70%,#000);}
+.ps-kit-peek:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+@media (hover:none){.ps-kit-peek{opacity:1;transform:none;}}
+.ps-kit-peekpop{position:fixed;inset:auto;margin:0;padding:0;overflow:hidden;border:1px solid var(--border2);border-radius:14px;background:var(--bg);color:var(--text);box-shadow:0 18px 48px -12px rgba(0,0,0,.55),0 4px 14px -6px rgba(0,0,0,.35);}
+.ps-kit-peekpop:not([popover]){display:none;z-index:1000;}
+.ps-kit-peekpop:not([popover]).is-open{display:block;}
+.ps-kit-peek-media{aspect-ratio:16/10;background:color-mix(in srgb,var(--text) 5%,transparent);}
+.ps-kit-peek-media img{display:block;width:100%;height:100%;object-fit:cover;}
+.ps-kit-peek-body{display:flex;flex-direction:column;gap:8px;padding:14px 16px 16px;}
+.ps-kit-peek-head{display:flex;align-items:center;gap:10px;}
+.ps-kit-peek-name{flex:1;margin:0;font-size:15px;font-weight:700;line-height:20px;}
+.ps-kit-peek-x{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer;}
+.ps-kit-peek-x:hover{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);}
+.ps-kit-peek-meta{margin:0;font-size:12px;line-height:16px;color:var(--muted);}
+.ps-kit-peek-pick{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;height:32px;margin-top:4px;padding:0 14px;border:1px solid var(--accent);border-radius:9px;background:none;color:var(--accent);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background-color .18s,color .18s;}
+.ps-kit-peek-pick:hover{background:color-mix(in srgb,var(--accent) 12%,transparent);}
+.ps-kit-peek-pick.is-on{background:var(--accent);color:var(--bg,#000);}
+.ps-kit-peek-pick span{text-box:trim-both cap alphabetic;}
+.ps-kit-peek-x:focus-visible,.ps-kit-peek-pick:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+@media (prefers-reduced-motion:reduce){.ps-kit-peek{transition:none;}}
+/* Thumbs show a soft placeholder while their preview loads. */
+.ps-kit-thumb:not(.is-empty){background:color-mix(in srgb,var(--text) 6%,transparent);}

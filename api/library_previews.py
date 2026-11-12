@@ -24,7 +24,8 @@ from api import library_catalog as lc
 
 WIDTH, HEIGHT = 1280, 800
 LOOP_SECONDS, LOOP_STEP_MS = 3.2, 40  # 25 frames a second
-LOOP_SIZE = (400, 250)
+LOOP_SIZE = (480, 300)  # sharp on a ~300px card at 1.5x
+LOOP_QUALITY = 80
 _MAX_IMAGE_BYTES = 6_000_000
 IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
 
@@ -193,7 +194,7 @@ def _save_loop(lib_dir: Path, slug: str, frames: list[bytes], step_ms: int = LOO
     if len(images) < 2 or all(ImageChops.difference(images[0], im).getbbox() is None for im in images[1:]):
         return False  # nothing moved: a loop would only cost bytes
     out = lib_dir / "previews" / f"{slug}.loop.webp"
-    images[0].save(out, "WEBP", save_all=True, append_images=images[1:], duration=step_ms, loop=0, quality=62, method=4)
+    images[0].save(out, "WEBP", save_all=True, append_images=images[1:], duration=step_ms, loop=0, quality=LOOP_QUALITY, method=6)
     return True
 
 

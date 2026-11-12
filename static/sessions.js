@@ -10035,6 +10035,7 @@ const _PROJECT_STARTER_ICONS={
   workspace:'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>',
   file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   chevron:'<path d="m9 6 6 6-6 6"/>',
+  expand:'<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
   check:'<path d="m5 12 5 5 9-10"/>',
   pen:'<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/><path d="m14.5 5.5 3 3"/>',
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
@@ -11167,10 +11168,6 @@ async function _openProjectStarterWizard(profile){
         grid.append(card);
       });
       steps.add('Style'.toLowerCase(),'Style',{summary:()=>_psLabel(look.style)}).append(grid);
-      // Colours
-      // Picking a colour only previews it; "Next: Typography" moves on.
-      const colours=_psColours(look,()=>renderLook.paint());
-      steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
       // Typography, Buttons, Cards & spacing: groups of custom options.
       const groupGrids=[];
       const customSec=(key,title,keys)=>{
@@ -11189,7 +11186,12 @@ async function _openProjectStarterWizard(profile){
             row.append(card);});
           g.append(row);box.append(g);groupGrids.push(row);});
       };
+      // Typography comes before Colours, so the colour previews show the chosen
+      // typeface and text size.
       customSec('type','Typography',['font','scale']);
+      // Colours: picking one only previews it; "Next: Buttons" moves on.
+      const colours=_psColours(look,()=>renderLook.paint());
+      steps.add('colours','Colours',{summary:()=>look.palette?look.palette.name:''}).append(colours.node);
       customSec('buttons','Buttons',['btnShape','btnFill','btnHover']);
       customSec('surfaces','Cards & spacing',['corners','depth','density']);
       // Motion
@@ -11505,6 +11507,48 @@ async function _openProjectStarterWizard(profile){
         const base=scored.length>=4?scored:items.slice(0,8);
         return items.filter(c=>base.includes(c)||st.kit.comps.has(c.library+'/'+c.slug));
       }
+      // The larger preview: one shared popover (top layer, light dismiss).
+      let peekPop=null;
+      function openPeek(c,card,opener){
+        const id=c.library+'/'+c.slug;
+        if(!peekPop){peekPop=_psEl('div','ps-kit-peekpop');peekPop.setAttribute('role','dialog');
+          if(peekPop.showPopover) peekPop.popover='auto';
+          peekPop.addEventListener('keydown',(e)=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();closePeek();}});
+          holder.append(peekPop);
+          const scroller=holder.closest('.ps-body');if(scroller)scroller.addEventListener('scroll',()=>closePeek(),{passive:true});}
+        const pop=peekPop;pop.innerHTML='';pop.setAttribute('aria-label',c.name);
+        const media=_psEl('div','ps-kit-peek-media');const img=document.createElement('img');img.alt='';img.decoding='async';img.draggable=false;
+        const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        img.src='api/libraries/preview?path='+encodeURIComponent(c.loop&&!reduce?c.loop:c.preview);media.append(img);
+        const body=_psEl('div','ps-kit-peek-body');
+        const head=_psEl('div','ps-kit-peek-head');head.append(_psEl('p','ps-kit-peek-name',c.name));
+        const close=_psEl('button','ps-kit-peek-x');close.type='button';close.setAttribute('aria-label','Close preview');close.innerHTML=_psIcon('x',14);close.onclick=()=>closePeek();
+        head.append(close);
+        const meta=_psEl('p','ps-kit-peek-meta',[c.library_name,_roleLabel(c.role),_psLabel(c.kind),c.license].filter(Boolean).join(' · '));
+        const chips=_psEl('span','ps-kit-chips');[...(c.style||[]),c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
+        const pick=_psEl('button','ps-kit-peek-pick');pick.type='button';
+        const paintPick=()=>{const on=st.kit.comps.has(id);pick.classList.toggle('is-on',on);pick.setAttribute('aria-pressed',String(on));pick.innerHTML=on?_psIcon('check',14)+'<span>Chosen</span>':'<span>Choose</span>';};
+        pick.onclick=()=>{toggle(card.isConnected?card:holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);paintPick();};
+        paintPick();
+        body.append(head,meta,chips,pick);pop.append(media,body);
+        // Beside the card when there is room, else centred over the wizard.
+        // Kept inside the wizard's content column (or the viewport).
+        const r=card.getBoundingClientRect(),area=(holder.closest('.ps-body')||document.documentElement).getBoundingClientRect();
+        const minX=Math.max(12,area.left),maxX=Math.min(innerWidth-12,area.right),vh=innerHeight,w=Math.min(520,maxX-minX);
+        pop.style.width=w+'px';
+        if(pop.showPopover){if(!pop.matches(':popover-open'))pop.showPopover();}else pop.classList.add('is-open');
+        const h=pop.offsetHeight;
+        let left=r.left+r.width/2-w/2,top=r.top-12;
+        left=Math.max(minX,Math.min(maxX-w,left));top=Math.max(12,Math.min(vh-h-12,top));
+        pop.style.left=left+'px';pop.style.top=top+'px';
+        pop.style.transformOrigin=Math.round(r.left+r.width/2-left)+'px '+Math.round(r.top+r.height/2-top)+'px';
+        pop._opener=opener;
+        if(!reduce) pop.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'none'}],{duration:220,easing:'cubic-bezier(0.22, 1, 0.36, 1)'});
+        pick.focus({preventScroll:true});
+      }
+      function closePeek(){if(!peekPop)return;const op=peekPop._opener;
+        if(peekPop.hidePopover){if(peekPop.matches(':popover-open'))peekPop.hidePopover();}else peekPop.classList.remove('is-open');
+        if(op&&op.isConnected)op.focus({preventScroll:true});}
       // One library: search + category select over a grid of cards.
       function libraryBlock(group,box,loops){
         if(!st.kit.libs) st.kit.libs={};
@@ -11546,7 +11590,12 @@ async function _openProjectStarterWizard(profile){
           const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
           text.append(chips);el.append(thumb,text);
           el.onclick=()=>toggle(el,st.kit.comps,id);
-          return el;
+          // A bigger look: the card's preview, larger, with its details and a
+          // Choose button, in a light-dismiss popover beside the card.
+          const cell=_psEl('div','ps-kit-cell');cell.append(el);
+          if(c.preview){const peek=_psEl('button','ps-kit-peek');peek.type='button';peek.setAttribute('aria-label','Preview '+c.name+' larger');peek.setAttribute('aria-haspopup','dialog');
+            peek.innerHTML=_psIcon('expand',14);peek.onclick=(event)=>{event.stopPropagation();openPeek(c,el,peek);};cell.append(peek);}
+          return cell;
         };
         function fill(quiet){
           n=0;

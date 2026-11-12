@@ -91,11 +91,11 @@ def test_a_preset_and_your_own_colours_reach_create(page):
     _to_look(page)
     page.click(".ps-pal-card[data-pal=forest]")
     assert _mock_bg(page, "light") == _rgb("#f4f7f2")
-    # Picking a palette only previews it: Colours stays open until "Next: Typography".
+    # Picking a palette only previews it: Colours stays open until "Next: Buttons".
     page.wait_for_timeout(400)
     assert page.locator(".ps-cz-sec[data-sec=colours].is-open").count() == 1
     assert page.locator(".ps-cz-sec[data-sec=colours].is-done").count() == 0
-    assert page.inner_text(".ps-cz-sec[data-sec=colours] .ps-cz-next") == "Next: Typography"
+    assert page.inner_text(".ps-cz-sec[data-sec=colours] .ps-cz-next") == "Next: Buttons"
     page.click(".ps-pal-card[data-pal=custom]")
     assert page.locator(".ps-pal-editor").is_visible()
     # The editor opens like an accordion; type once it has.

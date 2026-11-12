@@ -209,12 +209,14 @@ percent and a 2px meter that ease up (the server's `_Estimate` in
 under 100% until the job is done, then the meter fills before moving on).
 Website, Web app, iOS and Android projects get a Customize step preselected from
 the brief (stars mark the planner's picks; there is no separate banner). Its
-sections (Style, Colours, Typography, Buttons, Cards & spacing, Motion, Built
+sections (Style, Typography, Colours, Buttons, Cards & spacing, Motion, Built
 with) open one at a time: picking in a section ticks it and opens the next
 (sections with several parts move on when their last part is picked, or with
 their "Next" button; Colours never moves on by itself, so palettes can be
-previewed until "Next: Typography"), and a folded section's header shows its
-choice. A folded section uses `content-visibility: hidden` once its fold ends,
+previewed until "Next: Buttons"), and a folded section's header shows its
+choice. Typography comes before Colours so both colour previews render every
+piece of text in the chosen typeface and text size. Section header ticks and
+texts sit 1px below the box centre (optical centring). A folded section uses `content-visibility: hidden` once its fold ends,
 so its looping samples and colour changes cost no style or paint work, and a new
 palette fades each preview mock as a whole instead of transitioning every
 element's colours. Typography offers eight typefaces in two rows of four. Typography,
@@ -240,13 +242,21 @@ chosen), All (grouped under category headings), then one entry per role
 (Navigation, Loading, Forms & buttons, …). A "Chosen" tray above the library
 sections lists each picked component as a chip that opens its section, widens
 the view if needed, scrolls to the card or removes it. A chosen skill row shows
-its tick only (no row fill).
+its tick only (no row fill), and the table's header labels are centred over
+their columns. A corner button on each component's preview (shown on hover,
+always on touch) opens a larger preview in a light-dismiss popover kept inside
+the wizard body: the loop at full size, library, role, kind and licence, and a
+Choose button that ticks the card too; Escape returns focus to the opener.
+Library loops are 480x300 WebP (quality 80) recorded in real Chrome at
+1.5x, cropped to the moving content; loops for hover or click demos draw the
+pointer so the trigger reads.
 
 Text in option cards, palette preview buttons and contrast checks is trimmed to
 its capitals and baseline (`text-box: trim-both cap alphabetic`) so padding
 centres it; Zeus 2.0 adds 1px to option text because Courier New draws its
 capitals taller than it declares. In the brief questions, an option whose
 description wraps past two lines lifts its title and description 1px (`is-tall`).
+The 1-4 key art sits 1px below the option's centre line.
 
 Colours fill three rows of four (the recommended star sits bottom right on these
 cards): the planner's palette for the brief (starred),

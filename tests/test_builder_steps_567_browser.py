@@ -119,12 +119,13 @@ def test_customize_opens_one_section_at_a_time_and_a_pick_ticks_it_and_opens_the
     assert page.locator(".ps-look-rec").count() == 0
     assert page.inner_text(".ps-prompt") == "Customize"
     order = page.eval_on_selector_all(".ps-cz-sec", "els => els.map(e => e.dataset.sec)")
-    assert order == ["style", "colours", "type", "buttons", "surfaces", "motion", "built"], order
+    # Typography comes before Colours so the colour previews show the typeface.
+    assert order == ["style", "type", "colours", "buttons", "surfaces", "motion", "built"], order
     opened = lambda: page.eval_on_selector_all(".ps-cz-sec.is-open", "els => els.map(e => e.dataset.sec)")  # noqa: E731
     assert opened() == ["style"]
     page.click(".ps-look-card[data-style=playful]")
-    page.wait_for_selector(".ps-cz-sec[data-sec=colours].is-open")
-    assert opened() == ["colours"]
+    page.wait_for_selector(".ps-cz-sec[data-sec=type].is-open")
+    assert opened() == ["type"]
     assert page.locator(".ps-cz-sec[data-sec=style].is-done").count() == 1
     assert page.inner_text(".ps-cz-sec[data-sec=style] .ps-cz-summary") == "Playful"
     # Untouched choices follow the style: playful buttons are pills.
