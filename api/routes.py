@@ -20437,7 +20437,10 @@ def _route_post_api_projects_starter_toolkit(handler, parsed, body, diag):
         return answer if negative else f"{a.get('question') or ''} {answer}"
     brief = " ".join([str(body.get("brief") or "")[:20000]] + [
         _said(a) for a in answers[:40] if isinstance(a, dict)])[:30000]
-    out = {"skills": tk.suggest_skills(skills, template=template, brief=brief),
+    # What the app needs (the planner's "needs", inferred from the brief even
+    # where it is silent); a template default when the planner named none.
+    needs = tk.resolve_needs(template, body.get("needs"))
+    out = {"skills": tk.suggest_skills(skills, template=template, brief=brief, needs=needs), "needs": needs,
            "components": {}, "visual": tk.is_visual(template), "frameworks": list(lc.FRAMEWORKS), "libraries": 0}
     if tk.is_visual(template):
         framework = str(body.get("framework") or "").strip().lower()
@@ -20449,7 +20452,7 @@ def _route_post_api_projects_starter_toolkit(handler, parsed, body, diag):
                    components=lc.match_components(libraries, platform=platform, framework=framework,
                                                   tailwind=body.get("tailwind") is True,
                                                   style=str(body.get("style") or ""), motion=str(body.get("motion") or ""),
-                                                  brief=brief))
+                                                  brief=brief, needs=needs))
     return j(handler, out)
 
 

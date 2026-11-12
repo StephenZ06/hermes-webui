@@ -193,45 +193,45 @@ def _score(comp: dict, style: str, motion: str) -> int:
 # them, so "a booking site with a login" reaches Calendar, Input OTP and
 # Password Input, not only components in the chosen style.
 _FIT = [
-    ("dashboard analytic chart table status shell activity counter number sidebar",
+    ("dashboard", "Dashboard and stats", "dashboard analytic chart table status shell activity counter number sidebar",
      "dashboard admin analytic analytics metric metrics kpi kpis report reports reporting stats statistic insight insights monitor monitoring internal backoffice saas crm portal data"),
-    ("input otp password field form",
+    ("auth", "Sign-in", "input otp password field form",
      "login log signin sign signup register registration account accounts auth authentication password verification verify 2fa otp onboarding checkout"),
-    ("input field form button error",
+    ("forms", "Forms", "input field form button error",
      "form forms contact subscribe newsletter enquiry enquiries inquiry quote survey application apply"),
-    ("checkbox switch toggle select radio slider",
+    ("settings", "Settings", "checkbox switch toggle select radio slider",
      "settings setting preference preferences profile filter filters option options configure configuration"),
-    ("ai reasoning thinking stream streaming text-stream generation matrix orb voice search web-search placeholder",
+    ("ai", "AI features", "ai reasoning thinking stream streaming text-stream generation matrix orb voice search web-search placeholder",
      "ai assistant agent agents chatbot chat llm gpt copilot generate generative generation prompt prompts model models ml automation voice search"),
-    ("pro get-pro pricing gradient badge",
+    ("pricing", "Pricing and plans", "pro get-pro pricing gradient badge",
      "pricing price prices plan plans subscription subscriptions premium upgrade paid billing tier tiers saas"),
-    ("gallery art image hover-image parallax carousel showcase split marquee tilt halftone sketch",
+    ("gallery", "Image gallery", "gallery art image hover-image parallax carousel showcase split marquee tilt halftone sketch",
      "portfolio gallery photo photos photography art artist artwork showcase product products image images visual creative studio agency design designer fashion brand"),
-    ("faq accordion collapsible",
+    ("help", "Help and FAQ", "faq accordion collapsible",
      "faq faqs question questions help support docs documentation knowledge guide"),
-    ("code block toc rail breadcrumb command pagination",
+    ("docs", "Docs and code", "code block toc rail breadcrumb command pagination",
      "docs documentation developer developers api sdk blog article articles tutorial knowledge guide technical"),
-    ("calendar duration picker task list",
+    ("scheduling", "Scheduling", "calendar duration picker task list",
      "booking book appointment appointments schedule scheduling calendar event events reservation reservations task tasks todo planner productivity time timer"),
-    ("toast sonner notification bell alert banner",
+    ("notifications", "Notifications", "toast sonner notification bell alert banner",
      "notification notifications alert alerts message messages feedback reminder reminders inbox activity"),
-    ("hero showcase footer navigation menu menubar nav header scroll smooth text reveal headline",
+    ("marketing", "Landing page", "hero showcase footer navigation menu menubar nav header scroll smooth text reveal headline",
      "landing homepage marketing startup launch campaign agency brand"),
-    ("emoji reaction like avatar session sessions family drawer",
+    ("social", "Profiles and community", "emoji reaction like avatar session sessions family drawer",
      "social community profile profiles feed comment comments chat friend friends member members team share sharing"),
-    ("theme selector",
+    ("theming", "Light and dark theme", "theme selector",
      "theme themes dark light customise customize customization personalise personalize"),
-    ("confetti success check spark click",
+    ("celebration", "Success feedback", "confetti success check spark click",
      "celebrate celebration reward rewards game gamification achievement achievements success onboarding signup"),
-    ("cart card stack tilt hover like",
+    ("commerce", "Shop and products", "cart card stack tilt hover like",
      "shop store ecommerce commerce product products catalog catalogue retail marketplace cart checkout"),
-    ("404 golden-gate",
+    ("errors", "Error pages", "404 golden-gate",
      "error errors"),
-    ("tabs dropdown context menu sheet drawer dialog modal popover tooltip",
+    ("app", "App menus and dialogs", "tabs dropdown context menu sheet drawer dialog modal popover tooltip",
      "app apps tool tools editor workspace productivity settings"),
-    ("drag drop folder",
+    ("uploads", "Uploads and files", "drag drop folder",
      "upload uploads file files drag kanban board organise organize"),
-    ("loader loaders spinner skeleton progress shimmer",
+    ("loading", "Loading states", "loader loaders spinner skeleton progress shimmer",
      "loading upload uploads progress performance fast async"),
 ]
 _FIT_STOP = set("the and for with that this from into your our are was were has have will can a an in of to on at by "
@@ -246,6 +246,10 @@ _PHRASES = [(re.compile(r"\bone[\s-]*time\s+(?:pass)?codes?\b"), "otp"), (re.com
             (re.compile(r"\bdark\s+mode\b"), "dark")]
 
 
+# How a folded phrase reads back to the user.
+_PHRASE_LABELS = {"otp": "one-time code", "login": "log in", "signin": "sign in", "signup": "sign up"}
+
+
 def word_forms(text: str) -> dict[str, str]:
     """Each folded word of ``text`` (see ``words``) and the form the text used."""
     text = str(text or "").lower()
@@ -255,7 +259,7 @@ def word_forms(text: str) -> dict[str, str]:
     for word in re.findall(r"[a-z0-9]+", text):
         if len(word) < 2 or word in _FIT_STOP:
             continue
-        out.setdefault(word[:-1] if len(word) > 3 and word.endswith("s") else word, word)
+        out.setdefault(word[:-1] if len(word) > 3 and word.endswith("s") else word, _PHRASE_LABELS.get(word, word))
     return out
 
 
@@ -264,7 +268,42 @@ def words(text: str) -> set[str]:
     return set(word_forms(text))
 
 
-_FIT_SETS = [(words(c), words(b)) for c, b in _FIT]
+_FIT_SETS = [(words(c), words(b)) for _, _, c, b in _FIT]
+# What an app can need, for the planner to choose from: key -> label.
+NEEDS = {key: label for key, label, _, _ in _FIT}
+_NEED_WORDS = {key: words(c) for key, _, c, _ in _FIT}
+_NEED_BRIEF_WORDS = {key: words(b) for key, _, _, b in _FIT}
+
+
+def parse_needs(raw) -> list[str]:
+    """Known need keys from a list (the planner's "needs"), in order, at most twelve."""
+    out = []
+    for item in raw if isinstance(raw, list) else []:
+        key = str(item or "").strip().lower()
+        if key in NEEDS and key not in out:
+            out.append(key)
+    return out[:12]
+
+
+# What every project of a template needs when the planner names nothing.
+TEMPLATE_NEEDS = {"web": ["app", "forms", "notifications", "loading"],
+                  "website": ["marketing", "forms", "help"],
+                  "ios": ["app", "forms", "notifications", "loading"],
+                  "android": ["app", "forms", "notifications", "loading"]}
+
+
+def need_fit(comp: dict, needs: list[str]) -> list[str]:
+    """The needs (keys) this component serves, from its name."""
+    own = words(" ".join([str(comp.get("name") or ""), str(comp.get("slug") or "").replace("-", " ")]))
+    return [n for n in needs if own & _NEED_WORDS.get(n, set())]
+
+
+def need_brief_words(needs: list[str]) -> set[str]:
+    """The words a brief would use for these needs (to match skills against)."""
+    out: set[str] = set()
+    for n in needs:
+        out |= _NEED_BRIEF_WORDS.get(n, set())
+    return out
 
 
 def brief_fit(comp: dict, brief_words: set[str]) -> list[str]:
@@ -281,12 +320,17 @@ def brief_fit(comp: dict, brief_words: set[str]) -> list[str]:
     return sorted(hits)
 
 
-def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "") -> dict:
-    """Catalogued components that fit the stack, ranked by the brief, then style and motion.
+def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "",
+                     needs: list[str] | None = None) -> dict:
+    """Catalogued components that fit the stack, ranked by the brief and what
+    the app needs, then style and motion.
 
-    In each role the components the brief calls for are recommended (up to
-    three per library, best style match first); when the brief calls for nothing in the
-    catalogue, the best style match per role is."""
+    ``needs`` are keys of ``NEEDS``: what the planner judged the app needs,
+    including what the brief only implies (a booking site needs sign-in). In
+    each role the components the brief or a need calls for are recommended (up
+    to three per library, best style match first); when nothing calls for any,
+    the best style match per role is."""
+    needs = parse_needs(needs or [])
     forms = word_forms(brief)
     brief_words = set(forms)
     by_role: dict[str, list[dict]] = {}
@@ -301,14 +345,19 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
             fit = brief_fit(comp, brief_words)
             # The brief naming the component itself ("an FAQ", "OTP") counts most.
             named = words(" ".join([str(comp.get("name") or ""), str(comp.get("slug") or "").replace("-", " ")])) & brief_words
+            served = need_fit(comp, needs)
             look = _score(comp, style, motion)
             item = dict(comp, library=lib["slug"], library_name=lib.get("name") or lib["slug"],
                         kind=lib.get("kind", ""), install=lib.get("install", ""), source=lib.get("source", ""),
                         license=lib.get("license", ""), fit=[forms[w] for w in fit[:4]],
-                        score=look + 6 * min(3, len(fit)) + 8 * len(named), recommended=False, pick=False)
+                        needs=[NEEDS[n] for n in served],
+                        score=look + 6 * min(3, len(fit)) + 8 * len(named) + 5 * min(2, len(served)),
+                        recommended=False, pick=False)
             item["_look"] = look
+            item["_served"] = served
             by_role.setdefault(comp["role"], []).append(item)
-    any_fit = any(c["fit"] for items in by_role.values() for c in items)
+    called = lambda c: bool(c["fit"] or c["needs"])  # noqa: E731
+    any_fit = any(called(c) for items in by_role.values() for c in items)
     out = {}
     for role in ROLES:
         items = sorted(by_role.get(role, []), key=lambda c: (-c["score"], c["library"], c["slug"]))
@@ -316,19 +365,32 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
             continue
         if any_fit:  # the brief decides: up to three per role in each library that it calls for
             # The best of them is "pick" (ticked for the user); the rest are only starred.
-            best = next((c for c in items if c["fit"]), None)
+            best = next((c for c in items if called(c)), None)
             if best:
                 best["pick"] = True
             per_lib: dict[str, int] = {}
             for c in items:
-                if c["fit"] and per_lib.get(c["library"], 0) < 3:
+                if called(c) and per_lib.get(c["library"], 0) < 3:
                     per_lib[c["library"]] = per_lib.get(c["library"], 0) + 1
                     c["recommended"] = True
         elif items[0]["score"] > 0:  # a brief that names nothing: the best style match
             items[0]["recommended"] = items[0]["pick"] = True
+        out[role] = items
+    if any_fit:
+        # Every need gets its best component in each library (starred) and its
+        # best overall is ticked, so "Scheduling" is not crowded out by three
+        # sign-in fields in the same category.
+        flat = sorted((c for items in out.values() for c in items), key=lambda c: (-c["score"], c["library"], c["slug"]))
+        for need in needs:
+            serving = [c for c in flat if need in c["_served"]]
+            if serving:
+                serving[0]["pick"] = True
+            for lib in {c["library"] for c in serving}:
+                next(c for c in serving if c["library"] == lib)["recommended"] = True
+    for items in out.values():
         for c in items:
             c.pop("_look", None)
-        out[role] = items
+            c.pop("_served", None)
     return out
 
 

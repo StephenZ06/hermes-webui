@@ -157,3 +157,22 @@ def test_a_detailed_brief_outweighs_the_template_hints():
     by = {s["name"]: s for s in out}
     assert by["pdf-invoices"]["recommended"] and by["pdf-invoices"]["fit"] == ["invoices", "pdf"]
     assert out[0]["name"] == "pdf-invoices"
+
+
+def test_needs_recommend_skills_the_brief_never_mentions():
+    skills = SKILLS + [{"name": "auth-flows", "category": "security", "description": "Sign-up and login with verification codes."}]
+    out = tk.suggest_skills(skills, template="web", brief="A physio clinic.", needs=["auth"])
+    by = {s["name"]: s for s in out}
+    assert by["auth-flows"]["recommended"] and by["auth-flows"]["needs"] == ["Sign-in"] and by["auth-flows"]["fit"] == []
+
+
+def test_the_planner_returns_needs_from_the_known_list_only():
+    raw = {"complete": True, "summary": "ok", "questions": [], "needs": ["auth", "scheduling", "teleport"]}
+    assert agent.parse_analysis(json.dumps(raw))["needs"] == ["auth", "scheduling"]
+    assert '"needs"' in agent._ANALYSIS_PROMPT and "{needs_list}" in agent._ANALYSIS_PROMPT
+
+
+def test_a_template_default_stands_in_when_the_planner_names_no_needs():
+    assert tk.resolve_needs("web", ["dashboard"]) == ["dashboard"]
+    assert tk.resolve_needs("website", None) == ["marketing", "forms", "help"]
+    assert tk.resolve_needs("cli", []) == []

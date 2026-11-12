@@ -190,7 +190,7 @@ def test_two_word_phrases_and_reasons_keep_the_briefs_own_words():
     kw = dict(platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
     out = lc.match_components(BRIEF_LIBS, brief="Staff check bookings; patients log in with a one-time code.", **kw)
     otp = next(c for c in out["forms"] if c["slug"] == "input-otp")
-    assert otp["recommended"] and otp["fit"] == ["login", "otp"]
+    assert otp["recommended"] and otp["fit"] == ["log in", "one-time code"]
     cal = next(c for c in out["forms"] if c["slug"] == "calendar")
     assert cal["fit"] == ["bookings"]  # shown as the brief wrote it, not folded to "booking"
 
@@ -208,3 +208,24 @@ def test_only_the_best_brief_pick_per_role_is_ticked_the_rest_are_starred():
     out = lc.match_components(BRIEF_LIBS, brief="A clinic booking site: patients log in and pick an appointment.", **kw)
     assert [c["slug"] for c in out["forms"] if c["pick"]] == ["calendar"]
     assert sum(c["recommended"] for c in out["forms"]) == 3
+
+
+def test_what_the_app_needs_is_recommended_even_when_the_brief_does_not_say_it():
+    kw = dict(platform="web", framework="react", tailwind=False, style="minimal", motion="subtle")
+    # "A physio clinic" names no feature; the planner's needs carry them.
+    out = lc.match_components(BRIEF_LIBS, brief="A physio clinic.", needs=["scheduling", "auth", "bogus"], **kw)
+    by = {c["slug"]: c for items in out.values() for c in items}
+    assert by["calendar"]["recommended"] and by["calendar"]["needs"] == ["Scheduling"]
+    assert by["input-otp"]["recommended"] and by["input-otp"]["needs"] == ["Sign-in"]
+    assert not by["art-gallery"]["recommended"] and by["art-gallery"]["needs"] == []
+    assert lc.parse_needs(["Auth", "auth", "nope", 3]) == ["auth"]
+
+
+def test_each_need_gets_its_own_pick_even_in_a_crowded_category():
+    libs = [_lib("k", ["react"], False, [(s, "forms", ["minimal"], "subtle", ["web"]) for s in
+                                         ("input", "input-group", "input-otp", "password-input", "calendar")])]
+    out = lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal",
+                              motion="subtle", brief="Patients log in with a one-time code.", needs=["auth", "scheduling"])
+    by = {c["slug"]: c for c in out["forms"]}
+    assert by["calendar"]["recommended"] and by["calendar"]["pick"]
+    assert by["input-otp"]["pick"]

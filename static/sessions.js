@@ -11252,18 +11252,19 @@ async function _openProjectStarterWizard(profile){
 
     // Step 8 — Toolkit: suggested skills (and components for visual projects)
     async function renderToolkit(){
-      sub.textContent='Picks from your brief and answers are ticked. Untick anything you do not want.';
+      sub.textContent='Picked for what your app needs, said or not. Untick anything you do not want.';
       const wrap=section('Pick your toolkit:');
       const holder=_psEl('div','ps-kit');wrap.append(holder);
       const look=isVisual()?ensureLook():null;
       // The brief and the planner's answers both shape the picks.
       const answers=(st.questions||[]).map(q=>({question:q.question,answer:st.answers[q.id]||''})).filter(a=>a.answer);
-      const key=JSON.stringify([st.template,st.brief.trim(),answers,look&&look.style,look&&look.motion,look&&look.framework,look&&look.tailwind]);
+      const needs=(st.analysis&&st.analysis.needs)||[];
+      const key=JSON.stringify([st.template,st.brief.trim(),answers,needs,look&&look.style,look&&look.motion,look&&look.framework,look&&look.tailwind]);
       setNav({canNext:false});
       if(st.kit.key!==key||!st.kit.data){
         holder.innerHTML='<div class="ps-kit-loading"><span class="ps-pulse"></span><span>Finding skills and components that fit…</span></div>';
         let data;
-        try{data=await api('/api/projects/starter/toolkit',{method:'POST',body:JSON.stringify({template:st.template,brief:st.brief.trim(),answers,
+        try{data=await api('/api/projects/starter/toolkit',{method:'POST',body:JSON.stringify({template:st.template,brief:st.brief.trim(),answers,needs,
           style:look&&look.style,motion:look&&look.motion,framework:look&&look.framework,tailwind:!!(look&&look.tailwind)})});}
         catch(error){if(done||st.step!==8)return;holder.innerHTML='';holder.append(_psEl('p','ps-kit-empty','Could not load suggestions: '+(error.message||error)));setNav({canNext:true,nextLabel:'Skip'});return;}
         if(done||st.step!==8) return;
@@ -11284,7 +11285,17 @@ async function _openProjectStarterWizard(profile){
       paintBuild();
     }
     // Why a pick was recommended: the brief's own words it matched.
-    function _psFit(fit,extra){const p=_psEl('span','ps-kit-fit'+(extra?' '+extra:''));p.append(_psEl('span','ps-kit-fit-label','Fits your brief:'),document.createTextNode(' '+fit.join(', ')));return p;}
+    // Why a pick was recommended: what the app needs (the planner's reading of
+    // the brief, said or not) and the brief's own words it matched.
+    function _psFit(item,extra,compact){
+      const needs=(item&&item.needs)||[];let fit=(item&&item.fit)||[];
+      if(compact&&needs.length) fit=[];  // a card has room for one reason; the larger preview shows both
+      if(!needs.length&&!fit.length) return null;
+      const p=_psEl('span','ps-kit-fit'+(extra?' '+extra:''));
+      if(needs.length) p.append(_psEl('span','ps-kit-fit-label','Your app needs:'),document.createTextNode(' '+needs.join(', ')+(fit.length?'. ':'')));
+      if(fit.length) p.append(_psEl('span','ps-kit-fit-label','Fits your brief:'),document.createTextNode(' '+fit.join(', ')));
+      return p;}
+    const _psWhy=(parent,item,extra,compact)=>{if(!item.recommended)return;const n=_psFit(item,extra,compact);if(n)parent.append(n);};
     function _psCheck(on){return '<span class="ps-kit-check'+(on?' is-on':'')+'" aria-hidden="true">'+_psIcon('check',12)+'</span>';}
     // The toolkit: a search box and a filter (skill categories, component
     // types) over two sections. Ticking a card updates it in place; search and
@@ -11352,10 +11363,10 @@ async function _openProjectStarterWizard(profile){
           const c1=_psEl('td','ps-kit-col-name');c1.append(_psEl('span','ps-kit-name',s.name));
           if(s.description) c1.append(_psEl('span','ps-kit-sub',s.description));
           // Why it was picked: under the description (or, on a phone, under the name).
-          if(s.recommended&&s.fit&&s.fit.length) c1.append(_psFit(s.fit,'ps-kit-fit-narrow'));
+          _psWhy(c1,s,'ps-kit-fit-narrow');
           const c2=_psEl('td','ps-kit-col-cat',s.category?_psLabel(s.category):'');
           const c3=_psEl('td','ps-kit-col-desc');c3.append(_psEl('span','ps-kit-desc',s.description||''));
-          if(s.recommended&&s.fit&&s.fit.length) c3.append(_psFit(s.fit));
+          _psWhy(c3,s);
           const c4=_psEl('td','ps-kit-col-star');if(s.recommended)c4.append(_psRecStar());
           tr.append(c0,c1,c2,c3,c4);
           tr.onclick=(event)=>{if(event.target.closest('a'))return;toggle(tr,st.kit.skills,s.name);};
@@ -11501,7 +11512,7 @@ async function _openProjectStarterWizard(profile){
       // most eight.
       function picksOf(items){
         let base;
-        if(items.some(c=>c.fit&&c.fit.length)) base=items.filter(c=>c.recommended);
+        if(items.some(c=>(c.fit&&c.fit.length)||(c.needs&&c.needs.length))) base=items.filter(c=>c.recommended);
         else{const scored=items.filter(c=>c.recommended||(c.score||0)>0).slice(0,8);base=scored.length>=4?scored:items.slice(0,8);}
         return items.filter(c=>base.includes(c)||st.kit.comps.has(c.library+'/'+c.slug));
       }
@@ -11530,7 +11541,7 @@ async function _openProjectStarterWizard(profile){
         pick.onclick=()=>{toggle(card.isConnected?card:holder.querySelector('.ps-kit-comp[data-comp="'+CSS.escape(id)+'"]'),st.kit.comps,id);paintPick();};
         paintPick();
         body.append(head,meta,chips);
-        if(c.fit&&c.fit.length) body.append(_psFit(c.fit));
+        {const why=_psFit(c);if(why)body.append(why);}
         body.append(pick);pop.append(media,body);
         // Beside the card when there is room, else centred over the wizard.
         // Kept inside the wizard's content column (or the viewport).
@@ -11590,7 +11601,7 @@ async function _openProjectStarterWizard(profile){
           text.append(top,_psEl('span','ps-kit-meta',_psLabel(c.role)+' · '+_psLabel(c.kind)));
           const chips=_psEl('span','ps-kit-chips');[...c.style,c.motion].filter(Boolean).forEach(t=>chips.append(_psEl('span','ps-kit-chip',_psLabel(t))));
           text.append(chips);
-          if(c.recommended&&c.fit&&c.fit.length) text.append(_psFit(c.fit));
+          _psWhy(text,c,'',true);
           el.append(thumb,text);
           el.onclick=()=>toggle(el,st.kit.comps,id);
           // A bigger look: the card's preview, larger, with its details and a

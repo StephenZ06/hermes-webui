@@ -230,13 +230,19 @@ tokens (`api/project_look.py`). Every template then gets a Toolkit step and a
 Review step whose primary action is Create & start building. Between 721px and
 1023px the stepper shows only the current label.
 
-Toolkit picks come from the whole brief: the brief text plus the planner's
-questions and the user's answers (a "no" answer leaves its question out). A word
+Toolkit picks come from what the app needs, said or not: the planner's review
+returns "needs" (keys of `api/library_catalog.NEEDS`: sign-in, scheduling,
+notifications, dashboard and so on, including what the brief only implies), and
+without a planner the template's defaults stand in (`TEMPLATE_NEEDS`). Each need
+gets its best component in every library starred and its best overall ticked.
+The brief text plus the planner's questions and the user's answers (a "no"
+answer leaves its question out) add on top. A word
 the brief shares with a skill counts twice a template hint; components match on
 their names and a table of brief words that call for them (booking calls for a
 calendar, "log in with a one-time code" for an OTP input; `api/library_catalog.py`
-`_FIT`). Each recommended skill or component says why ("Fits your brief: booking,
-calendar", the brief's own words). Only the best component per category is
+`_FIT`). Each recommended skill or component says why ("Your app needs: Scheduling",
+"Fits your brief: booking, calendar" in the brief's own words); a card shows the
+need when there is one, the larger preview shows both. Only the best component per category is
 ticked; the other recommendations are starred. A brief that calls for nothing in
 the catalogue falls back to the best style match per category.
 

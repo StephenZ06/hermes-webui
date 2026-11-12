@@ -50,3 +50,24 @@ def test_skills_start_on_recommended_and_picks_say_why(page):
     # The brief calls for components here, so Recommended lists only those picks.
     cards = page.eval_on_selector_all(".ps-cz-sec[data-sec='lib:calm'] .ps-kit-comp", "els => els.map(e => e.dataset.comp)")
     assert cards == ["calm/split"], cards
+
+
+def test_the_planners_needs_reach_the_toolkit_and_explain_a_pick(page):
+    sent = []
+    kit = json.loads(json.dumps(t.palb.KIT))
+    kit["skills"] = [dict(s, needs=["Sign-in"] if s["name"] == "impeccable" else []) for s in t.SKILLS]
+    for comp in kit["components"]["hero"]:
+        comp["needs"] = ["Landing page"] if comp["recommended"] else []
+
+    def toolkit(route):
+        sent.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(json=kit)
+    page.route("**/api/projects/starter/toolkit", toolkit)
+    page.route("**/api/projects/starter/job*", lambda r: r.fulfill(json={"status": "done", "result": {
+        "complete": False, "summary": "One thing left.", "questions": t.pol.QUESTIONS, "look": t.palb.LOOK,
+        "needs": ["auth", "marketing"]}}))
+    t._to_kit(page)
+    assert sent[-1]["needs"] == ["auth", "marketing"]
+    assert page.inner_text(".ps-kit-skill[data-skill=impeccable] .ps-kit-col-desc .ps-kit-fit") == "Your app needs: Sign-in"
+    wiz.open_lib(page, "calm")
+    assert "Your app needs: Landing page" in page.inner_text(".ps-kit-comp[data-comp='calm/split']")

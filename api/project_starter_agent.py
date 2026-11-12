@@ -30,6 +30,8 @@ import time
 import uuid
 from pathlib import Path
 
+from api.library_catalog import NEEDS, parse_needs
+
 logger = logging.getLogger(__name__)
 
 DOCS_PROFILE = "docs-gits"
@@ -119,6 +121,7 @@ Do not use any tools and do not create files. Reply with ONLY one JSON object:
     "recommended": "one of the option labels, copied exactly",
     "why": "2-4 sentences tied to the brief",
     "examples": ["concrete example", "..."]}}],
+ "needs": ["key from the list below", ...],
  "look": {{"style": "minimal|elegant|playful|bold|technical|editorial",
    "motion": "none|subtle|expressive",
    "framework": "react|vue|svelte|vanilla|swiftui|compose|react-native|flutter",
@@ -149,6 +152,12 @@ that way, a library or service it pairs with, or what it means for this
 project's first milestone). Prefer mainstream, well-supported choices unless
 the brief points elsewhere.
 
+"needs" lists what this app's interface will need, most important first, from
+these keys only: {needs_list}. Include what the brief implies but does not say:
+think through who uses the app and what they do in it (a clinic booking site
+needs sign-in, scheduling, notifications and forms even if the brief only says
+"booking"; a SaaS tool needs a dashboard, settings and pricing). Pick 4 to 8.
+
 "look" recommends the visual direction from the business the brief describes:
 the one style that suits its audience and brand, how much motion it should use,
 and the UI framework and whether Tailwind CSS fit the brief and template (for
@@ -178,6 +187,7 @@ def start_analysis(*, name: str, brief: str, template: dict) -> str:
         template=template.get("label") or template.get("key") or "blank",
         files=", ".join(template.get("files") or []),
         max_questions=_MAX_QUESTIONS,
+        needs_list="; ".join(f"{k} ({v.lower()})" for k, v in NEEDS.items()),
         name=name or "Untitled project",
         brief=brief[:20000],
     )
@@ -506,6 +516,9 @@ def parse_analysis(text: str) -> dict:
     look = parse_look(data.get("look"))
     if look:
         out["look"] = look
+    needs = parse_needs(data.get("needs"))
+    if needs:
+        out["needs"] = needs
     return out
 
 

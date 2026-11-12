@@ -51,16 +51,26 @@ def _words(text: str) -> set[str]:
     return lc.words(text)
 
 
-def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int = 6) -> list[dict]:
+def resolve_needs(template: str, raw) -> list[str]:
+    """What the app needs: the planner's list, else the template's defaults."""
+    return lc.parse_needs(raw) or list(lc.TEMPLATE_NEEDS.get(template, []))
+
+
+def suggest_skills(skills: list[dict], *, template: str, brief: str, needs: list[str] | None = None,
+                   limit: int = 6) -> list[dict]:
     """Every skill with a score; the best ``limit`` scoring 2 or more are recommended,
     imported skills that fit the project first.
 
     A word the brief shares with a skill counts twice as much as a word from
     the template's hints, so a detailed brief decides the picks; ``fit`` lists
-    the brief's words a skill matched."""
+    the brief's words a skill matched. ``needs`` (see ``library_catalog.NEEDS``)
+    add what the app needs but the brief may not say; ``needs`` on a skill
+    lists the ones it serves."""
     hints = _words(_TEMPLATE_HINTS.get(template, ""))
     forms = lc.word_forms(brief)
     brief_words = set(forms)
+    needs = lc.parse_needs(needs or [])
+    need_words = {n: lc.need_brief_words([n]) for n in needs}
     scored = []
     for skill in skills:
         name = str(skill.get("name") or "")
@@ -69,10 +79,11 @@ def suggest_skills(skills: list[dict], *, template: str, brief: str, limit: int 
         own = _words(" ".join([name.replace("-", " ").replace("_", " "), str(skill.get("category") or ""),
                                str(skill.get("description") or "")]))
         fit = sorted(own & brief_words)
-        score = len(own & hints) + 2 * len(fit)
+        served = [n for n in needs if len(own & need_words[n]) >= 1]
+        score = len(own & hints) + 2 * len(fit) + 2 * min(2, len(served))
         scored.append({"name": name, "category": str(skill.get("category") or ""),
                        "description": str(skill.get("description") or "")[:240], "score": score,
-                       "fit": [forms[w] for w in fit[:4]],
+                       "fit": [forms[w] for w in fit[:4]], "needs": [lc.NEEDS[n] for n in served][:3],
                        "imported": bool(skill.get("imported")), "recommended": False})
     # Skills the user imported come ahead of built-ins, but only when they fit the project.
     scored.sort(key=lambda s: (not (s["imported"] and s["score"] >= 2), -s["score"], s["name"]))
