@@ -74,7 +74,18 @@ def test_skills_and_tools_sits_below_workspace_and_lists_searches_filters_and_ad
 
     _menu(page, pid)
     labels = page.eval_on_selector_all(".project-ctx-menu:not(.popup-closing) > div", "els => els.map(e => e.textContent.trim())")
-    assert labels[1] == "Skills & Tools" and labels[0].startswith(("Workspace", "Set Workspace")), labels
+    # Rename and the colour dots lead; Skills & Tools sits right below Workspace.
+    assert labels[0] == "Rename" and page.locator(".project-ctx-menu:not(.popup-closing) > :nth-child(2)").get_attribute("class") == "project-ctx-colors", labels
+    at = next(i for i, x in enumerate(labels) if x.startswith(("Workspace", "Set Workspace")))
+    assert labels[at + 1] == "Skills & Tools", labels
+    # Equal inset on every side, and every divider spans exactly the rows' width.
+    page.evaluate("() => Promise.all(document.querySelector('.project-ctx-menu:not(.popup-closing)').getAnimations().map(a => a.finished))")
+    geo = page.evaluate("""() => { const m = document.querySelector('.project-ctx-menu:not(.popup-closing)'); const r = m.getBoundingClientRect();
+        const kids = [...m.children].map(k => { const q = k.getBoundingClientRect(); return {tag: k.tagName, l: q.left - r.left, rr: r.right - q.right}; });
+        const f = m.firstElementChild.getBoundingClientRect(), z = m.lastElementChild.getBoundingClientRect();
+        return {kids, top: f.top - r.top, bottom: r.bottom - z.bottom}; }""")
+    insets = {round(k["l"], 2) for k in geo["kids"]} | {round(k["rr"], 2) for k in geo["kids"]} | {round(geo["top"], 2), round(geo["bottom"], 2)}
+    assert len(insets) == 1 and any(k["tag"] == "HR" for k in geo["kids"]), geo
     page.click(".project-ctx-kit")
     page.wait_for_selector(".pkit-row:not(.pkit-skel)")
     names = lambda: page.eval_on_selector_all(".pkit-list-view .pkit-row .pkit-name", "els => els.map(e => e.firstChild.textContent)")

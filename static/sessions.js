@@ -12007,44 +12007,35 @@ function _showProjectContextMenu(e, proj, chip){
   // which is undefined in this codebase and falls back to transparent, letting
   // the session list show through the menu). Same variable used by
   // .session-action-menu and other floating popovers.
-  menu.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 0;z-index:9999;min-width:140px;box-shadow:0 4px 16px rgba(0,0,0,.35);';
+  // The menu pads 6px on every side; rows are inset, rounded buttons and the
+  // dividers span exactly the rows' width, so edges line up top to bottom.
+  menu.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:9999;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.35);';
   menu.style.left=e.clientX+'px';
   menu.style.top=e.clientY+'px';
+  const ROW='display:block;padding:7px 10px;border-radius:6px;font-size:13px;line-height:18px;white-space:nowrap;';
+  const addItem=(label, cls, onPick, color)=>{
+    const item=document.createElement('div');
+    item.className='project-ctx-item'+(cls?' '+cls:'');
+    item.textContent=label;
+    item.style.cssText=ROW+'cursor:pointer;color:'+(color||'var(--text)')+';';
+    item.onmouseenter=()=>item.style.background='var(--hover-bg)';
+    item.onmouseleave=()=>item.style.background='';
+    item.onclick=()=>{animatePopupOut(menu);onPick();};
+    menu.appendChild(item);
+    return item;
+  };
+  const addDivider=()=>{
+    const sep=document.createElement('hr');
+    sep.className='project-ctx-sep';
+    sep.style.cssText='border:none;border-top:1px solid var(--border);margin:5px 0;';
+    menu.appendChild(sep);
+  };
 
-  // Workspace Folder option (above Rename per design)
-  const workspaceItem=document.createElement('div');
-  const boundPath=proj.workspace_path||'';
-  workspaceItem.textContent=boundPath?('Workspace: '+boundPath):'Set Workspace Folder';
-  if(boundPath) workspaceItem.title=boundPath;
-  workspaceItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;';
-  workspaceItem.onmouseenter=()=>workspaceItem.style.background='var(--hover-bg)';
-  workspaceItem.onmouseleave=()=>workspaceItem.style.background='';
-  workspaceItem.onclick=()=>{animatePopupOut(menu);_showProjectWorkspacePicker(proj,chip);};
-  menu.appendChild(workspaceItem);
-
-  // Skills & Tools (below Workspace): the project's skills, components,
-  // packages and MCP servers in a centred modal (static/project-kit.js).
-  const kitItem=document.createElement('div');
-  kitItem.className='project-ctx-item project-ctx-kit';
-  kitItem.textContent='Skills & Tools';
-  kitItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap;';
-  kitItem.onmouseenter=()=>kitItem.style.background='var(--hover-bg)';
-  kitItem.onmouseleave=()=>kitItem.style.background='';
-  kitItem.onclick=()=>{animatePopupOut(menu);_openProjectKit(proj);};
-  menu.appendChild(kitItem);
-
-  // Rename option
-  const renameItem=document.createElement('div');
-  renameItem.textContent='Rename';
-  renameItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);';
-  renameItem.onmouseenter=()=>renameItem.style.background='var(--hover-bg)';
-  renameItem.onmouseleave=()=>renameItem.style.background='';
-  renameItem.onclick=()=>{animatePopupOut(menu);_startProjectRename(proj,chip);};
-  menu.appendChild(renameItem);
-
-  // Color picker row
+  // Rename and the colour dots first: the edits made most often.
+  addItem('Rename','project-ctx-rename',()=>_startProjectRename(proj,chip));
   const colorRow=document.createElement('div');
-  colorRow.style.cssText='display:flex;gap:5px;padding:7px 14px;align-items:center;';
+  colorRow.className='project-ctx-colors';
+  colorRow.style.cssText='display:flex;gap:6px;padding:7px 10px;align-items:center;';
   PROJECT_COLORS.forEach(hex=>{
     const dot=document.createElement('span');
     dot.style.cssText=`width:16px;height:16px;border-radius:50%;background:${hex};cursor:pointer;display:inline-block;flex-shrink:0;`;
@@ -12062,42 +12053,38 @@ function _showProjectContextMenu(e, proj, chip){
     colorRow.appendChild(dot);
   });
   menu.appendChild(colorRow);
+  addDivider();
+
+  // Workspace folder, then Skills & Tools (the project's skills, components,
+  // packages and MCP servers in a centred modal, static/project-kit.js).
+  const boundPath=proj.workspace_path||'';
+  const workspaceItem=addItem(boundPath?('Workspace: '+boundPath):'Set Workspace Folder','project-ctx-workspace',()=>_showProjectWorkspacePicker(proj,chip));
+  workspaceItem.style.overflow='hidden';
+  workspaceItem.style.textOverflow='ellipsis';
+  workspaceItem.style.maxWidth='260px';
+  if(boundPath) workspaceItem.title=boundPath;
+  addItem('Skills & Tools','project-ctx-kit',()=>_openProjectKit(proj));
 
   // Move up / Move down among the sidebar's project folders.
   const order=_sidebarProjectOrder();
   const at=order.indexOf(proj.project_id);
   if(at>=0&&order.length>1){
-    const moveSep=document.createElement('hr');
-    moveSep.style.cssText='border:none;border-top:1px solid var(--border);margin:4px 0;';
-    menu.appendChild(moveSep);
+    addDivider();
     [['Move up',-1],['Move down',1]].forEach(([label,dir])=>{
-      const item=document.createElement('div');
       const blocked=(dir<0&&at===0)||(dir>0&&at===order.length-1);
-      item.className='project-ctx-item project-ctx-move'+(blocked?' is-disabled':'');
+      const item=addItem(label,'project-ctx-move'+(blocked?' is-disabled':''),()=>_moveProject(proj,dir));
       item.dataset.dir=String(dir);
-      item.textContent=label;
       item.setAttribute('aria-disabled',blocked?'true':'false');
-      item.style.cssText='padding:7px 14px;font-size:13px;white-space:nowrap;'+(blocked?'color:var(--muted);opacity:.5;cursor:default;':'cursor:pointer;color:var(--text);');
-      if(!blocked){
-        item.onmouseenter=()=>item.style.background='var(--hover-bg)';
-        item.onmouseleave=()=>item.style.background='';
-        item.onclick=()=>{animatePopupOut(menu);_moveProject(proj,dir);};
-      } else item.onclick=(ev)=>ev.stopPropagation();
-      menu.appendChild(item);
+      if(blocked){
+        item.style.cssText=ROW+'color:var(--muted);opacity:.5;cursor:default;';
+        item.onmouseenter=item.onmouseleave=null;
+        item.onclick=(ev)=>ev.stopPropagation();
+      }
     });
   }
 
-  // Divider + Delete
-  const sep=document.createElement('hr');
-  sep.style.cssText='border:none;border-top:1px solid var(--border);margin:4px 0;';
-  menu.appendChild(sep);
-  const delItem=document.createElement('div');
-  delItem.textContent='Delete';
-  delItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--error,#e94560);';
-  delItem.onmouseenter=()=>delItem.style.background='var(--hover-bg)';
-  delItem.onmouseleave=()=>delItem.style.background='';
-  delItem.onclick=()=>{animatePopupOut(menu);_confirmDeleteProject(proj);};
-  menu.appendChild(delItem);
+  addDivider();
+  addItem('Delete','project-ctx-delete',()=>_confirmDeleteProject(proj),'var(--error,#e94560)');
 
   document.body.appendChild(menu);
   _clampFixedToViewport(menu);

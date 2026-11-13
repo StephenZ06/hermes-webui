@@ -18898,14 +18898,15 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-overlay.is-closing{animation:pkit-fade-out .2s cubic-bezier(.4,0,1,1) forwards;}
 .pkit-overlay.is-closing .pkit{animation:pkit-drop .2s cubic-bezier(.4,0,1,1) forwards;}
 .pkit{--pkit-pad:20px;position:relative;width:min(680px,100%);height:min(620px,calc(100vh - 48px));height:min(620px,calc(100dvh - 48px));display:flex;flex-direction:column;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:16px;box-shadow:0 2px 6px rgba(0,0,0,.18),0 24px 64px -12px rgba(0,0,0,.5);overflow:hidden;animation:pkit-rise .32s cubic-bezier(.22,1,.36,1);}
-.pkit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:var(--pkit-pad) var(--pkit-pad) 14px;}
+/* The gap under the project name matches the gap above the title, measured on the ink. */
+.pkit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:var(--pkit-pad) var(--pkit-pad) calc(var(--pkit-pad) + .5px);}
 .pkit-heading{min-width:0;}
 .pkit-title{margin:0;font-size:17px;line-height:24px;font-weight:650;letter-spacing:-.01em;}
 .pkit-sub{display:flex;align-items:center;gap:8px;margin:4px 0 0;min-width:0;font-size:12.5px;line-height:18px;color:var(--muted);}
 .pkit-dot{flex:none;width:8px;height:8px;border-radius:50%;}
 .pkit-proj{flex:none;color:var(--text);font-weight:550;}
 .pkit-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pkit-tools .themed-select-wrap{width:auto;flex:none;}
+.pkit-tools .themed-select-wrap{width:auto;flex:none;margin-inline:2px;}
 .pkit-tools .themed-select-trigger{height:36px;min-width:150px;padding:0 12px;border-color:var(--border2);border-radius:10px;font-size:13px;}
 .pkit .pkit-search input,.pkit .pkit-search input:focus,.pkit .pkit-search input:focus-visible{border:0;border-radius:0;box-shadow:none;outline:none;background:transparent;padding:0;margin:0;}
 .pkit-icon-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;transition:background-color .15s ease,color .15s ease;}
@@ -18929,6 +18930,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-sort{flex:none;height:36px;padding:0 30px 0 12px;border:1px solid var(--border2);border-radius:10px;background:var(--input-bg,transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.25 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E") no-repeat right 10px center/14px;color:var(--text);font:inherit;font-size:13px;cursor:pointer;appearance:none;-webkit-appearance:none;}
 .pkit-add{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px 0 11px;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:10px;background:var(--accent-bg);color:var(--accent-text,var(--accent));font:inherit;font-size:13px;font-weight:550;cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease;}
 .pkit-add svg{width:14px;height:14px;}
+.pkit-add > *{translate:0 1px;}
 .pkit-add:hover{background:var(--accent-bg-strong);border-color:var(--accent);}
 .pkit-add:active{transform:translateY(1px);}
 .pkit-add:disabled{opacity:.45;cursor:not-allowed;}
@@ -19012,6 +19014,6 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 
 /* Settings side panel: icons and titles 1px lower, so the icon's ink sits the
    same distance (11.5px) from the row's top, bottom and left edges. */
-#settingsMenu .settings-menu-items > .side-menu-item{padding-block:9px;}
+#settingsMenu .settings-menu-items > .side-menu-item{height:37px;padding:10px 11px 10px 10.5px;line-height:17px;}
 /* Notes side panel: the Trash count 2px lower, level with the "Trash" letters. */
 .nb-nav .nb-trash-scope > .nb-scope-count{translate:0 1px;}

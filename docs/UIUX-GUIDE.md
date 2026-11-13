@@ -390,8 +390,10 @@ faces scaled with `size-adjust` so its tuned sizes still fit.
 ## Project menu: Skills & Tools and ordering
 
 A project folder's options menu (kebab, right-click or long-press) lists
-Workspace, then **Skills & Tools**, Rename, colours, **Move up** / **Move
-down**, and Delete. Move up and Move down swap the folder with its neighbour
+Rename and the colour dots first, then Workspace and **Skills & Tools**, then
+**Move up** / **Move down**, then Delete, with a divider between each group.
+The menu pads 6px on every side; rows are inset rounded buttons and each
+divider spans exactly the rows' width. Move up and Move down swap the folder with its neighbour
 in the sidebar (`POST /api/projects/reorder` with the sidebar's ids in their
 new order; projects kept off the sidebar keep their place in the list). The
 top folder's Move up and the bottom one's Move down are shown disabled. Rows
