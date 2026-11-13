@@ -20739,6 +20739,14 @@ def _route_post_api_projects_set_workspace(handler, parsed, body, diag):
     proj["workspace_path"] = workspace_path
     save_projects(projects)
     sessions_updated = _apply_project_workspace(body["project_id"], workspace_path)
+    if workspace_path:
+        # Every project gets the icon packs (AGENTS.md toolkit block + Skills & Tools).
+        try:
+            from api.project_toolkit import ensure_icon_packs
+
+            ensure_icon_packs(Path(workspace_path))
+        except (OSError, ValueError):
+            logger.warning("Could not add the icon packs to %s", workspace_path, exc_info=True)
     return j(handler, {"ok": True, "project": proj, "sessions_updated": sessions_updated})
 
 

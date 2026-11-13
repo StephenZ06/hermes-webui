@@ -417,6 +417,14 @@ project with no workspace folder offers to set one. The wizard's toolkit block
 tells agents to install project skills in `.agents/skills/<name>/SKILL.md`, so
 a skill installed from a repo shows up in the modal.
 
+The Add skill view has a category picker right of its search (the addable
+skills' categories, each with its count; it uses the 2px-gapped option list).
+Every project also gets the icon packs in `api/project_toolkit.ICON_PACKS`
+(today mx-icons): `apply_toolkit` writes them into the toolkit block and the
+manifest even when nothing was picked in the wizard, binding a workspace folder
+adds them (`ensure_icon_packs`, idempotent), and the modal lists them under the
+Icons kind, read-only.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with

@@ -111,6 +111,22 @@ def test_skills_and_tools_sits_below_workspace_and_lists_searches_filters_and_ad
     page.click(".pkit-add")
     page.wait_for_selector(".pkit-add-view:not([hidden])")
     assert page.is_disabled(".pkit-confirm")
+    # A category picker sits right of the search, listing the addable skills' categories.
+    tools = page.eval_on_selector_all(".pkit-add-view .pkit-tools > *", "els => els.map(e => e.className.split(' ')[0])")
+    assert tools == ["pkit-icon-btn", "pkit-search", "themed-select-wrap"], tools
+    search_box = page.locator(".pkit-add-view .pkit-search").bounding_box()
+    cat_box = page.locator(".pkit-add-view .themed-select-trigger").bounding_box()
+    assert abs(search_box["y"] - cat_box["y"]) < 0.5 and abs(search_box["height"] - cat_box["height"]) < 0.5, (search_box, cat_box)
+    assert abs(cat_box["x"] - (search_box["x"] + search_box["width"]) - 8) < 0.5, (search_box, cat_box)
+    assert page.eval_on_selector_all(".pkit-cat-filter option", "els => els.map(e => e.textContent)") == ["All categories", "web · 1", "writing · 1"]
+    add_names = lambda: page.eval_on_selector_all(".pkit-add-rows .pkit-name", "els => els.map(e => e.textContent)")
+    assert add_names() == ["docs", "seo"]
+    page.click(".pkit-add-view .themed-select-trigger")
+    page.click(".themed-select-popup .themed-select-option:has-text('web')")
+    assert add_names() == ["seo"]
+    page.click(".pkit-add-view .themed-select-trigger")
+    page.click(".themed-select-popup .themed-select-option:has-text('All categories')")
+    assert add_names() == ["docs", "seo"]
     page.click(".pkit-pick-btn[data-name=docs]")
     assert page.text_content(".pkit-confirm") == "Add 1 to project"
     page.click(".pkit-confirm")

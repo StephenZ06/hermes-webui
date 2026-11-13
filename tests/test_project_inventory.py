@@ -29,7 +29,7 @@ def test_wizard_picks_are_recorded_and_listed_with_folder_skills_packages_and_mc
     got = {(i["kind"], i["name"], i["source"]) for i in out["items"]}
     assert got == {("skill", "tdd", "wizard"), ("skill", "seo", "wizard"), ("skill", "repo-skill", "folder"),
                    ("package", "react", "folder"), ("package", "vite", "folder"), ("package", "fastapi", "folder"),
-                   ("mcp", "github", "folder")}
+                   ("mcp", "github", "folder"), ("icons", "mx-icons", "wizard")}
     assert [a["name"] for a in out["addable"]] == ["docs"]
     tdd = next(i for i in out["items"] if i["name"] == "tdd")
     assert tdd["description"] == "Test first" and tdd["removable"] and tdd["added_at"]
@@ -91,3 +91,42 @@ def test_reorder_moves_only_the_named_projects_among_their_own_slots(monkeypatch
     out.clear()
     routes._route_post_api_projects_reorder(None, None, {"order": ["zzz"]}, None)
     assert out.get("status") == 404
+
+
+def test_a_wizard_project_and_one_with_nothing_picked_both_get_the_icon_packs(tmp_path):
+    picked, bare = tmp_path / "picked", tmp_path / "bare"
+    picked.mkdir(); bare.mkdir()
+    tk.apply_toolkit(picked, {"skills": ["tdd"], "components": [], "look": None, "needs": []}, libraries_root=tmp_path / "libs")
+    assert tk.apply_toolkit(bare, None, libraries_root=tmp_path / "libs") == ["AGENTS.md", ".agent/toolkit.json"]
+    for root in (picked, bare):
+        text = (root / "AGENTS.md").read_text()
+        assert tk.ICONS_INTRO in text and "npm install mx-icons" in text and "github.com/ig-imanish/mx-icons" in text
+        icons = [i for i in inv.inventory(_proj(root), installed=INSTALLED)["items"] if i["kind"] == "icons"]
+        assert [i["name"] for i in icons] == ["mx-icons"] and icons[0]["link"] and not icons[0]["removable"]
+
+
+def test_icon_packs_are_added_to_an_existing_project_once_and_survive_skill_edits(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Own rules\n\nKeep this.\n")
+    inv.set_skills(_proj(tmp_path), add=["tdd"], remove=[], installed=set(INSTALLED))
+    assert tk.ensure_icon_packs(tmp_path) == ["AGENTS.md", ".agent/toolkit.json"]
+    first = (tmp_path / "AGENTS.md").read_text()
+    assert tk.ensure_icon_packs(tmp_path) == []  # idempotent
+    assert (tmp_path / "AGENTS.md").read_text() == first
+    assert first.startswith("# Own rules\n\nKeep this.\n") and first.count(tk.ICONS_INTRO) == 1
+    inv.set_skills(_proj(tmp_path), add=["docs"], remove=["tdd"], installed=set(INSTALLED))
+    after = (tmp_path / "AGENTS.md").read_text()
+    assert tk.ICONS_INTRO in after and "`docs`" in after and "`tdd`" not in after
+    manifest = json.loads((tmp_path / ".agent" / "toolkit.json").read_text())
+    assert [p["name"] for p in manifest["icon_packs"]] == ["mx-icons"]
+
+
+def test_icon_packs_leave_a_linked_agents_file_alone(tmp_path):
+    outside = tmp_path / "outside.md"
+    outside.write_text("not ours\n")
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "AGENTS.md").symlink_to(outside)
+    import pytest
+    with pytest.raises(ValueError):
+        tk.ensure_icon_packs(proj)
+    assert outside.read_text() == "not ours\n"

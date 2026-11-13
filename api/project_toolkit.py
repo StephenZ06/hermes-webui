@@ -20,6 +20,23 @@ from api import library_catalog as lc
 BEGIN = "<!-- hermes:toolkit:begin -->"
 END = "<!-- hermes:toolkit:end -->"
 
+# Icon packs every project gets: listed in AGENTS.md's toolkit block and in
+# Skills & Tools. ``ensure_icon_packs`` adds them to an existing project.
+ICON_PACKS = (
+    {"name": "mx-icons", "description": "React SVG icons in linear, bold, bulk and mini variants (MIT).",
+     "install": "npm install mx-icons", "repo": "https://github.com/ig-imanish/mx-icons",
+     "browse": "https://mx-icons.vercel.app"},
+)
+ICONS_INTRO = "Icon packs for this project (use these before drawing new icons):"
+
+
+def icon_pack_lines() -> list[str]:
+    lines = [ICONS_INTRO, ""]
+    for pack in ICON_PACKS:
+        lines.append(f"- **{pack['name']}**: {pack['description']} In a React UI, install with "
+                     f"`{pack['install']}` inside the project; browse the set at {pack['browse']}. Source: {pack['repo']}")
+    return lines + [""]
+
 _PLATFORM = {"web": "web", "website": "web", "ios": "ios", "android": "android"}
 _DEFAULT_FRAMEWORK = {"web": "react", "website": "vanilla", "ios": "swiftui", "android": "compose"}
 _TEMPLATE_HINTS = {
@@ -179,9 +196,10 @@ def _look_lines(look: dict) -> list[str]:
 
 def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) -> list[str]:
     """Write the toolkit into ``project``; returns the project-relative files written."""
-    if not toolkit or not (toolkit.get("look") or toolkit.get("skills") or toolkit.get("components") or toolkit.get("needs")):
-        return []
     project = Path(project)
+    if not toolkit or not (toolkit.get("look") or toolkit.get("skills") or toolkit.get("components") or toolkit.get("needs")):
+        # Nothing picked in the wizard: the project still gets the icon packs.
+        return ensure_icon_packs(project)
     written: list[str] = []
     comp_lines = []
     comp_files: dict = {}
@@ -230,6 +248,7 @@ def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) 
             written.append("docs/PRODUCT.md")
         else:
             rules += ["What the app needs:", "", *lines, ""]
+    rules += icon_pack_lines()
     rules += ["Skills installed for this project from a repo go in `.agents/skills/<name>/SKILL.md`;"
               " packages install inside the project. Both show under Skills & Tools in the WebUI.", ""]
     _upsert(project / "AGENTS.md", "\n".join(rules))
@@ -247,11 +266,50 @@ def _write_manifest(project: Path, skills: list[str], components: list[dict], co
     now = time.time()
     inv.write_manifest(project, {"version": 1,
         "skills": [{"name": n, "source": "wizard", "added_at": now} for n in skills],
+        "icon_packs": [{"name": p["name"], "source": "wizard", "added_at": now} for p in ICON_PACKS],
         "components": [{"library": c.get("library"), "library_name": c.get("library_name"), "slug": c.get("slug"),
                         "name": c.get("name"), "role": c.get("role"), "kind": c.get("kind"),
                         "link": c.get("demo") or c.get("source") or "",
                         "files": comp_files.get((c.get("library"), c.get("slug")), []),
                         "source": "wizard", "added_at": now} for c in components]})
+
+
+def ensure_icon_packs(project: Path) -> list[str]:
+    """Add the icon packs to an existing project: their lines in AGENTS.md's
+    toolkit block (the block is created when missing) and their entries in
+    ``.agent/toolkit.json``. Idempotent; returns the files it changed."""
+    from api import project_inventory as inv
+
+    project = Path(project)
+    if not project.is_dir() or project.is_symlink():
+        return []
+    written: list[str] = []
+    agents = project / "AGENTS.md"
+    if agents.is_symlink():
+        raise ValueError("AGENTS.md is a link; it was left alone.")
+    text = agents.read_text(encoding="utf-8") if agents.exists() else ""
+    if ICONS_INTRO not in text:
+        if BEGIN in text and END in text:
+            body = text.split(BEGIN, 1)[1].split(END, 1)[0].strip("\n")
+            tail = "Skills installed for this project from a repo go in"
+            if tail in body:
+                head, rest = body.split(tail, 1)
+                body = head.rstrip("\n") + "\n\n" + "\n".join(icon_pack_lines()) + tail + rest
+            else:
+                body = body.rstrip("\n") + "\n\n" + "\n".join(icon_pack_lines())
+            _upsert(agents, body)
+        else:
+            _upsert(agents, "\n".join(["## Project toolkit", "", *icon_pack_lines()]))
+        written.append("AGENTS.md")
+    manifest = inv.read_manifest(project)
+    have = {p["name"] for p in manifest["icon_packs"]}
+    missing = [p for p in ICON_PACKS if p["name"] not in have]
+    if missing:
+        now = time.time()
+        manifest["icon_packs"] += [{"name": p["name"], "source": "added", "added_at": now} for p in missing]
+        inv.write_manifest(project, manifest)
+        written.append(".agent/toolkit.json")
+    return written
 
 
 def _needs_lines(needs: list[str], components: list[dict]) -> list[str]:

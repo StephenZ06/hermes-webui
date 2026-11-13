@@ -76,7 +76,8 @@ def read_manifest(root: Path) -> dict:
         data = {}
     skills = [s for s in data.get("skills") or [] if isinstance(s, dict) and isinstance(s.get("name"), str)]
     comps = [c for c in data.get("components") or [] if isinstance(c, dict) and isinstance(c.get("name"), str)]
-    return {"version": 1, "skills": skills, "components": comps}
+    icons = [p for p in data.get("icon_packs") or [] if isinstance(p, dict) and isinstance(p.get("name"), str)]
+    return {"version": 1, "skills": skills, "components": comps, "icon_packs": icons}
 
 
 def write_manifest(root: Path, data: dict) -> None:
@@ -242,6 +243,14 @@ def inventory(project: dict, *, installed: dict[str, dict]) -> dict:
             "source": comp.get("source") or "wizard", "where": files[0] if files else "docs/UI_UX.md",
             "files": files, "link": str(comp.get("link") or "")[:400],
             "added_at": comp.get("added_at") or _mtime(root / MANIFEST), "removable": False})
+    from api.project_toolkit import ICON_PACKS
+    packs = {p["name"]: p for p in ICON_PACKS}
+    for entry in manifest["icon_packs"]:
+        pack = packs.get(entry["name"]) or {}
+        items.append({
+            "kind": "icons", "name": entry["name"][:120], "description": str(pack.get("description") or "")[:240],
+            "source": entry.get("source") or "added", "where": "AGENTS.md", "link": str(pack.get("browse") or pack.get("repo") or "")[:400],
+            "added_at": entry.get("added_at") or _mtime(root / MANIFEST), "removable": False})
     seen = {(i["kind"], i["name"]) for i in items}
     for item in _local_skills(root) + _packages(root) + _mcp(root):
         if (item["kind"], item["name"]) not in seen:

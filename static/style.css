@@ -18950,6 +18950,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-kind svg{width:16px;height:16px;}
 .pkit-kind-skill{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);}
 .pkit-kind-component{background:color-mix(in srgb,var(--success,#3fb97f) 14%,transparent);color:var(--success,#3fb97f);}
+.pkit-kind-icons{background:color-mix(in srgb,#c084fc 14%,transparent);color:#a855f7;}
 .pkit-kind-mcp{background:color-mix(in srgb,var(--warning,#d9a036) 14%,transparent);color:var(--warning,#d9a036);}
 .pkit-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
 .pkit-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:13.5px;line-height:19px;font-weight:550;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -19003,6 +19004,8 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
   .pkit-list-view .pkit-search{flex-basis:100%;}
   .pkit-list-view .pkit-tools .themed-select-wrap{flex:1;}
   .pkit-list-view .pkit-tools .themed-select-wrap > *{width:100%;}
+  .pkit-add-view .pkit-tools .themed-select-wrap{flex:1 1 100%;}
+  .pkit-add-view .pkit-tools .themed-select-wrap > *{width:100%;}
   .pkit-when{display:none;}
   .pkit-row .pkit-remove{opacity:1;}
   .pkit-kbd{display:none;}
