@@ -187,7 +187,8 @@ def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) 
         copied = _copy_files(project, comp, libraries_root)
         written += copied
         how = {"npm": f"install with `{comp['install']}` (inside the project)" if comp.get("install") else "install from npm inside the project",
-               "copy-paste": "copied to " + ", ".join(f"`{c}`" for c in copied) if copied else "copy its code from the source link",
+               "copy-paste": "copied to " + ", ".join(f"`{c}`" for c in copied) if copied
+               else "its code is not in the library's downloaded source (it may be a paid or hosted-only component); get it from the link, or ask the owner",
                "link": "follow the source link"}.get(comp["kind"], "see the source link")
         link = comp.get("demo") or comp.get("source") or ""
         comp_lines.append(f"- **{comp['name']}** ({_label(comp['role'])}, from {comp['library_name']}): {how}."

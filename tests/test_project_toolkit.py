@@ -246,3 +246,16 @@ def test_a_registry_entry_named_in_another_word_order_still_counts(tmp_path):
     assert lc.registry_files(src, "gooey-blobs-loaders") == ["src/ui/blobs.tsx"]
     assert lc.registry_files(src, "hover-image") == ["src/ui/blobs.tsx"]
     assert lc.registry_files(src, "gooey") == []
+
+
+def test_a_component_with_no_code_in_the_source_says_so(catalog, tmp_path):
+    lib = catalog / "calm-ui"
+    (lib / "components" / "pro-glow.md").write_text(GLOW.replace("Glow card", "Pro glow"))
+    project = tmp_path / "site"
+    (project / "docs").mkdir(parents=True)
+    (project / "AGENTS.md").write_text("# A\n")
+    (project / "docs" / "UI_UX.md").write_text("# UI\n")
+    toolkit = tk.normalize_toolkit({"components": [{"library": "calm-ui", "slug": "pro-glow"}], "skills": []},
+                                   template="website", libraries_root=catalog, skill_names=set())
+    tk.apply_toolkit(project, toolkit, libraries_root=catalog)
+    assert "not in the library's downloaded source" in (project / "docs" / "UI_UX.md").read_text()
