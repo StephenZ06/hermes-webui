@@ -1,7 +1,16 @@
 # Project status — hermes-webui
 
 
-## 2026-11-13 (latest): performance checklist in new projects; anti-slop for Hermes agents
+## 2026-11-13 (latest): final verification pass
+
+- Commits 5f4dee520, 473e7e387, 68457ab89 (deployed, health 200, sw.js g68457ab89).
+- Real end-to-end in the live container: catalogue match + create_starter_pack + apply_toolkit wrote AGENTS.md (toolkit block, performance rule), docs/PERFORMANCE.md, docs/UI_UX.md approved components, copied vendor/ui files, Decisions in README. Fixed two ranking faults it exposed (a need ticked once per category; least typical component chosen).
+- One real planner review (architecture profile) for "A website for a physiotherapy clinic in Leeds." returned needs marketing, scheduling, forms, pricing, help, errors, loading: implied needs work with the live model.
+- Red-green: today's 14 new unit tests and 3 round-7 browser tests fail on e0a4ea18e and pass now.
+- Fixed a latent NameError in api/dashboard_game.py `_purse_progress` (unimported logging) found by tests/test_ruff_forward_lint.py; two older builder test files updated for the round-6 Next validation and margins.
+- Remaining known gaps: ObsidianUI catalogue entries list no files, so their code is never copied (projects get a source link only); adopted projects with their own AGENTS.md get docs/PERFORMANCE.md without the rule; the wizard's "needs" are not written into the project.
+
+## 2026-11-13: performance checklist in new projects; anti-slop for Hermes agents
 
 - Commit a10a49045 (deployed): web, website, iOS and Android templates write `docs/PERFORMANCE.md` (from `api/starter_performance.md`) plus an AGENTS.md rule, both between `hermes:performance` markers the setup agent keeps word for word. Adopted projects with their own AGENTS.md get the doc but not the rule (the adopt path only appends Hermes' continuity section).
 - anti-slop 3.2.29 (github.com/miqdadbadjuber/anti-slop @54e39872aeba, MIT) installed for Hermes agents only, outside this repo: six skill folders in host `~/workspace/ecc-minimal-skills/` (= container `/workspace/ecc-minimal-skills`, already an external skills dir of the default profile and architecture, coding-claude, coding-codex, docs-gits); `local-model` profile config gained that dir (backup `config.yaml.bak-20261113-antislop`). Gateway container `hermes-migrated` got a copy under `/opt/data/skills/antislop/`. Mode saved as `during` in `~/.config/antislop/settings.json` under each Hermes `home/` (default, every profile, and `/opt/data/home`). Verified with `tools.skills_tool` per profile: all six skills load everywhere. No installer, no MCP contrast server.
