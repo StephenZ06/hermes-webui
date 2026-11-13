@@ -326,6 +326,22 @@ def brief_fit(comp: dict, brief_words: set[str]) -> list[str]:
 _REGISTRY_DIRS = ("public/r", "registry", "r", "public/registry")
 
 
+def _slug_words(name: str) -> tuple[str, ...]:
+    short = {"img": "image", "imgs": "image", "btn": "button", "nav": "navigation"}
+    return tuple(sorted(short.get(w, w) for w in name.split("-") if w))
+
+
+def _registry_alias(folder: Path, slug: str) -> Path | None:
+    """A registry entry named with the same words in another order or with a
+    short form ("loaders-gooey-blobs" for gooey-blobs-loaders, "hover-img" for
+    hover-image); only when exactly one entry matches."""
+    if not folder.is_dir() or folder.is_symlink():
+        return None
+    want = _slug_words(slug)
+    hits = [p for p in folder.glob("*.json") if _slug_words(p.stem) == want and p.is_file() and not p.is_symlink()]
+    return hits[0] if len(hits) == 1 else None
+
+
 def registry_files(source: Path, slug: str) -> list[str]:
     """A component's source files from the library's own shadcn-style registry
     (``public/r/<slug>.json`` and the like), as paths inside ``source`` that
@@ -343,7 +359,9 @@ def registry_files(source: Path, slug: str) -> list[str]:
         except ValueError:
             continue
         if not entry.is_file() or entry.is_symlink():
-            continue
+            entry = _registry_alias(entry.parent, clean)
+            if entry is None:
+                continue
         try:
             data = json.loads(entry.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, ValueError):

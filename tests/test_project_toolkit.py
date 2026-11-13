@@ -233,3 +233,16 @@ def test_what_the_app_needs_goes_into_the_product_doc_with_the_components_that_s
     (other / "AGENTS.md").write_text("# Agent instructions\n")
     tk.apply_toolkit(other, {"look": None, "skills": [], "components": [], "needs": ["auth"]}, libraries_root=catalog)
     assert "- Sign-in" in (other / "AGENTS.md").read_text()
+
+
+def test_a_registry_entry_named_in_another_word_order_still_counts(tmp_path):
+    from api import library_catalog as lc
+    src = tmp_path / "source"
+    (src / "src" / "ui").mkdir(parents=True)
+    (src / "src" / "ui" / "blobs.tsx").write_text("x")
+    (src / "public" / "r").mkdir(parents=True)
+    (src / "public" / "r" / "loaders-gooey-blobs.json").write_text(json.dumps({"files": [{"path": "ui/blobs.tsx"}]}))
+    (src / "public" / "r" / "hover-img.json").write_text(json.dumps({"files": [{"path": "ui/blobs.tsx"}]}))
+    assert lc.registry_files(src, "gooey-blobs-loaders") == ["src/ui/blobs.tsx"]
+    assert lc.registry_files(src, "hover-image") == ["src/ui/blobs.tsx"]
+    assert lc.registry_files(src, "gooey") == []
