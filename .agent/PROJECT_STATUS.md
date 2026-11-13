@@ -1,14 +1,21 @@
 # Project status — hermes-webui
 
 
-## 2026-11-13 (latest): final verification pass
+## 2026-11-13 (latest): the three gaps closed
+
+- Commits 27dfe0d57, b8c65d833, 8edd124e0, 271bff361 (deployed, health 200, sw.js g271bff361).
+- Component code: `lc.registry_files` reads a library's shadcn-style registry (`public/r/<slug>.json`, also `registry/`, `r/`; word-order and short-form aliases such as hover-img) and `_copy_files` falls back to it when a catalogue entry lists no files; `commit_import` fills missing lists the same way. Live check: all 60 ObsidianUI components resolve and copy (they previously only got a source link). The catalogue .md files were not rewritten.
+- Adopt: an existing docs/PERFORMANCE.md is kept and the checklist lands as PERFORMANCE_CHECKLIST.md (rule points there); projects adopted before the rule get only the rule inside their Hermes section (rollback removes only that, via `added.perf_appended`); the adopt prompt keeps the performance markers. Note: adopting already appended the rule in the normal case; the earlier "gap" report was wrong.
+- Needs: the wizard sends the toolkit's needs with Create; `apply_toolkit` writes "What the app needs" (with the components that serve each) inside toolkit markers in docs/PRODUCT.md, or AGENTS.md without one. Live end-to-end with the real planner's needs for a physio-clinic brief wrote the list as expected.
+
+## 2026-11-13: final verification pass
 
 - Commits 5f4dee520, 473e7e387, 68457ab89 (deployed, health 200, sw.js g68457ab89).
 - Real end-to-end in the live container: catalogue match + create_starter_pack + apply_toolkit wrote AGENTS.md (toolkit block, performance rule), docs/PERFORMANCE.md, docs/UI_UX.md approved components, copied vendor/ui files, Decisions in README. Fixed two ranking faults it exposed (a need ticked once per category; least typical component chosen).
 - One real planner review (architecture profile) for "A website for a physiotherapy clinic in Leeds." returned needs marketing, scheduling, forms, pricing, help, errors, loading: implied needs work with the live model.
 - Red-green: today's 14 new unit tests and 3 round-7 browser tests fail on e0a4ea18e and pass now.
 - Fixed a latent NameError in api/dashboard_game.py `_purse_progress` (unimported logging) found by tests/test_ruff_forward_lint.py; two older builder test files updated for the round-6 Next validation and margins.
-- Remaining known gaps: ObsidianUI catalogue entries list no files, so their code is never copied (projects get a source link only); adopted projects with their own AGENTS.md get docs/PERFORMANCE.md without the rule; the wizard's "needs" are not written into the project.
+- Remaining known gaps listed here were closed the same day (next entry).
 
 ## 2026-11-13: performance checklist in new projects; anti-slop for Hermes agents
 
