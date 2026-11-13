@@ -547,7 +547,14 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     if template_key not in _TEMPLATES:
         raise ProjectStarterError("Unknown project template.")
     project_brief = _brief(brief)
-    candidates = {root / rel: content for rel, content in _pack_files(root.name, template_key, project_brief).items()}
+    pack = _pack_files(root.name, template_key, project_brief)
+    # A project with its own docs/PERFORMANCE.md keeps it; the owner's checklist
+    # goes beside it as PERFORMANCE_CHECKLIST.md and the rule points there.
+    own = root / "docs" / "PERFORMANCE.md"
+    if "docs/PERFORMANCE.md" in pack and (own.is_symlink() or (own.exists() and PERF_BEGIN not in _read_text(own))):
+        pack = {rel.replace("PERFORMANCE.md", "PERFORMANCE_CHECKLIST.md"): text.replace("PERFORMANCE.md", "PERFORMANCE_CHECKLIST.md")
+                for rel, text in pack.items()}
+    candidates = {root / rel: content for rel, content in pack.items()}
     added: dict[str, list[str]] = {"files": [], "dirs": []}
     for directory in (root / ".agent", root / "docs"):
         if not directory.exists() and not directory.is_symlink():
@@ -555,8 +562,12 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     try:
         for path, content in candidates.items():
             if path.exists() or path.is_symlink():
-                if path.name == "AGENTS.md" and path.parent == root and _append_hermes_section(root, path, candidates[path]):
-                    added["appended"] = [str(path)]
+                if path.name == "AGENTS.md" and path.parent == root:
+                    what = _append_hermes_section(root, path, candidates[path])
+                    if what == "section":
+                        added["appended"] = [str(path)]
+                    elif what == "performance":
+                        added["perf_appended"] = [str(path)]
                 continue
             _write(root, path, content)
             added["files"].append(str(path))
@@ -569,6 +580,14 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
 
 HERMES_BEGIN = "<!-- hermes:begin -->"
 HERMES_END = "<!-- hermes:end -->"
+PERF_BEGIN = "<!-- hermes:performance:begin -->"
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
 
 
 def _rewrite(root: Path, path: Path, content: str) -> None:
@@ -577,23 +596,32 @@ def _rewrite(root: Path, path: Path, content: str) -> None:
         handle.write(content)
 
 
-def _append_hermes_section(root: Path, path: Path, generated: str) -> bool:
+def _append_hermes_section(root: Path, path: Path, generated: str) -> str:
     """Add Hermes' continuity rules to a project's own AGENTS.md, once.
 
     The user's text is kept as it is; the rules go in a section between
     ``HERMES_BEGIN`` and ``HERMES_END`` that ``rollback_adopted`` removes.
     """
     if path.is_symlink() or not path.is_file():
-        return False
+        return ""
     text = path.read_text(encoding="utf-8")
     if HERMES_BEGIN in text:
-        return False
+        # Adopted before the performance rule existed: add just that rule to
+        # the Hermes section, once.
+        rule = next((line for line in generated.splitlines(keepends=False) if PERF_BEGIN in line), "")
+        if rule and PERF_BEGIN not in text and HERMES_END in text:
+            start = generated.index(rule)
+            block = generated[start:generated.index("<!-- hermes:performance:end -->", start) + len("<!-- hermes:performance:end -->")]
+            head, tail = text.split(HERMES_END, 1)
+            _rewrite(root, path, head.rstrip("\n") + "\n\n" + block + "\n" + HERMES_END + tail)
+            return "performance"
+        return ""
     rules = generated.split("## Before any change", 1)[-1].split("\n## Related documents", 1)[0].strip()
     section = (f"{HERMES_BEGIN}\n## Hermes continuity\n\nAdded when Hermes adopted this project. "
                "These rules sit alongside the ones above.\n\n### Before any change\n\n"
                + rules.replace("\n## ", "\n### ") + f"\n{HERMES_END}\n")
     _rewrite(root, path, text.rstrip("\n") + "\n\n" + section)
-    return True
+    return "section"
 
 
 def _remove_hermes_section(root: Path, path: Path) -> None:
@@ -609,6 +637,18 @@ def _remove_hermes_section(root: Path, path: Path) -> None:
     _rewrite(root, path, head + ("\n" + tail if tail else ""))
 
 
+def _remove_perf_rule(root: Path, path: Path) -> None:
+    """Take out only the performance rule an adopt added to an older Hermes section."""
+    text = _read_text(path)
+    end = "<!-- hermes:performance:end -->"
+    if PERF_BEGIN not in text or end not in text:
+        return
+    start = text.rfind("\n", 0, text.index(PERF_BEGIN)) + 1
+    stop = text.index(end, start) + len(end)
+    head = text[:start].rstrip("\n")
+    _rewrite(root, path, head + "\n" + text[stop:].lstrip("\n"))
+
+
 def rollback_adopted(project_root: Path, result: dict) -> None:
     """Undo an adopt: remove only the documents and folders it added."""
     root = Path(project_root).resolve()
@@ -616,6 +656,11 @@ def rollback_adopted(project_root: Path, result: dict) -> None:
     for appended in added.get("appended") or []:
         try:
             _remove_hermes_section(root, Path(appended))
+        except (OSError, ValueError):
+            pass
+    for appended in added.get("perf_appended") or []:
+        try:
+            _remove_perf_rule(root, Path(appended))
         except (OSError, ValueError):
             pass
     new_dirs = [Path(d) for d in added.get("dirs") or []]

@@ -357,3 +357,44 @@ def test_web_and_app_projects_get_the_performance_checklist_and_the_rule_to_run_
 def test_the_setup_agent_keeps_the_performance_block():
     from api import project_starter_agent as agent
     assert "hermes:performance:begin" in agent._new_project_prompt("demo", "Web App", ["docs/PERFORMANCE.md"])
+
+
+def test_adopting_keeps_a_projects_own_performance_doc_and_points_the_rule_at_the_checklist(tmp_path):
+    from api import project_starter as ps
+    root = tmp_path / "shop"
+    (root / "docs").mkdir(parents=True)
+    (root / "AGENTS.md").write_text("# Shop rules\n\nBe nice.\n")
+    (root / "docs" / "PERFORMANCE.md").write_text("# Our own perf notes\n")
+    result = ps.adopt_starter_pack(root, "web", "An existing shop.")
+    assert (root / "docs" / "PERFORMANCE.md").read_text() == "# Our own perf notes\n"
+    assert "Debounce search" in (root / "docs" / "PERFORMANCE_CHECKLIST.md").read_text()
+    agents = (root / "AGENTS.md").read_text()
+    assert "Be nice." in agents and "run `docs/PERFORMANCE_CHECKLIST.md`" in agents
+    ps.rollback_adopted(root, result)
+    assert (root / "AGENTS.md").read_text().rstrip() == "# Shop rules\n\nBe nice.".rstrip()
+    assert not (root / "docs" / "PERFORMANCE_CHECKLIST.md").exists()
+
+
+def test_a_project_adopted_before_the_rule_existed_gets_only_the_rule(tmp_path):
+    from api import project_starter as ps
+    root = tmp_path / "old"
+    root.mkdir()
+    before = "# Old rules\n\n<!-- hermes:begin -->\n## Hermes continuity\n\nRead the handoff.\n<!-- hermes:end -->\n"
+    (root / "AGENTS.md").write_text(before)
+    result = ps.adopt_starter_pack(root, "website", "x")
+    agents = (root / "AGENTS.md").read_text()
+    assert agents.count("<!-- hermes:begin -->") == 1 and "Read the handoff." in agents
+    assert "run `docs/PERFORMANCE.md`" in agents and agents.index("PERFORMANCE.md") < agents.index("<!-- hermes:end -->")
+    assert result["added"]["perf_appended"]
+    # Adopting again adds nothing more.
+    ps.adopt_starter_pack(root, "website", "x")
+    assert (root / "AGENTS.md").read_text().count("hermes:performance:begin") == 1
+    # Undoing the first adopt removes only the rule, not the older section.
+    ps.rollback_adopted(root, result)
+    after = (root / "AGENTS.md").read_text()
+    assert "hermes:performance" not in after and "Read the handoff." in after and "<!-- hermes:end -->" in after
+
+
+def test_the_adopt_agent_keeps_the_performance_block():
+    from api import project_starter_agent as agent
+    assert "hermes:performance:begin" in agent._adopt_prompt("shop")
