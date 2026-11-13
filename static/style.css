@@ -18906,7 +18906,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-dot{flex:none;width:8px;height:8px;border-radius:50%;}
 .pkit-proj{flex:none;color:var(--text);font-weight:550;}
 .pkit-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pkit-tools .themed-select-wrap{width:auto;flex:none;margin-inline:2px;}
+.pkit-tools .themed-select-wrap{width:auto;flex:none;}
 .pkit-tools .themed-select-trigger{height:36px;min-width:150px;padding:0 12px;border-color:var(--border2);border-radius:10px;font-size:13px;}
 .pkit .pkit-search input,.pkit .pkit-search input:focus,.pkit .pkit-search input:focus-visible{border:0;border-radius:0;box-shadow:none;outline:none;background:transparent;padding:0;margin:0;}
 .pkit-icon-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;transition:background-color .15s ease,color .15s ease;}

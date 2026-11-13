@@ -91,6 +91,15 @@ def test_skills_and_tools_sits_below_workspace_and_lists_searches_filters_and_ad
     names = lambda: page.eval_on_selector_all(".pkit-list-view .pkit-row .pkit-name", "els => els.map(e => e.firstChild.textContent)")
     assert names() == ["repo-skill", "react", "github", "tdd"]  # most recent first
     assert page.eval_on_selector_all(".pkit-chip", "els => els.map(e => e.dataset.kind)") == ["all", "skill", "package", "mcp"]
+    # The sort list keeps 2px between its options.
+    page.click(".pkit-list-view .pkit-tools .themed-select-trigger")
+    page.wait_for_selector(".themed-select-popup .themed-select-option")
+    page.evaluate("() => Promise.all(document.querySelector('.themed-select-popup').getAnimations().map(a => a.finished))")
+    gaps = page.eval_on_selector_all(".themed-select-popup .themed-select-option",
+        "els => els.slice(1).map((e, i) => e.getBoundingClientRect().top - els[i].getBoundingClientRect().bottom)")
+    assert len(gaps) == 2 and all(abs(g - 2) < 0.01 for g in gaps), gaps
+    page.click(".themed-select-popup .themed-select-option.selected")
+    page.wait_for_selector(".themed-select-popup", state="detached")
     page.click(".pkit-chip[data-kind=skill]")
     assert names() == ["repo-skill", "tdd"]
     page.fill(".pkit-q", "repo")
