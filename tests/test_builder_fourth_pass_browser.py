@@ -5,6 +5,7 @@ skills table has a black header row, and scrollbars fade in and out."""
 
 import pytest
 
+from tests.builder_nav import next_step
 from tests._pytest_port import BASE
 from tests.test_builder_and_skills_polish_browser import QUESTIONS, _to_details, page, skills  # noqa: F401  (fixtures)
 from tests.test_builder_review_and_scrollbars_browser import _to_review
@@ -26,15 +27,15 @@ def test_the_brief_review_shows_the_planners_latest_step_in_one_line(page):
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "lex")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-template")
     page.click(".ps-template >> text=Website")
-    page.click(".ps-next")
+    next_step(page)
     page.fill(".ps-wizard textarea", "A boutique law firm site with service pages.")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_function("() => (document.querySelector('.ps-review-log')||{}).textContent === 'Reading the brief'")
     page.wait_for_function("() => (document.querySelector('.ps-review-log')||{}).textContent.startsWith('Weighing the stack')")
     line = page.evaluate("""() => { const l = document.querySelector('.ps-review-log'), cs = getComputedStyle(l);

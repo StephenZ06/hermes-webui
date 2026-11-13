@@ -6,16 +6,17 @@ the Location step is open; the Build summary runs to the bottom of the step;
 scrollbars only show while something scrolls; the Libraries list sits as far
 under its divider as the divider sits under the tabs."""
 
+from tests.builder_nav import next_step
 from tests.test_builder_and_skills_polish_browser import _to_details, page, skills  # noqa: F401  (fixtures)
 
 
 def _to_review(page):
     _to_details(page)
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-look-card")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-kit-skill")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-review-card")
 
 
@@ -38,17 +39,19 @@ def test_review_shows_a_project_terminal_previews_a_skills_table_and_component_t
 def test_build_summary_runs_to_the_bottom_of_the_step(page):
     _to_details(page)
     gap = page.evaluate("() => document.querySelector('.ps-main').getBoundingClientRect().bottom - document.querySelector('.ps-build').getBoundingClientRect().bottom")
-    assert abs(gap) <= 1, gap
+    # Round 6 gave the summary an even margin all round (test_builder_round6_browser
+    # checks the four match), so it now stops a small margin above the bottom.
+    assert 0 <= gap <= 12, gap
 
 
 def test_a_step_enters_after_the_dialog_glides_to_its_new_size(page):
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.click(".ps-tree-row >> nth=0")
     page.fill(".project-starter-field input", "lex")
-    page.click(".ps-next")  # Location -> Template: the dialog grows
+    next_step(page)  # Location -> Template: the dialog grows
     timing = page.evaluate("""() => { const d = document.querySelector('.ps-wizard'), b = document.querySelector('.ps-body');
       const enter = b.getAnimations().find(a => a.animationName && a.animationName.startsWith('ps-step-in'));
       return {gliding: d.getAnimations().some(a => !a.animationName), delay: enter && enter.effect.getTiming().delay}; }""")
@@ -61,7 +64,7 @@ def test_template_art_is_fetched_while_the_location_step_is_open(page):
     page.evaluate("() => { window.__starter = _openProjectStarterWizard(); }")
     page.wait_for_selector(".ps-wizard .ps-choice")
     page.click(".ps-choice >> nth=0")
-    page.click(".ps-next")
+    next_step(page)
     page.wait_for_selector(".ps-tree-row")
     page.wait_for_timeout(300)
     for key in ("web", "ios", "android", "api", "website", "cli", "research"):
