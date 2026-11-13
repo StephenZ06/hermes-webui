@@ -14138,8 +14138,10 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg button.dash-stat:focus-visible{outline-offset:-5px;}
 :root.dark[data-skin="geist-contrast"] .dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection),:root[data-skin="geist-contrast"] .dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection){background-color:var(--surface);} /* Geist keeps its own near-black */
 /* As much space below the attribute bars as above them (XP bar to STR):
-   the XP line (18.75px) plus one 10px gap, on top of the sheet gap. */
-.dash.is-rpg .rpg-xpline{height:18.75px;line-height:18.75px;}
+   the XP line (18.75px) plus one 10px gap, on top of the sheet gap. A
+   minimum, not a fixed height: on a phone the line wraps and must push the
+   attribute chart down instead of running under it. */
+.dash.is-rpg .rpg-xpline{min-height:18.75px;line-height:18.75px;}
 .dash.is-rpg .rpg-body{margin-bottom:28.75px;}
 
 /* ── Card outline, round 2 (reference: gold RPG panels) ────────────────────

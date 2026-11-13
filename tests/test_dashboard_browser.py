@@ -1172,3 +1172,16 @@ def test_deleting_a_sale_fades_the_other_cards_it_changed(browser):
     page.wait_for_selector(".rpg-title .rpg-rank", timeout=15000)
     pad = page.evaluate("() => { const c = getComputedStyle(document.querySelector('.rpg-title .rpg-rank')); return [c.paddingTop, c.paddingBottom]; }")
     assert pad == ["4px", "3px"], pad
+
+
+def test_the_xp_line_wraps_above_the_attribute_chart_on_a_phone(browser):
+    # The XP line had a fixed one-line height; on a phone its second line ran
+    # under the attribute chart's PER label.
+    page = _open(browser, viewport={"width": 390, "height": 844})
+    page.evaluate("() => { document.documentElement.dataset.skin = 'zeus-2'; document.documentElement.classList.add('dark'); }")
+    page.evaluate("async () => { await switchPanel('dashboard'); }")
+    page.wait_for_selector("#dashboardRoot .rpg-xpline", timeout=15000)
+    _settled(page)
+    line, chart = page.evaluate("""() => { const x = document.querySelector('.rpg-xpline'), last = x.lastElementChild;
+      return [last.getBoundingClientRect().bottom, document.querySelector('.rpg-radar').getBoundingClientRect().top]; }""")
+    assert line <= chart, (line, chart)
