@@ -1,7 +1,12 @@
 # Project status — hermes-webui
 
 
-## 2026-11-13 (latest): the three gaps closed
+## 2026-11-13 (latest): catalogue file lists backfilled
+
+- `lc.fill_registry_files(lib_dir)` writes registry file lists into catalogue entries that list none (keeps other fields and notes); `commit_import` calls it after saving, so imports and re-drafts both get lists. Ran once on the live catalogue: ObsidianUI 60 of 60 entries now list files (backup of the old entries in ~/.hermes/backups/obsidian-ui-components-20261113). Rare UI 29/29, transitions.dev 37/48: the 11 without files are transitions.dev Pro components whose code is not in the free source; their docs/UI_UX.md line now says so.
+- Commit 27dfe0d57 mixed the toolkit-side "needs" code into the registry commit; recorded with a git note (refs/notes/commits, pushed to fork) instead of rewriting pushed history.
+
+## 2026-11-13: the three gaps closed
 
 - Commits 27dfe0d57, b8c65d833, 8edd124e0, 271bff361 (deployed, health 200, sw.js g271bff361).
 - Component code: `lc.registry_files` reads a library's shadcn-style registry (`public/r/<slug>.json`, also `registry/`, `r/`; word-order and short-form aliases such as hover-img) and `_copy_files` falls back to it when a catalogue entry lists no files; `commit_import` fills missing lists the same way. Live check: all 60 ObsidianUI components resolve and copy (they previously only got a source link). The catalogue .md files were not rewritten.
