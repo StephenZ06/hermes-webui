@@ -195,6 +195,8 @@ def commit_import(root: Path, staging: str, slug: str, library: dict, components
     # Components the draft lists no files for take them from the library's own
     # shadcn-style registry, on import and on a re-draft of an existing library.
     lc.fill_registry_files(lib_dir)
+    # Paid parts a free-tier manifest leaves out have no code to copy: drop them.
+    lc.drop_paid_components(lib_dir)
     return lib_dir
 
 

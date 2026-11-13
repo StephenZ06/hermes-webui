@@ -187,3 +187,26 @@ def test_filling_keeps_listed_files_and_every_other_field(tmp_path):
     assert "- a.tsx" in one and "name: One" in one and "role: cards" in one and one.endswith("Notes stay.\n")
     assert "own.tsx" in (lib / "components" / "two.md").read_text()
     assert lc.fill_registry_files(lib) == 0
+
+
+def test_import_drops_paid_components_a_free_tier_manifest_leaves_out(tmp_path):
+    """A source that ships a free-tier manifest (transitions.dev's cli/free-manifest.json)
+    marks everything else as paid: entries with no code to copy are dropped on import."""
+    import json
+
+    from api import library_catalog as lc
+    from api import library_import as li
+    stage = tmp_path / li.STAGING_DIR / "s1"
+    (stage / "source" / "cli").mkdir(parents=True)
+    (stage / "source" / "cli" / "free-manifest.json").write_text(json.dumps(
+        [{"slug": "modal", "tier": "free"}, {"slug": "toast", "tier": "free"}]))
+    comps = [{"slug": "modal", "name": "Modal"},                       # free, kept
+             {"slug": "confetti", "name": "Confetti"},                 # paid, no files: dropped
+             {"slug": "own", "name": "Own", "files": ["own.tsx"]}]     # has code: kept
+    lib = li.commit_import(tmp_path, "s1", "kit", {"name": "Kit"}, comps)
+    (lib / "previews").mkdir(exist_ok=True)
+    assert sorted(p.stem for p in (lib / "components").glob("*.md")) == ["modal", "own"]
+    # A manifest without tiers says nothing about paid parts: nothing is dropped.
+    (lib / "source" / "cli" / "free-manifest.json").write_text(json.dumps([{"slug": "modal"}]))
+    (lib / "components" / "confetti.md").write_text("---\nname: Confetti\n---\n")
+    assert lc.drop_paid_components(lib) == 0

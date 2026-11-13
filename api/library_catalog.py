@@ -407,6 +407,52 @@ def fill_registry_files(lib_dir: Path) -> int:
     return changed
 
 
+def _free_tier(source: Path) -> set[str] | None:
+    """Slugs a source's free-tier manifest lists (``*manifest*.json``, every entry
+    a ``{"slug", "tier"}`` object, e.g. transitions.dev's cli/free-manifest.json),
+    or None when the source ships no such manifest."""
+    free, found = set(), False
+    for path in sorted(source.glob("*manifest*.json")) + sorted(source.glob("*/*manifest*.json")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        if not (isinstance(data, list) and data and all(isinstance(e, dict) and e.get("slug") and e.get("tier") for e in data)):
+            continue
+        found = True
+        free |= {slugify(e["slug"]) for e in data if str(e["tier"]).lower() == "free"}
+    return free if found else None
+
+
+def drop_paid_components(lib_dir: Path) -> int:
+    """Remove catalogue entries a library's free-tier manifest leaves out and that
+    list no files (paid parts whose code is not in the source), with their
+    previews. Returns how many entries were removed."""
+    lib_dir = Path(lib_dir)
+    source, comp_dir = lib_dir / "source", lib_dir / "components"
+    if not source.is_dir() or source.is_symlink() or not comp_dir.is_dir():
+        return 0
+    free = _free_tier(source)
+    if free is None:
+        return 0
+    dropped = 0
+    for path in sorted(comp_dir.glob("*.md")):
+        if path.is_symlink() or path.stem in free:
+            continue
+        meta, broken = _read_meta(path)
+        if broken or meta.get("files"):
+            continue
+        path.unlink()
+        for ext in (".webp", ".loop.webp", ".png", ".jpg", ".gif"):
+            p = lib_dir / "previews" / f"{path.stem}{ext}"
+            if p.is_file() and not p.is_symlink():
+                p.unlink()
+        dropped += 1
+    return dropped
+
+
 def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "",
                      needs: list[str] | None = None) -> dict:
     """Catalogued components that fit the stack, ranked by the brief and what

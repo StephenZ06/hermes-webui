@@ -254,7 +254,11 @@ toolkit markers, each with the chosen components that serve it; `AGENTS.md` when
 there is no product doc). A copy-paste component whose catalogue entry lists no
 files is copied from the library's own shadcn-style registry
 (`public/r/<slug>.json`, `lc.registry_files`), and imports fill missing file
-lists the same way.
+lists the same way. When a library's source ships a free-tier manifest
+(`*manifest*.json` whose entries all carry `slug` and `tier`, such as
+transitions.dev's `cli/free-manifest.json`), imports and re-drafts drop the
+entries it leaves out that list no files, with their previews
+(`lc.drop_paid_components`): paid parts have no code to copy.
 
 Toolkit lists skills as a table (tick, skill, category, what it does, star):
 recommended skills are ticked and imported skills that fit the project come
