@@ -148,6 +148,27 @@ def test_switching_notes_mid_edit_saves_the_first(page):
     assert "typed just before switching" in json.dumps(note["content"])
 
 
+def test_an_edited_note_moves_to_the_top_of_its_workspace(page):
+    project = _api("/api/projects/create", {"name": f"Order {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
+    pid = project["project_id"]
+    older = _api("/api/notebook/notes/create", {"title": "Older page", "project_id": pid})["note"]
+    _api("/api/notebook/notes/create", {"title": "Newer page", "project_id": pid})
+    _open(page)
+    tile = f"#notebookSidebar .nb-place-btn[data-nb-id='{pid}']"
+    page.wait_for_selector(tile, timeout=15000)
+    page.click(tile)
+    group = page.get_attribute(tile, "aria-controls")
+    order = lambda: page.eval_on_selector_all(f"#{group} .nb-tree-note span", "els => els.map(e => e.textContent)")
+    page.wait_for_function(f"() => document.querySelectorAll('#{group} .nb-tree-note').length === 2")
+    assert order() == ["Newer page", "Older page"]
+    page.click(f"#{group} [data-nb-open='{older['id']}']")
+    page.wait_for_function("() => document.getElementById('nbTitle') && document.getElementById('nbTitle').value === 'Older page'")
+    _type_body(page, "an edit")
+    _saved(page)
+    page.wait_for_function(f"() => document.querySelector('#{group} .nb-tree-note span').textContent === 'Older page'", timeout=10000)
+    assert order() == ["Older page", "Newer page"]
+
+
 def test_trash_restore_and_search(page):
     title = f"Searchable {uuid.uuid4().hex[:6]}"
     _open(page)

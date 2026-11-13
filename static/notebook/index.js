@@ -1825,7 +1825,9 @@
           note.updated_at = result.note.updated_at;
           note.preview = result.note.preview;
         }
-        upsertSummary(result.note);
+        // An edited note moves to the top of its workspace or folder (and of
+        // the list), below any pinned ones.
+        upsertSummary(result.note); sortNotes();
         if (!Object.keys(save.dirty).length) clearDraft(note.id);
         clearTimeout(save.retry);
         setStatus(Object.keys(save.dirty).length ? 'unsaved' : 'saved');
