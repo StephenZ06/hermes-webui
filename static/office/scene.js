@@ -669,7 +669,8 @@ export function createOfficeScene(canvas, options) {
         chevron.userData.lit = lit;
         chevron.material.emissive.set(lit ? chevron.userData.activeColor : '#0b1220');
       }
-      chevron.material.emissiveIntensity = wave * 2;
+      // Lit, not blooming: at 2x the travelling marker flared into a halo.
+      chevron.material.emissiveIntensity = wave;
       const pulse = chevron.userData.active ? 1 + wave * 0.28 : 1;
       chevron.scale.set(pulse, pulse, 1);
       // Local +Z points from the conductor to the destination.  When the
@@ -1179,8 +1180,8 @@ export function createOfficeScene(canvas, options) {
         }
       }
 
-      // The status beacon over the figure, and a delegation packet when a
-      // subagent sits down (out from the globe) or finishes (back to it).
+      // The status beacon over the figure (running or failed; none once done),
+      // and a delegation packet out from the globe when a subagent sits down.
       const beaconHex = worker ? beaconColor(worker.status) : null;
       if (seat.beacon) {
         seat.beacon.visible = !!beaconHex;
@@ -1189,16 +1190,13 @@ export function createOfficeScene(canvas, options) {
         seat.beaconRunning = !!worker && worker.status === 'running';
       }
       const prevWorker = seat.packetWorker || null;
-      const prevStatus = seat.packetStatus || '';
       // The first time a seat is seen (page load, outlet switch) only records
       // what is there: a packet means something just happened.
       if (seat.packetSeen) {
         if (worker && worker.id !== prevWorker) launchPacket(desk.cluster, spot, false);
-        else if (worker && worker.status === 'completed' && prevStatus === 'running') launchPacket(desk.cluster, spot, true);
       }
       seat.packetSeen = true;
       seat.packetWorker = worker ? worker.id : null;
-      seat.packetStatus = worker ? worker.status : '';
     });
 
     Array.from(seats.keys()).forEach(id => { if (!liveDesks.has(id)) removeSeat(id); });

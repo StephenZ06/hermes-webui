@@ -1,11 +1,12 @@
-"""A working platform's light bar glows slightly; nothing blooms into a halo.
+"""A working platform's light bar brightens and holds steady; nothing blooms.
 
 At rest a band stays well under the bloom threshold, whatever the pointer or a
-landing packet does. While work is under way its light rises to just under
-it, the same for every colour, and the scene's lights carry it just past: a
-noticeable but slight glow. The
-delivery flare used to be a flat +1.45 on top of a 1.35x active boost, which
-bloomed every working platform into a halo at each arrival. This drives the
+landing packet does. While work is under way its light rises to the same level
+for every colour and stops pulsing, with room left under the threshold for the
+scene's lights on its faces. It used to sit just under the threshold with a
+pulse, so the lights pushed some faces past it on some frames: the halo
+flickered and differed between platforms. Before that, a flat +1.45 delivery
+flare bloomed every working platform into a halo at each arrival. This drives the
 real makePod and bandGlowIntensity under node, the way
 tests/test_office_pod_color.py does.
 """
@@ -73,15 +74,15 @@ def test_an_idle_platform_never_blooms(glow):
         assert band["idleBusy"] < BLOOM_THRESHOLD * .9, (tint, band)
 
 
-def test_a_working_platform_glows_slightly_through_its_whole_pulse(glow):
+def test_a_working_platform_holds_a_steady_light_under_the_threshold(glow):
     for tint, band in glow.items():
         if band["idle"] < .6:
             continue  # a deep colour whose band is barely lit at idle
-        # The band's own light stops just under the threshold; the scene's lights on its
-        # faces carry it just past (rendered, 1.1 already read as a halo).
-        assert BLOOM_THRESHOLD * .85 < band["activeLow"] < band["active"] <= BLOOM_THRESHOLD, (tint, band)
-        assert band["everything"] <= BLOOM_THRESHOLD * 1.1, (tint, band)
-        assert band["arrival"] > band["active"], (tint, band)
+        # Brighter than at rest, the same at every point of the pulse, and far
+        # enough under the threshold that the scene's lights never carry it past.
+        assert band["idle"] < band["active"] <= BLOOM_THRESHOLD * .9, (tint, band)
+        assert abs(band["activeLow"] - band["active"]) < 1e-9, (tint, band)
+        assert band["active"] < band["arrival"] <= band["everything"] <= BLOOM_THRESHOLD * .92, (tint, band)
 
 
 def test_every_working_colour_glows_by_the_same_amount(glow):

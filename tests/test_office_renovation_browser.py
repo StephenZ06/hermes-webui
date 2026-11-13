@@ -251,4 +251,5 @@ def test_close_bridge_gaps_leave_no_rail_stub_and_beacons_follow_status(page):
       return { posts: rails.userData.markerPosts.length, status };
     }""")
     assert out["posts"] == 2, "one opening's worth of posts, no stub between the two landings"
-    assert out["status"] == ["#22c55e", "#60a5fa", "#ef4444", None]
+    # A finished worker shows no beacon (the glowing blue gem read as stray dots).
+    assert out["status"] == ["#22c55e", None, "#ef4444", None]

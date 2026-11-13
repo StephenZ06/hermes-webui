@@ -475,7 +475,9 @@ export function makePod(width, depth, palette, tint, opts) {
 
   // The band owns its own material so a delivery can flare at one destination
   // only (scene.js's advanceDeliveryGlow adds to the idle intensity).
-  const bandMaterial = material(bandColor || baseColor, { rough: 0.4, metal: 0.1 }).clone();
+  // Matte, so a light's highlight on a rounded corner cannot push a working
+  // band past the bloom threshold on some frames and not others.
+  const bandMaterial = material(bandColor || baseColor, { rough: 0.85, metal: 0 }).clone();
   // The same glow for every colour: bright colours (amber, teal) would bloom
   // into a halo at an intensity that leaves deep ones (purple, blue) barely
   // lit, so the intensity is set from the colour's own luminance.
@@ -867,22 +869,24 @@ export function makePlant(palette) {
  * A platform band's emissive intensity on a given frame. At rest the band sits
  * near 0.72 of the bloom threshold (see makePod), and the pointer or a packet
  * landing only brighten it by a small share, so an idle platform never blooms.
- * While work is under way the band's own light rises to just under the
- * threshold (ACTIVE_BAND_LUMINANCE, given the band colour's `luminance`) and the
- * scene's lights on its faces carry it just past, so every working platform's
- * light bar carries the same slight glow whatever its colour (1.1 and up read as
- * a halo when rendered). Its pulse is damped so the glow breathes instead of
- * switching off. The old flat
- * +1.45 delivery flare bloomed a working platform into a halo at every arrival.
+ * While work is under way the band's own light rises to ACTIVE_BAND_LUMINANCE
+ * (given the band colour's `luminance`) and holds there: no pulse, and the
+ * pointer or a landing packet lift it by at most a few percent. That level
+ * leaves room under the bloom threshold for the scene's lights on the band's
+ * faces, so no working platform ever blooms. It used to sit just under the
+ * threshold with a pulse, and whether the lights carried a face past it
+ * depended on the frame and the platform's place on the floor: the halo
+ * flickered on and off and differed from platform to platform.
  */
-export const ACTIVE_BAND_LUMINANCE = 0.98;
-export const BAND_GLOW_CAP = 1.1;
+export const ACTIVE_BAND_LUMINANCE = 0.86;
+export const BAND_GLOW_CAP = 1.04;
 export function bandGlowIntensity(idle, { pulse = 1, active = 0, hover = 0, delivery = 0, luminance = 0 } = {}) {
   const rest = idle || 0;
-  const working = luminance > 0 ? Math.min(rest * 2, Math.max(rest, ACTIVE_BAND_LUMINANCE / luminance)) : rest * 1.5;
+  const working = luminance > 0 ? Math.min(rest * 2, Math.max(rest, ACTIVE_BAND_LUMINANCE / luminance)) : rest * 1.2;
   const base = rest + (working - rest) * active;
-  const steady = 1 - (1 - pulse) * (1 - 0.6 * active);
-  const lift = Math.min(BAND_GLOW_CAP, 1 + 0.05 * hover + 0.08 * delivery);
+  // The breathing fades out as work starts: a working band holds steady.
+  const steady = 1 - (1 - pulse) * (1 - active);
+  const lift = Math.min(BAND_GLOW_CAP, 1 + 0.03 * hover + 0.04 * delivery);
   return base * steady * lift;
 }
 
@@ -3447,15 +3451,14 @@ export function makeShootingStar() {
  * scene.js along the route from the conductor's globe to a desk (or back).
  */
 export function makePacket(color) {
+  // One orb. It used to trail two fainter copies, which at speed split into a
+  // row of separate glowing dots.
   const group = new THREE.Group();
-  const head = new THREE.Mesh(geometry('packet-head', () => new THREE.SphereGeometry(0.3, 16, 12)), glowMaterial(color, 1.5));
+  // Bright but under the bloom threshold: at 1.5x it bloomed into a large
+  // glowing dot wherever it passed.
+  const head = new THREE.Mesh(geometry('packet-head', () => new THREE.SphereGeometry(0.3, 16, 12)), glowMaterial(color, 0.95));
   group.add(head);
-  [0.7, 0.45].forEach((k, i) => {
-    const tail = new THREE.Mesh(geometry('packet-head', () => new THREE.SphereGeometry(0.3, 16, 12)), glowMaterial(color, 1.2, { opacity: 0.55 - i * 0.2, additive: true }));
-    tail.scale.setScalar(k);
-    group.add(tail);
-  });
-  group.userData.trail = group.children.slice(1);
+  group.userData.trail = [];
   return group;
 }
 
@@ -3470,7 +3473,6 @@ export function makeBeacon() {
 export function beaconColor(status) {
   switch (status) {
     case 'running': return '#22c55e';
-    case 'completed': return '#60a5fa';
     case 'failed': case 'error': case 'timeout': return '#ef4444';
     default: return null;
   }
