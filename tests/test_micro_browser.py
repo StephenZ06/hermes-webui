@@ -227,3 +227,22 @@ def test_delete_asks_in_place_and_settles_back():
     assert out["first"] is False and out["asking"] == ["Delete search?", True]
     assert out["settled"] == ["", False, "Delete"] and out["second"] is True
     assert "JOBS" in sheet.upper() and "Search the Pipeline" in sheet
+
+
+def test_icon_only_buttons_named_only_by_their_tooltip_get_that_name():
+    # The sidebar's page tabs and the workspace options button carry their
+    # name in data-tooltip only (native titles are parked); screen readers
+    # still need it.
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            names = page.evaluate("""() => [...document.querySelectorAll('.sidebar-nav .nav-tab[data-panel], #btnWorkspacePrefs')]
+              .map(b => [b.dataset.panel || b.id, b.getAttribute('aria-label')])""")
+            added = page.evaluate("""async () => { const b = document.createElement('button'); b.dataset.tooltip = 'Open thing';
+              document.body.appendChild(b); await new Promise(r => setTimeout(r, 50)); return b.getAttribute('aria-label'); }""")
+        finally:
+            browser.close()
+    assert names and all(label for _, label in names), names
+    assert dict(names)["btnWorkspacePrefs"] == "Workspace options"
+    assert added == "Open thing"

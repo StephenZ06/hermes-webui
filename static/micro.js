@@ -440,6 +440,12 @@
       const buttons = root.matches && root.matches('button') ? [root] : [];
       if (root.querySelectorAll) buttons.push(...root.querySelectorAll('button'));
       buttons.forEach((button) => {
+        // An icon-only button whose name lived in its (now parked) title or
+        // its themed tooltip keeps that name for screen readers.
+        if (!button.hasAttribute('aria-label') && !button.hasAttribute('aria-labelledby') && !String(button.textContent || '').trim()) {
+          const name = button.getAttribute('data-tooltip') || button.getAttribute('data-mi-title') || button.getAttribute('data-label');
+          if (name && name.trim()) button.setAttribute('aria-label', name.trim());
+        }
         const label = String(button.getAttribute('aria-label') || '').trim().toLowerCase();
         const content = String(button.textContent || '').trim();
         const iconOnly = content === '×' || content === '✕' || (!content && /^close(?:\s|$)/.test(label));
