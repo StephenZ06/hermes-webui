@@ -1262,18 +1262,21 @@
     requestAnimationFrame(() => { host.querySelectorAll(SCROLLERS).forEach(updateMore); fitAchievements(host); watchVideos(host); });
   }
   // Achievement tiles are one fixed height; a long title or description
-  // steps its type down until the tile's text fits.
+  // steps its type down until the tile's text fits. Reads and writes are
+  // batched across all tiles (one layout per round, at most 7) instead of
+  // forcing a layout per tile per step.
   function fitAchievements(host) {
-    host.querySelectorAll('.rpg-ach').forEach((tile) => {
+    let tiles = [...host.querySelectorAll('.rpg-ach')].map((tile) => {
       const box = tile.querySelector('.rpg-ach-text') || tile;
-      const parts = [...box.querySelectorAll('small')];  // titles stay one size; only the line under them shrinks
-      parts.forEach((el) => { el.style.fontSize = ''; });
-      let step = 0;
-      while (box.scrollHeight > box.clientHeight + 1 && step < 6) {
-        step += 1;
-        parts.forEach((el) => { el.style.fontSize = `${parseFloat(getComputedStyle(el).fontSize) - 1}px`; });
-      }
+      return {box, parts: [...box.querySelectorAll('small')]};  // titles stay one size; only the line under them shrinks
     });
+    if (!tiles.length) return;
+    tiles.forEach((t) => t.parts.forEach((el) => { el.style.fontSize = ''; }));
+    tiles.forEach((t) => { t.sizes = t.parts.map((el) => parseFloat(getComputedStyle(el).fontSize)); });
+    for (let step = 0; step < 6 && tiles.length; step += 1) {
+      tiles = tiles.filter((t) => t.box.scrollHeight > t.box.clientHeight + 1);
+      tiles.forEach((t) => t.parts.forEach((el, i) => { t.sizes[i] -= 1; el.style.fontSize = `${t.sizes[i]}px`; }));
+    }
   }
 
   function select(tab) {

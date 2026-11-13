@@ -19017,3 +19017,9 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 #settingsMenu .settings-menu-items > .side-menu-item{height:37px;padding:10px 11px 10px 10.5px;line-height:17px;}
 /* Notes side panel: the Trash count 2px lower, level with the "Trash" letters. */
 .nb-nav .nb-trash-scope > .nb-scope-count{translate:0 1px;}
+
+/* Learning log and Skills gained: the scrolling body reaches 3px past the
+   entry row on both ends, so the fields' focus ring and the row's drop-in are
+   never cut off; the text in the field, choices and buttons sits 1px lower. */
+.dash.is-rpg .dash-card.is-learning-log > .dash-card-body{padding-top:3px;padding-bottom:3px;margin-top:-3px;margin-bottom:-3px;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning :is(.themed-select-trigger,.dash-btn,.dash-link,input[type=text]){padding-top:2px;padding-bottom:0;}
