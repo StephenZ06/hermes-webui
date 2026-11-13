@@ -11657,7 +11657,10 @@ async function _openProjectStarterWizard(profile){
       const pal=st.look&&st.look.palette;
       const look=isVisual()&&st.look?{style:st.look.style,motion:st.look.motion,framework:st.look.framework,tailwind:!!st.look.tailwind,why:st.look.why||'',
         palette:pal?{name:pal.name,source:pal.source,light:pal.light,dark:pal.dark,why:pal.why||''}:null,custom:st.look.custom||null}:null;
-      return {look,skills:chosenSkills().map(s=>s.name),components:chosenComponents().map(c=>({library:c.library,slug:c.slug}))};
+      // What the app needs (the planner's reading of the brief, or the template's
+      // defaults) goes into docs/PRODUCT.md as the first feature list.
+      const needs=(st.kit.data&&st.kit.data.needs)||(st.analysis&&st.analysis.needs)||[];
+      return {look,skills:chosenSkills().map(s=>s.name),components:chosenComponents().map(c=>({library:c.library,slug:c.slug})),needs};
     }
     function filesToCreate(){
       const tpl=templates.find(t=>t.key===st.template);const files=[...(tpl&&tpl.files||[])];

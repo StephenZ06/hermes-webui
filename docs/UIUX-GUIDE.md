@@ -248,7 +248,13 @@ calendar, "log in with a one-time code" for an OTP input; `api/library_catalog.p
 "Fits your brief: booking, calendar" in the brief's own words); a card shows the
 need when there is one, the larger preview shows both. Only the best component per category is
 ticked; the other recommendations are starred. A brief that calls for nothing in
-the catalogue falls back to the best style match per category.
+the catalogue falls back to the best style match per category. Create writes the
+needs into the new project's `docs/PRODUCT.md` ("What the app needs", inside the
+toolkit markers, each with the chosen components that serve it; `AGENTS.md` when
+there is no product doc). A copy-paste component whose catalogue entry lists no
+files is copied from the library's own shadcn-style registry
+(`public/r/<slug>.json`, `lc.registry_files`), and imports fill missing file
+lists the same way.
 
 Toolkit lists skills as a table (tick, skill, category, what it does, star):
 recommended skills are ticked and imported skills that fit the project come

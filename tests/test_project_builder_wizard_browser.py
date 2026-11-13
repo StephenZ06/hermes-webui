@@ -61,7 +61,7 @@ def page():
 
             def toolkit(route):
                 tab.toolkit_requests.append(json.loads(route.request.post_data or "{}"))
-                route.fulfill(json=KIT)
+                route.fulfill(json=dict(KIT, needs=["marketing", "help"]))
             tab.route("**/api/projects/starter/toolkit", toolkit)
 
             def create(route):
@@ -164,6 +164,7 @@ def test_toolkit_ticks_recommendations_and_create_sends_them_then_starts_buildin
     page.wait_for_function("() => window.__launched.length === 1", timeout=10000)
     body = page.created[-1]
     assert body["toolkit"]["skills"] == ["seo-audit"]
+    assert body["toolkit"]["needs"] == ["marketing", "help"]  # the toolkit's needs reach Create
     assert body["toolkit"]["components"] == [{"library": "calm", "slug": "split"}, {"library": "glow", "slug": "aurora"}]
     assert body["toolkit"]["look"]["style"] == "elegant"
     assert page.evaluate("window.__launched") == [["p1", "Build version 1 of \"lex\" now."]]
