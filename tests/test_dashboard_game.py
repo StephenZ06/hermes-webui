@@ -384,3 +384,12 @@ def test_a_reset_point_keeps_old_finished_work_from_earning_xp_again(game):
     new = _item(work_hub, "After the reset", priority="high")
     _finish(work_hub, new)
     assert dashboard_game.character()["total_xp"] == 50
+
+
+def test_purse_progress_falls_back_to_zero_when_the_store_is_unavailable(monkeypatch):
+    from api import dashboard_game as dg
+
+    def broken():
+        raise OSError("disk unavailable")
+    monkeypatch.setattr(dg, "_connect", broken)
+    assert dg._purse_progress() == {"bought": 0, "gold_earned": 0}

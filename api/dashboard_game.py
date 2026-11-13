@@ -15,6 +15,7 @@ reopened later.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -805,7 +806,6 @@ def sync() -> None:
             try:
                 step(conn)
             except Exception:
-                import logging
                 logging.getLogger(__name__).info("XP sync step %s failed", step.__name__, exc_info=True)
 
 
