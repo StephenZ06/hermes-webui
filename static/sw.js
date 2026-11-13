@@ -74,6 +74,7 @@ const PAGE_MODULE_ASSETS = [
   './static/goal-planner.js' + VQ,
   './static/dashboard/sprite.js' + VQ,
   './static/dashboard/index.js' + VQ,
+  './static/project-kit.js' + VQ,
 ];
 
 function deleteOldShellCaches() {

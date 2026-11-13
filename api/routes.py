@@ -15139,6 +15139,22 @@ def _route_get_api_sticky_boards(handler, parsed):
     return j(handler, {"boards": load_boards()})
 
 
+def _installed_skill_details() -> dict[str, dict]:
+    return {s["name"]: s for s in _skills_list_from_dir(_active_skills_dir()).get("skills", []) if s.get("name")}
+
+
+def _route_get_api_projects_toolkit(handler, parsed):
+    """Skills & Tools of one project (project menu): its folder's skills,
+    components, packages and MCP servers, plus the wizard's picks."""
+    from api import project_inventory as inv
+
+    project_id = (parse_qs(parsed.query).get("project_id") or [""])[0]
+    proj = next((p for p in load_projects() if p.get("project_id") == project_id), None)
+    if not proj:
+        return bad(handler, "Project not found", 404)
+    return j(handler, {"project_id": project_id, **inv.inventory(proj, installed=_installed_skill_details())})
+
+
 def _route_get_api_projects(handler, parsed):
     # ── Profile scoping (#1614) ────────────────────────────────────────
     # Default: filter to the active profile. ?all_profiles=1 returns the
@@ -16587,6 +16603,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/sessions"), _route_get_api_sessions),
         (Exact("/api/sticky_boards"), _route_get_api_sticky_boards),
         (Exact("/api/projects"), _route_get_api_projects),
+        (Exact("/api/projects/toolkit"), _route_get_api_projects_toolkit),
         (Exact("/api/prompts"), _route_get_api_prompts),
         (Exact("/api/agent-definitions"), _route_get_api_agent_definitions),
         (Exact("/api/crews"), _route_get_api_crews),
@@ -20648,6 +20665,52 @@ def _route_post_api_projects_rename(handler, parsed, body, diag):
     return j(handler, {"ok": True, "project": proj})
 
 
+def _route_post_api_projects_toolkit_skills(handler, parsed, body, diag):
+    """Add installed skills to a project, or take its listed skills off."""
+    from api import project_inventory as inv
+
+    _arm_project_lifecycle_for_mutation()
+    body = body if isinstance(body, dict) else {}
+    proj = next((p for p in load_projects() if p.get("project_id") == body.get("project_id")), None)
+    if not proj:
+        return bad(handler, "Project not found", 404)
+    def _names(key):
+        raw = body.get(key) or []
+        return [str(n)[:64] for n in raw if isinstance(n, str) and n.strip()][:50] if isinstance(raw, list) else []
+    try:
+        names = inv.set_skills(proj, add=_names("add"), remove=_names("remove"), installed=_installed_skill_names())
+    except (ValueError, OSError) as exc:
+        return bad(handler, str(exc))
+    return j(handler, {"ok": True, "skills": names, **inv.inventory(proj, installed=_installed_skill_details())})
+
+
+def _route_post_api_projects_reorder(handler, parsed, body, diag):
+    """Put the projects named in ``order`` in that order, each taking one of
+    the slots those projects already hold; every other project keeps its place
+    (projects of other profiles or kept off the sidebar stay where they are)."""
+    _arm_project_lifecycle_for_mutation()
+    order = body.get("order") if isinstance(body, dict) else None
+    if not isinstance(order, list) or not order or not all(isinstance(x, str) for x in order):
+        return bad(handler, "order must be a list of project ids")
+    if len(set(order)) != len(order):
+        return bad(handler, "order lists a project twice")
+    with _PROJECT_ORDER_LOCK:
+        projects = load_projects()
+        ids = [p.get("project_id") for p in projects]
+        if any(x not in ids for x in order):
+            return bad(handler, "Project not found", 404)
+        wanted = set(order)
+        slots = [i for i, pid in enumerate(ids) if pid in wanted]
+        by_id = {p.get("project_id"): p for p in projects}
+        for slot, pid in zip(slots, order, strict=True):
+            projects[slot] = by_id[pid]
+        save_projects(projects)
+    return j(handler, {"ok": True, "order": [p.get("project_id") for p in projects]})
+
+
+_PROJECT_ORDER_LOCK = threading.Lock()
+
+
 def _route_post_api_projects_set_workspace(handler, parsed, body, diag):
     _arm_project_lifecycle_for_mutation()
     try:
@@ -21416,6 +21479,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/projects/starter/analyze"), _route_post_api_projects_starter_analyze),
         (Exact("/api/projects/starter/toolkit"), _route_post_api_projects_starter_toolkit),
         (Exact("/api/projects/rename"), _route_post_api_projects_rename),
+        (Exact("/api/projects/toolkit/skills"), _route_post_api_projects_toolkit_skills),
+        (Exact("/api/projects/reorder"), _route_post_api_projects_reorder),
         (Exact("/api/projects/set_workspace"), _route_post_api_projects_set_workspace),
         (Exact("/api/profiles/set_approval_mode"), _route_post_api_profiles_set_approval_mode),
         (Exact("/api/projects/delete"), _route_post_api_projects_delete),

@@ -13,7 +13,8 @@
     notebook: ['static/notebook/index.js'],
     dashboard: ['static/dashboard/sprite.js', 'static/dashboard/index.js'],
     notes: ['static/work-hub.js', 'static/goal-planner.js'],
-    files: ['static/file-manager.js']
+    files: ['static/file-manager.js'],
+    projectkit: ['static/project-kit.js']
   };
   var pending = {};
 

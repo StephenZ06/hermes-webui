@@ -12022,6 +12022,17 @@ function _showProjectContextMenu(e, proj, chip){
   workspaceItem.onclick=()=>{animatePopupOut(menu);_showProjectWorkspacePicker(proj,chip);};
   menu.appendChild(workspaceItem);
 
+  // Skills & Tools (below Workspace): the project's skills, components,
+  // packages and MCP servers in a centred modal (static/project-kit.js).
+  const kitItem=document.createElement('div');
+  kitItem.className='project-ctx-item project-ctx-kit';
+  kitItem.textContent='Skills & Tools';
+  kitItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap;';
+  kitItem.onmouseenter=()=>kitItem.style.background='var(--hover-bg)';
+  kitItem.onmouseleave=()=>kitItem.style.background='';
+  kitItem.onclick=()=>{animatePopupOut(menu);_openProjectKit(proj);};
+  menu.appendChild(kitItem);
+
   // Rename option
   const renameItem=document.createElement('div');
   renameItem.textContent='Rename';
@@ -12051,6 +12062,30 @@ function _showProjectContextMenu(e, proj, chip){
     colorRow.appendChild(dot);
   });
   menu.appendChild(colorRow);
+
+  // Move up / Move down among the sidebar's project folders.
+  const order=_sidebarProjectOrder();
+  const at=order.indexOf(proj.project_id);
+  if(at>=0&&order.length>1){
+    const moveSep=document.createElement('hr');
+    moveSep.style.cssText='border:none;border-top:1px solid var(--border);margin:4px 0;';
+    menu.appendChild(moveSep);
+    [['Move up',-1],['Move down',1]].forEach(([label,dir])=>{
+      const item=document.createElement('div');
+      const blocked=(dir<0&&at===0)||(dir>0&&at===order.length-1);
+      item.className='project-ctx-item project-ctx-move'+(blocked?' is-disabled':'');
+      item.dataset.dir=String(dir);
+      item.textContent=label;
+      item.setAttribute('aria-disabled',blocked?'true':'false');
+      item.style.cssText='padding:7px 14px;font-size:13px;white-space:nowrap;'+(blocked?'color:var(--muted);opacity:.5;cursor:default;':'cursor:pointer;color:var(--text);');
+      if(!blocked){
+        item.onmouseenter=()=>item.style.background='var(--hover-bg)';
+        item.onmouseleave=()=>item.style.background='';
+        item.onclick=()=>{animatePopupOut(menu);_moveProject(proj,dir);};
+      } else item.onclick=(ev)=>ev.stopPropagation();
+      menu.appendChild(item);
+    });
+  }
 
   // Divider + Delete
   const sep=document.createElement('hr');
@@ -12092,6 +12127,54 @@ function _clampFixedToViewport(el, margin=8){
   if(top<margin) top=margin;
   el.style.left=Math.round(left)+'px';
   el.style.top=Math.round(top)+'px';
+}
+
+function _openProjectKit(proj){
+  const go=()=>window.openProjectKit(proj);
+  if(typeof window.openProjectKit==='function') return go();
+  return window.loadPageModule('projectkit').then(go).catch(e=>showToast('Could not open Skills & Tools: '+(e.message||e),5000,'error'));
+}
+
+// The project folders the sidebar draws, in order (Work Hub-only projects
+// stay off the sidebar and keep their place in the list).
+function _sidebarProjectOrder(){
+  return _allProjects.filter(p=>!isWorkHubOnlyProject(p)).map(p=>p.project_id);
+}
+
+async function _moveProject(proj, dir){
+  const order=_sidebarProjectOrder();
+  const at=order.indexOf(proj.project_id), to=at+dir;
+  if(at<0||to<0||to>=order.length) return;
+  [order[at],order[to]]=[order[to],order[at]];
+  const rowsBefore=new Map([...document.querySelectorAll('.project-folder-list > .project-folder-row')].map(el=>[el.dataset.projectId,el.getBoundingClientRect().top]));
+  try{
+    await api('/api/projects/reorder',{method:'POST',body:JSON.stringify({order})});
+    const byId=new Map(_allProjects.map(p=>[p.project_id,p]));
+    const slots=_allProjects.map((p,i)=>order.includes(p.project_id)?i:-1).filter(i=>i>=0);
+    slots.forEach((slot,k)=>{_allProjects[slot]=byId.get(order[k]);});
+    await renderSessionList();
+    _slideProjectRows(rowsBefore);
+  }catch(e){
+    showToast('Could not move the project: '+(e.message||e),5000,'error');
+  }
+}
+
+// FLIP: each folder row (and its open session list) glides from where it was.
+function _slideProjectRows(before){
+  let reduce=false;
+  try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
+  if(reduce) return;
+  document.querySelectorAll('.project-folder-list > .project-folder-row').forEach(row=>{
+    const was=before.get(row.dataset.projectId);
+    if(was==null) return;
+    const dy=was-row.getBoundingClientRect().top;
+    if(!dy) return;
+    const nested=row.nextElementSibling&&row.nextElementSibling.classList.contains('project-folder-sessions')?row.nextElementSibling:null;
+    [row,nested].forEach(el=>{
+      if(!el||!el.animate) return;
+      el.animate([{transform:`translateY(${dy}px)`},{transform:'translateY(0)'}],{duration:260,easing:'cubic-bezier(.22,1,.36,1)'});
+    });
+  });
 }
 
 async function _showProjectWorkspacePicker(proj, chip){

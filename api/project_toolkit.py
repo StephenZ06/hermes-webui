@@ -12,6 +12,7 @@ files into ``vendor/ui/<library>/``. ``kickoff_message`` is the first message
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 
 from api import library_catalog as lc
@@ -183,8 +184,10 @@ def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) 
     project = Path(project)
     written: list[str] = []
     comp_lines = []
+    comp_files: dict = {}
     for comp in toolkit.get("components") or []:
         copied = _copy_files(project, comp, libraries_root)
+        comp_files[(comp.get("library"), comp.get("slug"))] = copied
         written += copied
         how = {"npm": f"install with `{comp['install']}` (inside the project)" if comp.get("install") else "install from npm inside the project",
                "copy-paste": "copied to " + ", ".join(f"`{c}`" for c in copied) if copied
@@ -227,9 +230,28 @@ def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) 
             written.append("docs/PRODUCT.md")
         else:
             rules += ["What the app needs:", "", *lines, ""]
+    rules += ["Skills installed for this project from a repo go in `.agents/skills/<name>/SKILL.md`;"
+              " packages install inside the project. Both show under Skills & Tools in the WebUI.", ""]
     _upsert(project / "AGENTS.md", "\n".join(rules))
     written.append("AGENTS.md")
+    _write_manifest(project, skills, toolkit.get("components") or [], comp_files)
+    written.append(".agent/toolkit.json")
     return written
+
+
+def _write_manifest(project: Path, skills: list[str], components: list[dict], comp_files: dict) -> None:
+    """Record the wizard's picks in ``.agent/toolkit.json`` for the project's
+    Skills & Tools view (``api.project_inventory``)."""
+    from api import project_inventory as inv
+
+    now = time.time()
+    inv.write_manifest(project, {"version": 1,
+        "skills": [{"name": n, "source": "wizard", "added_at": now} for n in skills],
+        "components": [{"library": c.get("library"), "library_name": c.get("library_name"), "slug": c.get("slug"),
+                        "name": c.get("name"), "role": c.get("role"), "kind": c.get("kind"),
+                        "link": c.get("demo") or c.get("source") or "",
+                        "files": comp_files.get((c.get("library"), c.get("slug")), []),
+                        "source": "wizard", "added_at": now} for c in components]})
 
 
 def _needs_lines(needs: list[str], components: list[dict]) -> list[str]:

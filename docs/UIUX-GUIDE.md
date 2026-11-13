@@ -387,6 +387,34 @@ Under Zeus 2.0 everything uses the skin's typeface: `--font-mono` follows
 `--font-ui`, and the Dashboard's pixel fonts are replaced by the same local
 faces scaled with `size-adjust` so its tuned sizes still fit.
 
+## Project menu: Skills & Tools and ordering
+
+A project folder's options menu (kebab, right-click or long-press) lists
+Workspace, then **Skills & Tools**, Rename, colours, **Move up** / **Move
+down**, and Delete. Move up and Move down swap the folder with its neighbour
+in the sidebar (`POST /api/projects/reorder` with the sidebar's ids in their
+new order; projects kept off the sidebar keep their place in the list). The
+top folder's Move up and the bottom one's Move down are shown disabled. Rows
+glide to their new place (FLIP, skipped under reduced motion).
+
+Skills & Tools opens a centred modal (`static/project-kit.js`, loaded on first
+use) for one project. `GET /api/projects/toolkit` (`api/project_inventory.py`)
+lists what the project folder holds: the wizard's skills and components (its
+`.agent/toolkit.json`, or the skills AGENTS.md names), skills in
+`.agents/skills`, `.claude/skills`, `.hermes/skills` or `skills`, packages from
+`package.json`, `requirements.txt` and `pyproject.toml`, and MCP servers from
+`.mcp.json`. Each row shows its kind, name, description, where it came from
+(Wizard, Added, In folder) and when it was added; "New" marks something added
+this week after the project's first items. A search box (`/` focuses it), kind
+chips with counts, and a sort (Recently added, Name, Kind) sit above the list.
+"Add skill" slides to the profile's installed skills; ticking some and adding
+them, or taking a listed skill off (the row's x), rewrites only the skill lines
+inside AGENTS.md's toolkit markers and the manifest
+(`POST /api/projects/toolkit/skills`). Folder items are read-only here. A
+project with no workspace folder offers to set one. The wizard's toolkit block
+tells agents to install project skills in `.agents/skills/<name>/SKILL.md`, so
+a skill installed from a repo shows up in the modal.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with
