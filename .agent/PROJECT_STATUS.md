@@ -2307,3 +2307,5 @@ the invariant (an availability guard precedes the call) instead of the literals.
     `huihui-qwen3.5-9b-abliterated` in LM Studio with >=64K context (its true
     max is 262,144), or pick another already-large-context model. Nothing to
     do from inside this repo/container until then.
+
+- 2026-11-13: removed transitions.dev's 11 Pro catalogue entries (no code in the source; backup at ~/.hermes/backups/transitions-dev-pro-20261113). transitions-dev now 37/37 with files. `lc.drop_paid_components` runs on import/re-draft so a source with a tiered free manifest cannot bring them back (a3c793ace).
