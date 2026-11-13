@@ -195,7 +195,7 @@ def _score(comp: dict, style: str, motion: str) -> int:
 _FIT = [
     ("dashboard", "Dashboard and stats", "dashboard analytic chart table status shell activity counter number sidebar",
      "dashboard admin analytic analytics metric metrics kpi kpis report reports reporting stats statistic insight insights monitor monitoring internal backoffice saas crm portal data"),
-    ("auth", "Sign-in", "input otp password field form",
+    ("auth", "Sign-in", "otp password input field form",
      "login log signin sign signup register registration account accounts auth authentication password verification verify 2fa otp onboarding checkout"),
     ("forms", "Forms", "input field form button error",
      "form forms contact subscribe newsletter enquiry enquiries inquiry quote survey application apply"),
@@ -272,6 +272,8 @@ _FIT_SETS = [(words(c), words(b)) for _, _, c, b in _FIT]
 # What an app can need, for the planner to choose from: key -> label.
 NEEDS = {key: label for key, label, _, _ in _FIT}
 _NEED_WORDS = {key: words(c) for key, _, c, _ in _FIT}
+_NEED_ORDER = {key: {w: i for i, w in reversed(list(enumerate(
+    w2 for w1 in c.split() for w2 in words(w1))))} for key, _, c, _ in _FIT}
 _NEED_BRIEF_WORDS = {key: words(b) for key, _, _, b in _FIT}
 
 
@@ -355,6 +357,7 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
                         recommended=False, pick=False)
             item["_look"] = look
             item["_served"] = served
+            item["_own"] = words(" ".join([str(comp.get("name") or ""), str(comp.get("slug") or "").replace("-", " ")]))
             by_role.setdefault(comp["role"], []).append(item)
     called = lambda c: bool(c["fit"] or c["needs"])  # noqa: E731
     any_fit = any(called(c) for items in by_role.values() for c in items)
@@ -365,7 +368,9 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
             continue
         if any_fit:  # the brief decides: up to three per role in each library that it calls for
             # The best of them is "pick" (ticked for the user); the rest are only starred.
-            best = next((c for c in items if called(c)), None)
+            # Ticked per category only for what the brief itself names; needs
+            # are ticked once each below, so one need is not ticked three times.
+            best = next((c for c in items if c["fit"]), None)
             if best:
                 best["pick"] = True
             per_lib: dict[str, int] = {}
@@ -382,7 +387,13 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
         # sign-in fields in the same category.
         flat = sorted((c for items in out.values() for c in items), key=lambda c: (-c["score"], c["library"], c["slug"]))
         for need in needs:
-            serving = [c for c in flat if need in c["_served"]]
+            # The component named by the need's leading words comes first
+            # (each entry in _FIT lists its most typical component word first:
+            # Input OTP for sign-in, Calendar for scheduling), then the one
+            # matching more of them, then the usual score.
+            order = _NEED_ORDER[need]
+            serving = sorted((c for c in flat if need in c["_served"]),
+                             key=lambda c: (min(order.get(w, 99) for w in c["_own"]), -len(c["_own"] & _NEED_WORDS[need])))
             if serving:
                 serving[0]["pick"] = True
             for lib in {c["library"] for c in serving}:
@@ -391,6 +402,7 @@ def match_components(libraries, *, platform, framework, tailwind, style, motion,
         for c in items:
             c.pop("_look", None)
             c.pop("_served", None)
+            c.pop("_own", None)
     return out
 
 

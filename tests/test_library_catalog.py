@@ -229,3 +229,24 @@ def test_each_need_gets_its_own_pick_even_in_a_crowded_category():
     by = {c["slug"]: c for c in out["forms"]}
     assert by["calendar"]["recommended"] and by["calendar"]["pick"]
     assert by["input-otp"]["pick"]
+
+
+def test_a_need_is_ticked_once_and_by_its_most_specific_component():
+    libs = [_lib("k", ["react"], False, [("input", "forms", ["minimal"], "subtle", ["web"]),
+                                         ("input-otp", "forms", ["minimal"], "subtle", ["web"]),
+                                         ("sonner", "cards", ["minimal"], "subtle", ["web"]),
+                                         ("toast", "transitions", ["minimal"], "subtle", ["web"]),
+                                         ("notification-bell", "icons", ["minimal"], "subtle", ["web"])])]
+    out = lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal",
+                              motion="subtle", brief="A physio clinic.", needs=["auth", "notifications"])
+    ticked = sorted(c["slug"] for items in out.values() for c in items if c["pick"])
+    assert len(ticked) == 2 and "input-otp" in ticked, ticked
+
+
+def test_scheduling_ticks_the_calendar_not_the_duration_picker():
+    libs = [_lib("k", ["react"], False, [("duration-picker", "forms", ["minimal"], "subtle", ["web"]),
+                                         ("task-list", "forms", ["minimal"], "subtle", ["web"]),
+                                         ("calendar", "forms", ["minimal"], "subtle", ["web"])])]
+    out = lc.match_components(libs, platform="web", framework="react", tailwind=False, style="minimal",
+                              motion="subtle", brief="A physio clinic.", needs=["scheduling"])
+    assert [c["slug"] for c in out["forms"] if c["pick"]] == ["calendar"]

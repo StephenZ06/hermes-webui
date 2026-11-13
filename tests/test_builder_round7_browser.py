@@ -5,9 +5,16 @@ fits."""
 
 import json
 
+import pytest
+
 from tests import test_builder_steps_567_browser as t
 from tests import test_project_builder_wizard_browser as wiz
-from tests.test_builder_steps_567_browser import page  # noqa: F401  (fixture)
+
+
+@pytest.fixture
+def page():
+    """The steps 5-7 wizard page (brief, planner, toolkit routes mocked)."""
+    yield from t.page.__wrapped__()
 
 
 def _kit_with_reasons(page, sent):
