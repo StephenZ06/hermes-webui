@@ -381,6 +381,32 @@ def registry_files(source: Path, slug: str) -> list[str]:
     return []
 
 
+def fill_registry_files(lib_dir: Path) -> int:
+    """Write file lists into a library's catalogue entries that have none, from
+    its source copy's registry (see ``registry_files``). Returns how many
+    entries changed; entries that already list files are left alone."""
+    lib_dir = Path(lib_dir)
+    source, comp_dir = lib_dir / "source", lib_dir / "components"
+    if not source.is_dir() or source.is_symlink() or not comp_dir.is_dir():
+        return 0
+    changed = 0
+    for path in sorted(comp_dir.glob("*.md")):
+        if path.is_symlink():
+            continue
+        try:
+            meta, body = parse_front_matter(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            continue
+        if not isinstance(meta, dict) or meta.get("files"):
+            continue
+        files = registry_files(source, path.stem)
+        if files:
+            meta["files"] = files
+            path.write_text(_dump(meta, body), encoding="utf-8")
+            changed += 1
+    return changed
+
+
 def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "",
                      needs: list[str] | None = None) -> dict:
     """Catalogued components that fit the stack, ranked by the brief and what

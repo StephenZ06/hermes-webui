@@ -149,3 +149,41 @@ def test_commit_fills_missing_file_lists_from_the_librarys_registry(tmp_path):
     from api import library_catalog as lc
     [lib] = lc.list_libraries(root)
     assert lib["components"][0]["files"] == ["src/components/ui/fade.tsx"]
+
+
+def test_a_redraft_of_an_existing_library_also_fills_file_lists(tmp_path):
+    import json
+
+    from api import library_catalog as lc
+    root = tmp_path / "libraries"
+    out = li.parse_draft(DRAFT)
+    lib_dir = li.commit_import(root, "", out["slug"], {**out["library"], "source": "https://x"}, out["components"])
+    src = lib_dir / "source"
+    (src / "src" / "ui").mkdir(parents=True)
+    (src / "src" / "ui" / "fade.tsx").write_text("x")
+    (src / "public" / "r").mkdir(parents=True)
+    (src / "public" / "r" / "fade.json").write_text(json.dumps({"files": [{"path": "ui/fade.tsx"}]}))
+    for comp in out["components"]:
+        comp["files"] = []
+    li.commit_import(root, "", out["slug"], {**out["library"], "source": "https://x"}, out["components"])
+    [lib] = lc.list_libraries(root)
+    assert lib["components"][0]["files"] == ["src/ui/fade.tsx"]
+
+
+def test_filling_keeps_listed_files_and_every_other_field(tmp_path):
+    import json
+
+    from api import library_catalog as lc
+    lib = tmp_path / "kit"
+    (lib / "components").mkdir(parents=True)
+    (lib / "source" / "public" / "r").mkdir(parents=True)
+    (lib / "source" / "a.tsx").write_text("x")
+    (lib / "source" / "public" / "r" / "one.json").write_text(json.dumps({"files": [{"path": "a.tsx"}]}))
+    (lib / "source" / "public" / "r" / "two.json").write_text(json.dumps({"files": [{"path": "a.tsx"}]}))
+    (lib / "components" / "one.md").write_text("---\nname: One\nrole: cards\nfiles: []\n---\nNotes stay.\n")
+    (lib / "components" / "two.md").write_text("---\nname: Two\nfiles: [own.tsx]\n---\n")
+    assert lc.fill_registry_files(lib) == 1
+    one = (lib / "components" / "one.md").read_text()
+    assert "- a.tsx" in one and "name: One" in one and "role: cards" in one and one.endswith("Notes stay.\n")
+    assert "own.tsx" in (lib / "components" / "two.md").read_text()
+    assert lc.fill_registry_files(lib) == 0

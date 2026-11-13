@@ -187,18 +187,14 @@ def commit_import(root: Path, staging: str, slug: str, library: dict, components
     stage = lc.safe_child(root, STAGING_DIR, lc.slugify(staging)) if staging else None
     if staging and stage.name != str(staging):
         raise ValueError("Unknown import.")
-    # Components the draft lists no files for take them from the library's own
-    # shadcn-style registry, when it ships one, so their code can be copied later.
-    src = stage / "source" if stage and (stage / "source").is_dir() else None
-    if src:
-        for comp in components:
-            if isinstance(comp, dict) and not comp.get("files"):
-                comp["files"] = lc.registry_files(src, comp.get("slug") or comp.get("name") or "")
     lib_dir = lc.save_library(root, slug, library, components)
     if stage and (stage / "source").is_dir() and not (lib_dir / "source").exists():
         shutil.move(str(stage / "source"), str(lib_dir / "source"))
     if stage:
         shutil.rmtree(stage, ignore_errors=True)
+    # Components the draft lists no files for take them from the library's own
+    # shadcn-style registry, on import and on a re-draft of an existing library.
+    lc.fill_registry_files(lib_dir)
     return lib_dir
 
 
