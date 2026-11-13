@@ -104,7 +104,7 @@ def test_toolkit_is_validated_against_the_catalog_and_the_installed_skills(catal
 def test_non_visual_templates_keep_skills_but_no_look_or_components(catalog):
     raw = {"look": {"style": "bold", "motion": "none"}, "skills": ["pdf"], "components": [{"library": "calm-ui", "slug": "fade"}]}
     out = tk.normalize_toolkit(raw, template="cli", libraries_root=catalog, skill_names={"pdf"})
-    assert out == {"look": None, "skills": ["pdf"], "components": []}
+    assert out == {"look": None, "skills": ["pdf"], "components": [], "needs": []}
 
 
 def test_apply_writes_marked_sections_and_copies_only_safe_component_files(catalog, tmp_path):
@@ -176,3 +176,60 @@ def test_a_template_default_stands_in_when_the_planner_names_no_needs():
     assert tk.resolve_needs("web", ["dashboard"]) == ["dashboard"]
     assert tk.resolve_needs("website", None) == ["marketing", "forms", "help"]
     assert tk.resolve_needs("cli", []) == []
+
+
+GLOW = """---
+name: Glow card
+role: cards
+style: [bold]
+motion: subtle
+platform: [web]
+files: []
+---
+"""
+
+
+def test_a_component_without_a_file_list_is_copied_from_the_librarys_registry(catalog, tmp_path):
+    from api import library_catalog as lc
+    lib = catalog / "calm-ui"
+    (lib / "components" / "glow-card.md").write_text(GLOW)
+    (lib / "source" / "src" / "components" / "glow").mkdir(parents=True)
+    (lib / "source" / "src" / "components" / "glow" / "card.tsx").write_text("export const Glow = () => null")
+    (lib / "source" / "public" / "r").mkdir(parents=True)
+    # shadcn-style registry: paths are relative to src/; hostile entries are ignored.
+    (lib / "source" / "public" / "r" / "glow-card.json").write_text(json.dumps({"files": [
+        {"path": "components/glow/card.tsx"}, {"path": "../../../escape.txt"}, {"path": ""}, "junk"]}))
+    assert lc.registry_files(lib / "source", "glow-card") == ["src/components/glow/card.tsx"]
+    assert lc.registry_files(lib / "source", "missing") == []
+    project = tmp_path / "site"
+    (project / "docs").mkdir(parents=True)
+    (project / "AGENTS.md").write_text("# Agent instructions\n")
+    (project / "docs" / "UI_UX.md").write_text("# UI and UX\n")
+    toolkit = tk.normalize_toolkit({"components": [{"library": "calm-ui", "slug": "glow-card"}], "skills": [],
+                                    "look": {"style": "bold", "motion": "subtle"}},
+                                   template="website", libraries_root=catalog, skill_names=set())
+    written = tk.apply_toolkit(project, toolkit, libraries_root=catalog)
+    assert "vendor/ui/calm-ui/src/components/glow/card.tsx" in written
+    assert "copied to `vendor/ui/calm-ui/src/components/glow/card.tsx`" in (project / "docs" / "UI_UX.md").read_text()
+    assert not list(project.rglob("escape.txt"))
+
+
+def test_what_the_app_needs_goes_into_the_product_doc_with_the_components_that_serve_it(catalog, tmp_path):
+    project = tmp_path / "clinic"
+    (project / "docs").mkdir(parents=True)
+    (project / "AGENTS.md").write_text("# Agent instructions\n")
+    (project / "docs" / "PRODUCT.md").write_text("# Product\n\nTBD\n")
+    toolkit = tk.normalize_toolkit({"skills": [], "components": [{"library": "calm-ui", "slug": "fade"}],
+                                    "needs": ["scheduling", "marketing", "nonsense"]},
+                                   template="website", libraries_root=catalog, skill_names=set())
+    assert toolkit["needs"] == ["scheduling", "marketing"]
+    written = tk.apply_toolkit(project, toolkit, libraries_root=catalog)
+    product = (project / "docs" / "PRODUCT.md").read_text()
+    assert "docs/PRODUCT.md" in written and "## What the app needs" in product and "<!-- hermes:toolkit:begin -->" in product
+    assert "- Scheduling\n" in product and "- Landing page" in product
+    # Without a product doc the list goes into AGENTS.md instead.
+    other = tmp_path / "cli"
+    other.mkdir()
+    (other / "AGENTS.md").write_text("# Agent instructions\n")
+    tk.apply_toolkit(other, {"look": None, "skills": [], "components": [], "needs": ["auth"]}, libraries_root=catalog)
+    assert "- Sign-in" in (other / "AGENTS.md").read_text()

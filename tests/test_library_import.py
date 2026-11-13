@@ -131,3 +131,21 @@ def test_delete_library_removes_only_that_folder(tmp_path):
         lc.delete_library(root, "../x")
     with pytest.raises(FileNotFoundError):
         lc.delete_library(root, "missing")
+
+
+def test_commit_fills_missing_file_lists_from_the_librarys_registry(tmp_path):
+    import json
+
+    root = tmp_path / "libraries"
+    src = root / li.STAGING_DIR / "job2" / "source"
+    (src / "src" / "components" / "ui").mkdir(parents=True)
+    (src / "src" / "components" / "ui" / "fade.tsx").write_text("export {}")
+    (src / "public" / "r").mkdir(parents=True)
+    (src / "public" / "r" / "fade.json").write_text(json.dumps({"files": [{"path": "components/ui/fade.tsx"}]}))
+    out = li.parse_draft(DRAFT)
+    for comp in out["components"]:
+        comp["files"] = []
+    li.commit_import(root, "job2", out["slug"], {**out["library"], "source": "https://x"}, out["components"])
+    from api import library_catalog as lc
+    [lib] = lc.list_libraries(root)
+    assert lib["components"][0]["files"] == ["src/components/ui/fade.tsx"]

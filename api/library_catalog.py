@@ -322,6 +322,47 @@ def brief_fit(comp: dict, brief_words: set[str]) -> list[str]:
     return sorted(hits)
 
 
+# Where shadcn-style registries keep one JSON per component ("files": [{"path"}]).
+_REGISTRY_DIRS = ("public/r", "registry", "r", "public/registry")
+
+
+def registry_files(source: Path, slug: str) -> list[str]:
+    """A component's source files from the library's own shadcn-style registry
+    (``public/r/<slug>.json`` and the like), as paths inside ``source`` that
+    exist. Used when the catalogue entry lists no files, so the code is still
+    copied into a new project. The registry is untrusted input: only paths that
+    resolve to regular files inside ``source`` are returned."""
+    try:
+        clean = slugify(slug)
+    except ValueError:
+        return []
+    source = Path(source).resolve()
+    for folder in _REGISTRY_DIRS:
+        try:
+            entry = safe_child(source, *folder.split("/"), f"{clean}.json")
+        except ValueError:
+            continue
+        if not entry.is_file() or entry.is_symlink():
+            continue
+        try:
+            data = json.loads(entry.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            return []
+        out: list[str] = []
+        for item in data.get("files") or [] if isinstance(data, dict) else []:
+            rel = str(item.get("path") or "") if isinstance(item, dict) else ""
+            for candidate in (rel, "src/" + rel):
+                try:
+                    path = safe_child(source, *[p for p in candidate.split("/") if p])
+                except ValueError:
+                    continue
+                if rel and path.is_file() and not path.is_symlink():
+                    out.append(path.relative_to(source).as_posix())
+                    break
+        return out[:50]
+    return []
+
+
 def match_components(libraries, *, platform, framework, tailwind, style, motion, brief: str = "",
                      needs: list[str] | None = None) -> dict:
     """Catalogued components that fit the stack, ranked by the brief and what

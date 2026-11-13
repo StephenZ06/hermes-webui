@@ -117,7 +117,7 @@ def normalize_toolkit(raw, *, template: str, libraries_root: Path, skill_names: 
         for key in wanted:
             if key in index and index[key] not in components:
                 components.append(index[key])
-    return {"look": look, "skills": skills[:20], "components": components[:40]}
+    return {"look": look, "skills": skills[:20], "components": components[:40], "needs": lc.parse_needs(raw.get("needs"))}
 
 
 def _upsert(path: Path, block: str) -> None:
@@ -144,7 +144,8 @@ def _copy_files(project: Path, comp: dict, libraries_root: Path) -> list[str]:
     except ValueError:
         return []
     copied = []
-    for rel in comp.get("files") or []:
+    # A catalogue entry without a file list falls back to the library's own registry.
+    for rel in comp.get("files") or lc.registry_files(source, comp.get("slug") or ""):
         try:
             src = lc.safe_child(source, *[p for p in str(rel).split("/") if p])
         except ValueError:
@@ -177,7 +178,7 @@ def _look_lines(look: dict) -> list[str]:
 
 def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) -> list[str]:
     """Write the toolkit into ``project``; returns the project-relative files written."""
-    if not toolkit or not (toolkit.get("look") or toolkit.get("skills") or toolkit.get("components")):
+    if not toolkit or not (toolkit.get("look") or toolkit.get("skills") or toolkit.get("components") or toolkit.get("needs")):
         return []
     project = Path(project)
     written: list[str] = []
@@ -216,9 +217,30 @@ def apply_toolkit(project: Path, toolkit: dict | None, *, libraries_root: Path) 
                   "Install every dependency inside the project, never globally.", ""]
         if not ui_doc.exists():
             rules += comp_lines + [""]
+    needs = lc.parse_needs(toolkit.get("needs"))
+    product = project / "docs" / "PRODUCT.md"
+    if needs:
+        lines = _needs_lines(needs, toolkit.get("components") or [])
+        if product.exists():
+            _upsert(product, "\n".join(["## What the app needs", "", *lines, ""]))
+            written.append("docs/PRODUCT.md")
+        else:
+            rules += ["What the app needs:", "", *lines, ""]
     _upsert(project / "AGENTS.md", "\n".join(rules))
     written.append("AGENTS.md")
     return written
+
+
+def _needs_lines(needs: list[str], components: list[dict]) -> list[str]:
+    """What the app needs (the planner's reading of the brief, said or implied),
+    each with the approved components that serve it."""
+    lines = ["Worked out from the brief in the create-project wizard, including what it only implies.",
+             "Treat it as the first feature list: confirm, refine or drop items with the owner.", ""]
+    for need in needs:
+        serving = [c for c in components if need in lc.need_fit(c, [need])]
+        tail = (": " + ", ".join(f"{c['name']} ({c['library_name']})" for c in serving)) if serving else ""
+        lines.append(f"- {lc.NEEDS[need]}{tail}")
+    return lines
 
 
 def kickoff_message(name: str, template: str, toolkit: dict | None) -> str:
