@@ -18912,7 +18912,7 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-icon-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;transition:background-color .15s ease,color .15s ease;}
 .pkit-icon-btn svg{width:16px;height:16px;}
 .pkit-icon-btn:hover{background:var(--accent-bg);color:var(--accent-text,var(--text));}
-.pkit-icon-btn:focus-visible,.pkit-chip:focus-visible,.pkit-add:focus-visible,.pkit-ghost:focus-visible,.pkit-confirm:focus-visible,.pkit-pick-btn:focus-visible,.pkit-sort:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 60%,transparent);outline-offset:2px;}
+.pkit-icon-btn:focus-visible,.pkit-chip:focus-visible,.pkit-square:focus-visible,.pkit-ghost:focus-visible,.pkit-pick-btn:focus-visible,.pkit-sort:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 60%,transparent);outline-offset:2px;}
 .pkit-stage{position:relative;flex:1;min-height:0;display:flex;}
 .pkit-view{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;}
 .pkit-view[hidden]{display:none;}
@@ -18928,12 +18928,11 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-kbd{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border:1px solid var(--border2);border-radius:5px;font:500 11px/1 var(--font-ui,inherit);color:var(--muted);}
 .pkit-search:focus-within .pkit-kbd{opacity:0;}
 .pkit-sort{flex:none;height:36px;padding:0 30px 0 12px;border:1px solid var(--border2);border-radius:10px;background:var(--input-bg,transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.25 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E") no-repeat right 10px center/14px;color:var(--text);font:inherit;font-size:13px;cursor:pointer;appearance:none;-webkit-appearance:none;}
-.pkit-add{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px 0 11px;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:10px;background:var(--accent-bg);color:var(--accent-text,var(--accent));font:inherit;font-size:13px;font-weight:550;cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease;}
-.pkit-add svg{width:14px;height:14px;}
-.pkit-add > *{translate:0 1px;}
-.pkit-add:hover{background:var(--accent-bg-strong);border-color:var(--accent);}
-.pkit-add:active{transform:translateY(1px);}
-.pkit-add:disabled{opacity:.45;cursor:not-allowed;}
+.pkit-square{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:10px;background:transparent;color:var(--accent-text,var(--accent));cursor:pointer;transition:background-color .15s ease,border-color .15s ease,transform .15s ease,opacity .15s ease;}
+.pkit-square svg{width:16px;height:16px;}
+.pkit-square:hover:not(:disabled){background:var(--accent-bg);border-color:var(--accent);}
+.pkit-square:active:not(:disabled){transform:translateY(1px);}
+.pkit-square:disabled{opacity:.4;cursor:not-allowed;}
 .pkit-filters{display:flex;gap:6px;padding:12px var(--pkit-pad) 12px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);}
 .pkit-filters::-webkit-scrollbar{display:none;}
 .pkit-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px 0 12px;border:1px solid var(--border2);border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;transition:background-color .15s ease,color .15s ease,border-color .15s ease;}
@@ -18976,6 +18975,8 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-ghost{margin-top:10px;height:32px;padding:0 14px;border:1px solid var(--border2);border-radius:9px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer;transition:background-color .15s ease,border-color .15s ease;}
 .pkit-ghost:hover{background:var(--accent-bg);border-color:color-mix(in srgb,var(--accent) 50%,transparent);}
 .pkit-add-view .pkit-tools{padding-bottom:12px;border-bottom:1px solid var(--border);}
+/* The category picker is as wide as its longest option (project-kit.js sets it). */
+.pkit-add-view .pkit-tools .themed-select-trigger{min-width:0;}
 .pkit-pick{padding:0;}
 .pkit-pick-btn{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;}
 .pkit-box{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin:0 8px;border:1.5px solid var(--border2);border-radius:5px;color:transparent;transition:background-color .15s ease,border-color .15s ease,color .15s ease,transform .15s ease;}
@@ -18985,10 +18986,6 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .pkit-cat{flex:none;max-width:120px;padding:0 8px;height:20px;display:inline-flex;align-items:center;border-radius:6px;background:color-mix(in srgb,var(--muted) 10%,transparent);font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pkit-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px var(--pkit-pad);border-top:1px solid var(--border);}
 .pkit-picked{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;}
-.pkit-confirm{height:36px;padding:0 16px;border:0;border-radius:10px;background:var(--accent);color:var(--bg,#fff);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:filter .15s ease,opacity .15s ease,transform .15s ease;}
-.pkit-confirm:hover:not(:disabled){filter:brightness(1.08);}
-.pkit-confirm:active:not(:disabled){transform:translateY(1px);}
-.pkit-confirm:disabled{opacity:.4;cursor:not-allowed;}
 @keyframes pkit-fade{from{opacity:0;}to{opacity:1;}}
 @keyframes pkit-fade-out{to{opacity:0;}}
 @keyframes pkit-rise{from{opacity:0;transform:translateY(14px) scale(.985);filter:blur(2px);}to{opacity:1;transform:none;filter:none;}}
@@ -19020,6 +19017,8 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 #settingsMenu .settings-menu-items > .side-menu-item{height:37px;padding:10px 11px 10px 10.5px;line-height:17px;}
 /* Notes side panel: the Trash count 2px lower, level with the "Trash" letters. */
 .nb-nav .nb-trash-scope > .nb-scope-count{translate:0 1px;}
+/* Obsidian Notes' count: 2px lower than the other rows' counts. */
+.nb-nav .nb-obsidian-scope > .nb-scope-count{translate:0 1px;}
 
 /* Learning log and Skills gained: the scrolling body reaches 3px past the
    entry row on both ends, so the fields' focus ring and the row's drop-in are

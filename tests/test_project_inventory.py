@@ -130,3 +130,32 @@ def test_icon_packs_leave_a_linked_agents_file_alone(tmp_path):
     with pytest.raises(ValueError):
         tk.ensure_icon_packs(proj)
     assert outside.read_text() == "not ours\n"
+
+
+WITH_CAVEMAN = {**INSTALLED, "caveman": {"description": "Terse replies", "category": "style"}}
+
+
+def test_a_project_gets_caveman_once_and_taking_it_off_sticks(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Own rules\n\nKeep this.\n")
+    inv.set_skills(_proj(tmp_path), add=["tdd"], remove=[], installed=set(INSTALLED))
+    assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN)) == ["AGENTS.md", ".agent/toolkit.json"]
+    names = [i["name"] for i in inv.inventory(_proj(tmp_path), installed=WITH_CAVEMAN)["items"] if i["kind"] == "skill"]
+    assert sorted(names) == ["caveman", "tdd"]
+    text = (tmp_path / "AGENTS.md").read_text()
+    assert "load the `caveman` skill" in text and text.startswith("# Own rules\n\nKeep this.\n")
+    assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN)) == []  # applied once
+    inv.set_skills(_proj(tmp_path), add=[], remove=["caveman"], installed=set(WITH_CAVEMAN))
+    assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN)) == []
+    assert "`caveman`" not in (tmp_path / "AGENTS.md").read_text()
+
+
+def test_a_default_skill_that_is_not_installed_waits_until_it_is(tmp_path):
+    assert tk.ensure_default_skills(tmp_path, set(INSTALLED)) == []
+    assert not (tmp_path / ".agent" / "toolkit.json").exists()
+    assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN))
+
+
+def test_unticking_caveman_in_the_wizard_keeps_it_off(tmp_path):
+    tk.apply_toolkit(tmp_path, {"skills": ["tdd"], "components": [], "look": None, "needs": []}, libraries_root=tmp_path / "libs")
+    assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN)) == []
+    assert "caveman" not in (tmp_path / "AGENTS.md").read_text()

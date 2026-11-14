@@ -1890,3 +1890,44 @@ def test_first_load_lifts_its_cover_only_when_list_side_panel_and_note_are_all_i
     page.wait_for_function("() => !!window.__lift", timeout=15000)
     lift = page.evaluate("() => window.__lift")
     assert lift == {"list": True, "side": True, "sidePending": False, "text": True, "arriving": True, "skeleton": False}, lift
+
+
+def test_copying_from_a_note_pastes_what_the_note_shows(page):
+    """The plain-text flavour of a copy is one line per block with plain list
+    marks, not Markdown with a blank line between every block, and the rich
+    flavour has no paragraph wrapped inside each list item."""
+    _open(page)
+    _new_note(page, "copy " + uuid.uuid4().hex[:6])
+    page.click(".hermes-note-editor .bn-editor")
+    for line in ["# Heading one", "Plain para", "- bullet a", "bullet b"]:
+        page.keyboard.type(line)
+        page.keyboard.press("Enter")
+    page.keyboard.press("Enter")  # an empty bullet becomes a plain line again
+    page.keyboard.type("1. first")
+    page.keyboard.press("Enter")
+    page.keyboard.type("second")
+    page.keyboard.press("Control+Home")
+    page.keyboard.press("Control+Shift+End")
+    page.wait_for_timeout(200)  # the editor reads a selection change on the next event
+    page.evaluate("""() => {
+      window.__copy = null;
+      document.querySelector('.nb-editor-mount').addEventListener('copy', (e) => {
+        window.__copy = {plain: e.clipboardData.getData('text/plain'), html: e.clipboardData.getData('text/html')};
+      });
+    }""")
+    page.keyboard.press("Control+c")
+    got = page.evaluate("() => window.__copy")
+    assert got, "the copy never reached the clipboard"
+    assert got["plain"] == "Heading one\nPlain para\n- bullet a\n- bullet b\n1. first\n2. second", got["plain"]
+    assert "<li><p" not in got["html"] and "\ufffc" not in got["html"], got["html"]
+    assert "<h1>Heading one</h1>" in got["html"] and "<ul>" in got["html"] and "<ol>" in got["html"], got["html"]
+
+
+def test_the_obsidian_notes_count_sits_two_pixels_lower_than_the_other_counts(page):
+    _open(page)
+    got = page.evaluate("""() => {
+      const probe = (row) => { const span = document.createElement('span'); span.className = 'nb-scope-count'; span.textContent = '9'; row.appendChild(span);
+        const t = getComputedStyle(span).translate; span.remove(); return t; };
+      return {obsidian: probe(document.querySelector('.nb-obsidian-scope')), general: probe(document.querySelector("#notebookSidebar [data-nb-scope='general']"))};
+    }""")
+    assert got == {"obsidian": "0px 1px", "general": "0px -1px"}, got

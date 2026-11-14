@@ -259,3 +259,11 @@ def test_a_component_with_no_code_in_the_source_says_so(catalog, tmp_path):
                                    template="website", libraries_root=catalog, skill_names=set())
     tk.apply_toolkit(project, toolkit, libraries_root=catalog)
     assert "not in the library's downloaded source" in (project / "docs" / "UI_UX.md").read_text()
+
+
+def test_caveman_is_recommended_for_every_project_when_installed():
+    skills = SKILLS + [{"name": "caveman", "category": "style", "description": "Terse replies."}]
+    for template in ("web", "cli", "blank"):
+        out = {s["name"]: s for s in tk.suggest_skills(skills, template=template, brief="")}
+        assert out["caveman"]["recommended"] is True and out["caveman"]["default"] is True
+    assert "caveman" not in {s["name"] for s in tk.suggest_skills(SKILLS, template="web", brief="")}

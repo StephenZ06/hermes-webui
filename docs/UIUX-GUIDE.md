@@ -231,7 +231,12 @@ Review step whose primary action is Create & start building. Web app, website, i
 Android projects also get `docs/PERFORMANCE.md` (the owner's performance
 checklist, `api/starter_performance.md`) and an AGENTS.md rule to run it before
 calling work done; both sit between `hermes:performance` markers that the setup
-agent keeps word for word. Between 721px and
+agent keeps word for word. Web app, website and API projects also get
+`docs/SECURITY.md` (the SaaS web app security checklist,
+`api/starter_security.md`, 20 items) and an AGENTS.md rule to run it, between
+`hermes:security` markers, ending the summary with a "Security checklist" note;
+adopting an older Hermes project adds just that rule, and rollback removes only
+what the adopt added. Between 721px and
 1023px the stepper shows only the current label.
 
 Toolkit picks come from what the app needs, said or not: the planner's review
@@ -417,8 +422,17 @@ project with no workspace folder offers to set one. The wizard's toolkit block
 tells agents to install project skills in `.agents/skills/<name>/SKILL.md`, so
 a skill installed from a repo shows up in the modal.
 
-The Add skill view has a category picker right of its search (the addable
-skills' categories, each with its count; it uses the 2px-gapped option list).
+"Add skill" and the Add view's confirm button are the same control: a plus in
+a 36px rounded-square outline (`.pkit-square`, named by `aria-label`, no text,
+no hover title). The Add skill view has a category picker right of its search
+(the addable skills' categories, each with its count; it uses the 2px-gapped
+option list). The picker is as wide as its longest option
+(`fitToLongest` in project-kit.js) and keeps that width whichever option is
+chosen, so the search box takes the rest. `caveman` is a default skill:
+`suggest_skills` marks it recommended (ticked) in the wizard, a project that
+has never had it gets it when its folder is bound or the wizard is skipped
+(`ensure_default_skills`, applied once; the manifest's `defaults_applied` makes
+taking it off stick).
 Every project also gets the icon packs in `api/project_toolkit.ICON_PACKS`
 (today mx-icons): `apply_toolkit` writes them into the toolkit block and the
 manifest even when nothing was picked in the wizard, binding a workspace folder

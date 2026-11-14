@@ -1319,6 +1319,102 @@
       try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_bar', source: 'wrong-button', url_path: location.pathname, reason: `finger=${tapped.under} click=${got} x=${tapped.x} scroll=${tapped.scroll} left=${tapped.left}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
     }, true);
   }
+  // Copying from a note. The editor puts Markdown on the clipboard as the plain
+  // text (headings as "# ", bold as "**", bullets as "* ", a blank line between
+  // every block), which pastes oddly into a chat box or a text field and is
+  // far airier than the note looks. The plain text becomes what the note shows:
+  // one line per block, "- " and "1." for lists, no Markdown marks. The rich
+  // (HTML) flavour keeps its structure, minus the paragraph the editor wraps
+  // inside each list item (an extra gap in most apps) and its filler characters.
+  const CLIP_BLOCKS = 'p,div,h1,h2,h3,h4,h5,h6,ul,ol,li,pre,blockquote,table,hr,figure';
+  function clipInline(node) {
+    if (node.nodeType === 3) return node.textContent;
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName;
+    if (tag === 'BR') return '\n';
+    if (tag === 'IMG' || tag === 'INPUT') return '';
+    let text = '';
+    node.childNodes.forEach((child) => { text += clipInline(child); });
+    return text;
+  }
+  function clipList(listEl, indent, out) {
+    let n = Number(listEl.getAttribute('start')) || 1;
+    for (const li of listEl.children) {
+      if (li.tagName !== 'LI') continue;
+      const box = li.querySelector(':scope > input[type=checkbox], :scope > p > input[type=checkbox]');
+      const nested = [];
+      const parts = [];
+      li.childNodes.forEach((child) => {
+        if (child.nodeType === 1 && (child.tagName === 'UL' || child.tagName === 'OL')) nested.push(child);
+        else parts.push(clipInline(child));
+      });
+      const text = parts.join(' ').replace(/￼/g, '').replace(/[ \t]+/g, ' ').trim();
+      const mark = box ? (box.checked ? '[x] ' : '[ ] ') : (listEl.tagName === 'OL' ? (n++) + '. ' : '- ');
+      if (text) out.push(indent + mark + text);
+      nested.forEach((child) => clipList(child, indent + '  ', out));
+    }
+  }
+  function clipBlocks(parent, out) {
+    let run = '';
+    const flush = () => {
+      const text = run.replace(/￼/g, '').replace(/[ \t]+/g, ' ').trim();
+      if (text) out.push(text);
+      run = '';
+    };
+    parent.childNodes.forEach((child) => {
+      if (child.nodeType !== 1) { run += clipInline(child); return; }
+      const tag = child.tagName;
+      if (tag === 'UL' || tag === 'OL') { flush(); clipList(child, '', out); return; }
+      if (tag === 'HR') { flush(); out.push('---'); return; }
+      if (tag === 'TABLE') {
+        flush();
+        child.querySelectorAll('tr').forEach((row) => {
+          out.push([...row.children].map((cell) => clipInline(cell).replace(/￼/g, '').replace(/\s+/g, ' ').trim()).join('\t'));
+        });
+        return;
+      }
+      if (tag === 'PRE') { flush(); out.push(clipInline(child).replace(/￼/g, '').replace(/\n+$/, '')); return; }
+      if (!child.matches(CLIP_BLOCKS)) { run += clipInline(child); return; }
+      flush();
+      if (child.querySelector(CLIP_BLOCKS)) { clipBlocks(child, out); return; }
+      // A paragraph or heading: one line, and an empty one stays a blank line.
+      out.push(clipInline(child).replace(/￼/g, '').replace(/[ \t]+/g, ' ').trim());
+    });
+    flush();
+  }
+  function clipboardPlainText(html) {
+    const body = new DOMParser().parseFromString(String(html || ''), 'text/html').body;
+    const out = [];
+    clipBlocks(body, out);
+    while (out.length && !out[0]) out.shift();
+    while (out.length && !out[out.length - 1]) out.pop();
+    return out.join('\n');
+  }
+  function clipboardRichHTML(html) {
+    const body = new DOMParser().parseFromString(String(html || ''), 'text/html').body;
+    body.querySelectorAll('li > p').forEach((p) => { p.replaceWith(...p.childNodes); });
+    return body.innerHTML.replace(/￼/g, '');
+  }
+  function mountClipboardText(mount) {
+    const onClip = (event) => {
+      const data = event.clipboardData;
+      if (!data || !event.defaultPrevented) return; // the editor did not take this copy
+      const sel = window.getSelection();
+      const inCode = (node) => !!(node && (node.nodeType === 1 ? node : node.parentElement) && (node.nodeType === 1 ? node : node.parentElement).closest('[data-content-type="codeBlock"]'));
+      // Inside one code block the editor already copies the exact characters.
+      if (sel && sel.anchorNode && inCode(sel.anchorNode) && inCode(sel.focusNode)) return;
+      const html = data.getData('text/html');
+      if (!html) return;
+      try {
+        data.setData('text/plain', clipboardPlainText(html));
+        data.setData('text/html', clipboardRichHTML(html));
+      } catch (_) { /* keep what the editor wrote */ }
+    };
+    // After the editor's own handler on the same element (it writes first).
+    mount.addEventListener('copy', onClip);
+    mount.addEventListener('cut', onClip);
+  }
+
   function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
     trackKeyboard();
@@ -1724,6 +1820,7 @@
     });
     editorNoteId = note.id;
     mountBlockGrip(host, note);
+    mountClipboardText(mountPoint);
     mountImageOutline(host, note);
     installMediaLoadStates(host);
     const realign = () => { if (editorNoteId === note.id) alignFirstLine(host); };

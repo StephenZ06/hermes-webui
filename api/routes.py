@@ -20531,6 +20531,13 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         toolkit = normalize_toolkit(body.get("toolkit"), template=starter["template"],
                                     libraries_root=_libraries_root(), skill_names=_installed_skill_names())
         starter["toolkit_files"] = apply_toolkit(Path(project_path), toolkit, libraries_root=_libraries_root())
+        # Skipped in the wizard: the project still starts with the default skills (caveman).
+        try:
+            from api.project_toolkit import ensure_default_skills
+
+            starter["toolkit_files"] += ensure_default_skills(Path(project_path), _installed_skill_names())
+        except (OSError, ValueError):
+            logger.warning("Could not add the default skills to %s", project_path, exc_info=True)
     except Exception:
         try:
             rmtree_anchored(Path(parent), Path(project_path))
@@ -20747,6 +20754,13 @@ def _route_post_api_projects_set_workspace(handler, parsed, body, diag):
             ensure_icon_packs(Path(workspace_path))
         except (OSError, ValueError):
             logger.warning("Could not add the icon packs to %s", workspace_path, exc_info=True)
+        # ...and the default skills (caveman), once.
+        try:
+            from api.project_toolkit import ensure_default_skills
+
+            ensure_default_skills(Path(workspace_path), _installed_skill_names())
+        except (OSError, ValueError):
+            logger.warning("Could not add the default skills to %s", workspace_path, exc_info=True)
     return j(handler, {"ok": True, "project": proj, "sessions_updated": sessions_updated})
 
 

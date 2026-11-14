@@ -295,7 +295,7 @@ def test_website_template_takes_the_cli_slot_and_writes_website_documents(tmp_pa
     assert keys[4:] == ["api", "website", "cli", "research"]
     project_starter.create_starter_pack(tmp_path, "site", "website", "A portfolio site.")
     docs = sorted(p.name for p in (tmp_path / "site" / "docs").iterdir())
-    assert docs == ["PAGES.md", "PERFORMANCE.md", "PRODUCT.md", "SEO.md", "TESTING.md", "UI_UX.md"]
+    assert docs == ["PAGES.md", "PERFORMANCE.md", "PRODUCT.md", "SECURITY.md", "SEO.md", "TESTING.md", "UI_UX.md"]
     assert "## Sitemap" in (tmp_path / "site" / "docs" / "PAGES.md").read_text(encoding="utf-8")
     assert "## Hosting and domain" in (tmp_path / "site" / "docs" / "SEO.md").read_text(encoding="utf-8")
 
@@ -398,3 +398,44 @@ def test_a_project_adopted_before_the_rule_existed_gets_only_the_rule(tmp_path):
 def test_the_adopt_agent_keeps_the_performance_block():
     from api import project_starter_agent as agent
     assert "hermes:performance:begin" in agent._adopt_prompt("shop")
+
+
+def test_web_website_and_api_projects_get_the_security_checklist_and_the_rule_to_run_it():
+    from api import project_starter as ps
+    for key in ("web", "website", "api"):
+        files = ps._pack_files("demo", key, "A clinic site.")
+        sec = files["docs/SECURITY.md"]
+        for item in ("Hide API keys", "Purge Git secrets", "Enable row-level security", "Block field tampering",
+                     "Rate limit login", "Parameterize queries", "Scan dependencies for known vulnerabilities"):
+            assert item in sec, item
+        assert sec.count("- [ ]") == 20
+        assert sec.count("<!-- hermes:security:begin -->") == 1 and "<!-- hermes:security:end -->" in sec
+        assert "run `docs/SECURITY.md`" in files["AGENTS.md"] and '"Security checklist" note' in files["AGENTS.md"]
+    for key in ("cli", "research", "blank"):
+        files = ps._pack_files("demo", key, "")
+        assert "docs/SECURITY.md" not in files and "SECURITY.md" not in files["AGENTS.md"]
+
+
+def test_the_setup_agent_keeps_the_security_block():
+    from api import project_starter_agent as agent
+    assert "hermes:security:begin" in agent._new_project_prompt("demo", "Web App", ["docs/SECURITY.md"])
+    assert "hermes:security:begin" in agent._adopt_prompt("demo")
+
+
+def test_a_project_adopted_before_the_security_rule_existed_gets_only_that_rule(tmp_path):
+    from api import project_starter as ps
+    root = tmp_path / "older"
+    root.mkdir()
+    before = ("# Old rules\n\n<!-- hermes:begin -->\n## Hermes continuity\n\nRead the handoff.\n\n"
+              "- <!-- hermes:performance:begin -->run `docs/PERFORMANCE.md`<!-- hermes:performance:end -->\n<!-- hermes:end -->\n")
+    (root / "AGENTS.md").write_text(before)
+    result = ps.adopt_starter_pack(root, "web", "x")
+    agents = (root / "AGENTS.md").read_text()
+    assert agents.count("hermes:performance:begin") == 1 and agents.count("hermes:security:begin") == 1
+    assert agents.index("hermes:security:begin") < agents.index("<!-- hermes:end -->")
+    assert result["added"].get("security_appended") and not result["added"].get("perf_appended")
+    ps.adopt_starter_pack(root, "web", "x")
+    assert (root / "AGENTS.md").read_text().count("hermes:security:begin") == 1
+    ps.rollback_adopted(root, result)
+    after = (root / "AGENTS.md").read_text()
+    assert "hermes:security" not in after and after.count("hermes:performance:begin") == 1 and "Read the handoff." in after

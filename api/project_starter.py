@@ -40,15 +40,15 @@ _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)
 _TEMPLATES = {
     "blank": ("Blank Project", "Just the continuity files; shape it later.", ()),
     "web": ("Web App", "Sites, dashboards and SaaS front ends.",
-            ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
+            ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md", "SECURITY.md")),
     "ios": ("iOS App", "iPhone and iPad apps in Swift.",
             ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
     "android": ("Android App", "Phone and tablet apps in Kotlin.",
                 ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md", "PERFORMANCE.md")),
     "api": ("API/Backend", "Services, endpoints and data stores.",
-            ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
+            ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md", "SECURITY.md")),
     "website": ("Website", "Marketing sites, portfolios and content pages.",
-                ("PRODUCT.md", "PAGES.md", "UI_UX.md", "SEO.md", "TESTING.md", "PERFORMANCE.md")),
+                ("PRODUCT.md", "PAGES.md", "UI_UX.md", "SEO.md", "TESTING.md", "PERFORMANCE.md", "SECURITY.md")),
     "cli": ("CLI Tool", "Command-line tools and automation scripts.",
             ("PRODUCT.md", "ARCHITECTURE.md", "CLI.md", "TESTING.md")),
     "research": ("Research", "Investigations, reviews and write-ups.",
@@ -261,11 +261,15 @@ def _brief_block(brief: str) -> str:
 # project as docs/PERFORMANCE.md (between hermes:performance markers, which
 # the setup agent keeps word for word).
 _PERFORMANCE_DOC = Path(__file__).with_name("starter_performance.md")
+# The owner's security checklist (the SaaS web app one), the same way, between
+# hermes:security markers. Given to web, website and API projects.
+_SECURITY_DOC = Path(__file__).with_name("starter_security.md")
+_CHECKLIST_DOCS = {"PERFORMANCE.md": _PERFORMANCE_DOC, "SECURITY.md": _SECURITY_DOC}
 
 
 def _doc(name: str, brief: str) -> str:
-    if name == "PERFORMANCE.md":
-        return _PERFORMANCE_DOC.read_text(encoding="utf-8")
+    if name in _CHECKLIST_DOCS:
+        return _CHECKLIST_DOCS[name].read_text(encoding="utf-8")
     title, sections = _DOC_SECTIONS.get(name, (name.removesuffix(".md").replace("_", " ").title(), []))
     body = [f"# {title}", "", "## Project brief", "", _brief_block(brief), ""]
     for heading, prompt in sections:
@@ -302,6 +306,10 @@ def _agents(name: str, docs: tuple[str, ...] = ()) -> str:
             "  item that applies, skip the rest with a reason, and end your summary with a short\n"
             "  \"Performance checklist\" note (applied, already in place, skipped and why).<!-- hermes:performance:end -->\n"
             if "PERFORMANCE.md" in docs else "")
+    sec = ("- <!-- hermes:security:begin -->Before calling any work done, run `docs/SECURITY.md`: do every\n"
+           "  item that applies, skip the rest with a reason, and end your summary with a short\n"
+           "  \"Security checklist\" note (applied, already in place, skipped and why).<!-- hermes:security:end -->\n"
+           if "SECURITY.md" in docs else "")
     return f"""# {name}: agent instructions
 
 These rules apply to every AI agent working in this repository.
@@ -320,7 +328,7 @@ These rules apply to every AI agent working in this repository.
 
 - Keep the change to the requested scope; note adjacent problems instead of fixing them silently.
 - Follow the commands and checks in `docs/TESTING.md` (or the README) before calling work done.
-{perf}- Install dependencies inside the project only: a virtual environment in `.venv`
+{perf}{sec}- Install dependencies inside the project only: a virtual environment in `.venv`
   for Python (`python -m venv .venv`, then its own `pip`), `node_modules` from the
   project's `package.json` (or `npx`) for JavaScript, and the platform's own
   project-local tooling elsewhere. Never install globally: no `pip install`
@@ -548,12 +556,15 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
         raise ProjectStarterError("Unknown project template.")
     project_brief = _brief(brief)
     pack = _pack_files(root.name, template_key, project_brief)
-    # A project with its own docs/PERFORMANCE.md keeps it; the owner's checklist
-    # goes beside it as PERFORMANCE_CHECKLIST.md and the rule points there.
-    own = root / "docs" / "PERFORMANCE.md"
-    if "docs/PERFORMANCE.md" in pack and (own.is_symlink() or (own.exists() and PERF_BEGIN not in _read_text(own))):
-        pack = {rel.replace("PERFORMANCE.md", "PERFORMANCE_CHECKLIST.md"): text.replace("PERFORMANCE.md", "PERFORMANCE_CHECKLIST.md")
-                for rel, text in pack.items()}
+    # A project with its own docs/PERFORMANCE.md (or SECURITY.md) keeps it; the
+    # owner's checklist goes beside it as PERFORMANCE_CHECKLIST.md and the rule
+    # points there.
+    for doc, (begin, _end) in _RULE_MARKERS.items():
+        own = root / "docs" / doc
+        if f"docs/{doc}" in pack and (own.is_symlink() or (own.exists() and begin not in _read_text(own))):
+            stem = doc.removesuffix(".md")
+            pack = {rel.replace(doc, f"{stem}_CHECKLIST.md"): text.replace(doc, f"{stem}_CHECKLIST.md")
+                    for rel, text in pack.items()}
     candidates = {root / rel: content for rel, content in pack.items()}
     added: dict[str, list[str]] = {"files": [], "dirs": []}
     for directory in (root / ".agent", root / "docs"):
@@ -566,8 +577,10 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
                     what = _append_hermes_section(root, path, candidates[path])
                     if what == "section":
                         added["appended"] = [str(path)]
-                    elif what == "performance":
-                        added["perf_appended"] = [str(path)]
+                    elif what:
+                        # "performance", "security" or both ("performance+security").
+                        for rule in what.split("+"):
+                            added["perf_appended" if rule == "performance" else "security_appended"] = [str(path)]
                 continue
             _write(root, path, content)
             added["files"].append(str(path))
@@ -581,6 +594,10 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
 HERMES_BEGIN = "<!-- hermes:begin -->"
 HERMES_END = "<!-- hermes:end -->"
 PERF_BEGIN = "<!-- hermes:performance:begin -->"
+SEC_BEGIN = "<!-- hermes:security:begin -->"
+# docs file -> (begin marker, end marker) of the rule that runs it.
+_RULE_MARKERS = {"PERFORMANCE.md": (PERF_BEGIN, "<!-- hermes:performance:end -->"),
+                 "SECURITY.md": (SEC_BEGIN, "<!-- hermes:security:end -->")}
 
 
 def _read_text(path: Path) -> str:
@@ -606,16 +623,20 @@ def _append_hermes_section(root: Path, path: Path, generated: str) -> str:
         return ""
     text = path.read_text(encoding="utf-8")
     if HERMES_BEGIN in text:
-        # Adopted before the performance rule existed: add just that rule to
-        # the Hermes section, once.
-        rule = next((line for line in generated.splitlines(keepends=False) if PERF_BEGIN in line), "")
-        if rule and PERF_BEGIN not in text and HERMES_END in text:
-            start = generated.index(rule)
-            block = generated[start:generated.index("<!-- hermes:performance:end -->", start) + len("<!-- hermes:performance:end -->")]
-            head, tail = text.split(HERMES_END, 1)
-            _rewrite(root, path, head.rstrip("\n") + "\n\n" + block + "\n" + HERMES_END + tail)
-            return "performance"
-        return ""
+        # Adopted before a checklist rule existed: add just that rule to the
+        # Hermes section, once.
+        added = []
+        for name, (begin, end) in _RULE_MARKERS.items():
+            rule = next((line for line in generated.splitlines(keepends=False) if begin in line), "")
+            if rule and begin not in text and HERMES_END in text:
+                start = generated.index(rule)
+                block = generated[start:generated.index(end, start) + len(end)]
+                head, tail = text.split(HERMES_END, 1)
+                text = head.rstrip("\n") + "\n\n" + block + "\n" + HERMES_END + tail
+                added.append(name.removesuffix(".md").lower())
+        if added:
+            _rewrite(root, path, text)
+        return "+".join(added)
     rules = generated.split("## Before any change", 1)[-1].split("\n## Related documents", 1)[0].strip()
     section = (f"{HERMES_BEGIN}\n## Hermes continuity\n\nAdded when Hermes adopted this project. "
                "These rules sit alongside the ones above.\n\n### Before any change\n\n"
@@ -637,13 +658,12 @@ def _remove_hermes_section(root: Path, path: Path) -> None:
     _rewrite(root, path, head + ("\n" + tail if tail else ""))
 
 
-def _remove_perf_rule(root: Path, path: Path) -> None:
-    """Take out only the performance rule an adopt added to an older Hermes section."""
+def _remove_rule(root: Path, path: Path, begin: str, end: str) -> None:
+    """Take out only a checklist rule an adopt added to an older Hermes section."""
     text = _read_text(path)
-    end = "<!-- hermes:performance:end -->"
-    if PERF_BEGIN not in text or end not in text:
+    if begin not in text or end not in text:
         return
-    start = text.rfind("\n", 0, text.index(PERF_BEGIN)) + 1
+    start = text.rfind("\n", 0, text.index(begin)) + 1
     stop = text.index(end, start) + len(end)
     head = text[:start].rstrip("\n")
     _rewrite(root, path, head + "\n" + text[stop:].lstrip("\n"))
@@ -658,11 +678,12 @@ def rollback_adopted(project_root: Path, result: dict) -> None:
             _remove_hermes_section(root, Path(appended))
         except (OSError, ValueError):
             pass
-    for appended in added.get("perf_appended") or []:
-        try:
-            _remove_perf_rule(root, Path(appended))
-        except (OSError, ValueError):
-            pass
+    for key, doc in (("perf_appended", "PERFORMANCE.md"), ("security_appended", "SECURITY.md")):
+        for appended in added.get(key) or []:
+            try:
+                _remove_rule(root, Path(appended), *_RULE_MARKERS[doc])
+            except (OSError, ValueError):
+                pass
     new_dirs = [Path(d) for d in added.get("dirs") or []]
     for file_path in added.get("files") or []:
         path = Path(file_path)

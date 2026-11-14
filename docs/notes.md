@@ -232,6 +232,19 @@ In the vault:
   Only add commands that do something real. Agent actions should call
   existing Hermes APIs.
 
+## Copying
+
+BlockNote puts Markdown on the clipboard as the plain text (`# `, `**`, `* `,
+a blank line between blocks), which pastes into a chat box or text field with
+stars and far more spacing than the note shows. `mountClipboardText` in
+`static/notebook/index.js` listens after the editor's own `copy`/`cut` handler
+and rewrites the plain text from the editor's HTML: one line per block, `- ` and
+`1.` for lists (two spaces per nesting level), `[ ]`/`[x]` for check items, tab-separated
+table rows, no Markdown marks. The HTML flavour keeps its structure minus the
+paragraph the editor wraps in each list item and its filler characters. A copy
+inside one code block is left exactly as the editor wrote it. Pasting into
+another note still uses the editor's own `blocknote/html` flavour, untouched.
+
 ## Keyboard
 
 | Keys | Action |

@@ -77,7 +77,8 @@ def read_manifest(root: Path) -> dict:
     skills = [s for s in data.get("skills") or [] if isinstance(s, dict) and isinstance(s.get("name"), str)]
     comps = [c for c in data.get("components") or [] if isinstance(c, dict) and isinstance(c.get("name"), str)]
     icons = [p for p in data.get("icon_packs") or [] if isinstance(p, dict) and isinstance(p.get("name"), str)]
-    return {"version": 1, "skills": skills, "components": comps, "icon_packs": icons}
+    done = [n for n in data.get("defaults_applied") or [] if isinstance(n, str)]
+    return {"version": 1, "skills": skills, "components": comps, "icon_packs": icons, "defaults_applied": done}
 
 
 def write_manifest(root: Path, data: dict) -> None:

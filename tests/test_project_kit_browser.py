@@ -108,8 +108,18 @@ def test_skills_and_tools_sits_below_workspace_and_lists_searches_filters_and_ad
     page.click(".pkit-chip[data-kind=all]")
     # Only the skills the project lists can be taken off; folder items cannot.
     assert page.eval_on_selector_all(".pkit-remove", "els => els.map(e => e.dataset.name)") == ["tdd"]
+    def square(sel, label):
+        info = page.eval_on_selector(sel, """e => { const c = getComputedStyle(e); return {text: e.textContent.trim(), label: e.getAttribute('aria-label'),
+            svg: !!e.querySelector('svg'), radius: c.borderTopLeftRadius, border: c.borderTopWidth, bg: c.backgroundColor, w: e.offsetWidth, h: e.offsetHeight}; }""")
+        assert info["text"] == "" and info["svg"] and info["label"] == label, info
+        assert info["radius"] == "10px" and info["border"] == "1px" and info["bg"] == "rgba(0, 0, 0, 0)", info
+        assert info["w"] == 36 and info["h"] == 36, info
+
+    # "Add skill" is just a plus in a rounded square outline; so is the confirm button.
+    square(".pkit-add", "Add skill")
     page.click(".pkit-add")
     page.wait_for_selector(".pkit-add-view:not([hidden])")
+    square(".pkit-confirm", "Add to project")
     assert page.is_disabled(".pkit-confirm")
     # A category picker sits right of the search, listing the addable skills' categories.
     tools = page.eval_on_selector_all(".pkit-add-view .pkit-tools > *", "els => els.map(e => e.className.split(' ')[0])")
@@ -119,16 +129,23 @@ def test_skills_and_tools_sits_below_workspace_and_lists_searches_filters_and_ad
     assert abs(search_box["y"] - cat_box["y"]) < 0.5 and abs(search_box["height"] - cat_box["height"]) < 0.5, (search_box, cat_box)
     assert abs(cat_box["x"] - (search_box["x"] + search_box["width"]) - 8) < 0.5, (search_box, cat_box)
     assert page.eval_on_selector_all(".pkit-cat-filter option", "els => els.map(e => e.textContent)") == ["All categories", "web · 1", "writing · 1"]
+    # The picker is as wide as its longest option and keeps that width whichever one is chosen.
+    fit = page.eval_on_selector(".pkit-add-view .themed-select-trigger", """t => { const c = getComputedStyle(t);
+        const ctx = document.createElement('canvas').getContext('2d'); ctx.font = c.fontStyle + ' ' + c.fontWeight + ' ' + c.fontSize + ' ' + c.fontFamily;
+        const longest = Math.max(...[...t.parentNode.querySelector('select').options].map(o => ctx.measureText(o.textContent).width));
+        return {width: t.getBoundingClientRect().width, need: longest + parseFloat(c.paddingLeft) + parseFloat(c.paddingRight) + 8 + 10 + 2}; }""")
+    assert fit["need"] - 1 <= fit["width"] <= fit["need"] + 1.5, fit
     add_names = lambda: page.eval_on_selector_all(".pkit-add-rows .pkit-name", "els => els.map(e => e.textContent)")
     assert add_names() == ["docs", "seo"]
     page.click(".pkit-add-view .themed-select-trigger")
     page.click(".themed-select-popup .themed-select-option:has-text('web')")
     assert add_names() == ["seo"]
+    assert abs(page.locator(".pkit-add-view .themed-select-trigger").bounding_box()["width"] - fit["width"]) < 0.5
     page.click(".pkit-add-view .themed-select-trigger")
     page.click(".themed-select-popup .themed-select-option:has-text('All categories')")
     assert add_names() == ["docs", "seo"]
     page.click(".pkit-pick-btn[data-name=docs]")
-    assert page.text_content(".pkit-confirm") == "Add 1 to project"
+    assert page.get_attribute(".pkit-confirm", "aria-label") == "Add 1 to project"
     page.click(".pkit-confirm")
     page.wait_for_selector(".pkit-list-view:not([hidden])")
     assert posted[-1] == {"project_id": pid, "add": ["docs"], "remove": []}

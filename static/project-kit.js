@@ -78,7 +78,7 @@
                 '<option value="name">Name A to Z</option>' +
                 '<option value="kind">Kind</option>' +
               '</select>' +
-              '<button type="button" class="pkit-add">' + ICON.plus + '<span>Add skill</span></button>' +
+              '<button type="button" class="pkit-add pkit-square" aria-label="Add skill">' + ICON.plus + '</button>' +
             '</div>' +
             '<div class="pkit-filters" role="tablist" aria-label="Filter by kind"></div>' +
             '<div class="pkit-body"><ul class="pkit-rows" role="list"></ul><div class="pkit-empty" hidden></div></div>' +
@@ -93,7 +93,7 @@
             '</div>' +
             '<div class="pkit-body"><ul class="pkit-rows pkit-add-rows" role="list"></ul><div class="pkit-empty pkit-add-empty" hidden></div></div>' +
             '<footer class="pkit-foot"><span class="pkit-picked">Tick the skills to add</span>' +
-              '<button type="button" class="pkit-confirm" disabled>Add to project</button></footer>' +
+              '<button type="button" class="pkit-confirm pkit-square" aria-label="Add to project" disabled>' + ICON.plus + '</button></footer>' +
           '</section>' +
         '</div>' +
       '</div>';
@@ -203,7 +203,7 @@
     st.$('.pkit-picked').textContent = n ? n + (n === 1 ? ' skill' : ' skills') + ' picked' : 'Tick the skills to add';
     var btn = st.$('.pkit-confirm');
     btn.disabled = !n || st.busy;
-    btn.textContent = n ? 'Add ' + n + ' to project' : 'Add to project';
+    btn.setAttribute('aria-label', n ? 'Add ' + n + ' to project' : 'Add to project');
   }
 
   // The category picker lists the categories of the skills that can still be
@@ -220,6 +220,22 @@
     sel.value = st.cat || '';
     sel.disabled = !names.length;
     if (window.refreshThemedSelect) window.refreshThemedSelect(sel);
+    fitToLongest(sel);
+  }
+
+  // A picker as wide as its longest option, so picking a short category does
+  // not shrink the box (and the search box beside it does not grow back).
+  function fitToLongest(sel) {
+    var trigger = sel.__themedTrigger;
+    if (!trigger) return;
+    var cs = getComputedStyle(trigger);
+    var ctx = (fitToLongest.canvas || (fitToLongest.canvas = document.createElement('canvas'))).getContext('2d');
+    ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    var longest = 0;
+    Array.prototype.forEach.call(sel.options, function (o) { longest = Math.max(longest, ctx.measureText(o.textContent).width); });
+    // text + left/right padding + gap + chevron + border
+    var pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    trigger.style.minWidth = Math.ceil(longest + pad + parseFloat(cs.columnGap || 8) + 10 + 2) + 'px';
   }
 
   function apply(data) {

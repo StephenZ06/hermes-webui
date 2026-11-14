@@ -27,6 +27,10 @@ ICON_PACKS = (
      "install": "npm install mx-icons", "repo": "https://github.com/ig-imanish/mx-icons",
      "browse": "https://mx-icons.vercel.app"},
 )
+# Skills every project has ticked by default (installed ones only): ticked in
+# the wizard, and added to a project that has none of them yet.
+# ``ensure_default_skills`` marks them in the manifest so taking one off sticks.
+DEFAULT_SKILLS = ("caveman",)
 ICONS_INTRO = "Icon packs for this project (use these before drawing new icons):"
 
 
@@ -107,6 +111,10 @@ def suggest_skills(skills: list[dict], *, template: str, brief: str, needs: list
     scored.sort(key=lambda s: (not (s["imported"] and s["score"] >= 2), -s["score"], s["name"]))
     for item in scored[:limit]:
         item["recommended"] = item["score"] >= 2
+    for item in scored:
+        if item["name"] in DEFAULT_SKILLS:
+            item["recommended"] = True
+            item["default"] = True
     return scored
 
 
@@ -267,6 +275,7 @@ def _write_manifest(project: Path, skills: list[str], components: list[dict], co
     inv.write_manifest(project, {"version": 1,
         "skills": [{"name": n, "source": "wizard", "added_at": now} for n in skills],
         "icon_packs": [{"name": p["name"], "source": "wizard", "added_at": now} for p in ICON_PACKS],
+        "defaults_applied": list(DEFAULT_SKILLS),
         "components": [{"library": c.get("library"), "library_name": c.get("library_name"), "slug": c.get("slug"),
                         "name": c.get("name"), "role": c.get("role"), "kind": c.get("kind"),
                         "link": c.get("demo") or c.get("source") or "",
@@ -310,6 +319,31 @@ def ensure_icon_packs(project: Path) -> list[str]:
         inv.write_manifest(project, manifest)
         written.append(".agent/toolkit.json")
     return written
+
+
+def ensure_default_skills(project: Path, installed: set[str]) -> list[str]:
+    """Give a project the default skills (see ``DEFAULT_SKILLS``) it has not had
+    before: they go into AGENTS.md's toolkit block and ``.agent/toolkit.json``.
+    A default skill is applied once; the manifest remembers it, so taking it off
+    later sticks. Skills that are not installed wait. Returns the files changed."""
+    from api import project_inventory as inv
+
+    project = Path(project)
+    if not project.is_dir() or project.is_symlink():
+        return []
+    manifest = inv.read_manifest(project)
+    done = set(manifest["defaults_applied"])
+    todo = [n for n in DEFAULT_SKILLS if n not in done and n in installed]
+    if not todo:
+        return []
+    have = {s["name"] for s in manifest["skills"]} | set(inv.agents_skills(project))
+    add = [n for n in todo if n not in have]
+    if add:
+        inv.set_skills({"workspace_path": str(project)}, add=add, remove=[], installed=installed)
+    manifest = inv.read_manifest(project)
+    manifest["defaults_applied"] = sorted(done | set(todo))
+    inv.write_manifest(project, manifest)
+    return ["AGENTS.md", ".agent/toolkit.json"] if add else [".agent/toolkit.json"]
 
 
 def _needs_lines(needs: list[str], components: list[dict]) -> list[str]:
