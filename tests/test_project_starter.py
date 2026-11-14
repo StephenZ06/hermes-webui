@@ -295,7 +295,7 @@ def test_website_template_takes_the_cli_slot_and_writes_website_documents(tmp_pa
     assert keys[4:] == ["api", "website", "cli", "research"]
     project_starter.create_starter_pack(tmp_path, "site", "website", "A portfolio site.")
     docs = sorted(p.name for p in (tmp_path / "site" / "docs").iterdir())
-    assert docs == ["PAGES.md", "PERFORMANCE.md", "PRODUCT.md", "SECURITY.md", "SEO.md", "TESTING.md", "UI_UX.md"]
+    assert docs == ["PAGES.md", "PERFORMANCE.md", "PRODUCT.md", "SECURITY.md", "SEO.md", "SKILLS_POLICY.md", "TESTING.md", "UI_UX.md"]
     assert "## Sitemap" in (tmp_path / "site" / "docs" / "PAGES.md").read_text(encoding="utf-8")
     assert "## Hosting and domain" in (tmp_path / "site" / "docs" / "SEO.md").read_text(encoding="utf-8")
 
@@ -439,3 +439,30 @@ def test_a_project_adopted_before_the_security_rule_existed_gets_only_that_rule(
     ps.rollback_adopted(root, result)
     after = (root / "AGENTS.md").read_text()
     assert "hermes:security" not in after and after.count("hermes:performance:begin") == 1 and "Read the handoff." in after
+
+
+def test_every_template_gets_the_skills_policy_and_its_rule():
+    from api import project_starter as ps
+    for key in ("blank", "web", "website", "ios", "android", "api", "cli", "research"):
+        files = ps._pack_files("demo", key, "")
+        policy = files["docs/SKILLS_POLICY.md"]
+        assert policy.count("<!-- hermes:skills-policy:begin -->") == 1 and "on demand" in policy and "Load when the task is in the skill's domain" in policy
+        assert "docs/SKILLS_POLICY.md" in files["AGENTS.md"] and "hermes:skills-policy:begin" in files["AGENTS.md"]
+        assert len(policy) < 3000  # read on demand, never a burden
+
+
+def test_adopting_an_older_project_adds_only_the_missing_rules_and_rolls_back_cleanly(tmp_path):
+    from api import project_starter as ps
+    root = tmp_path / "older"
+    root.mkdir()
+    before = ("# Old rules\n\n<!-- hermes:begin -->\n## Hermes continuity\n\nRead the handoff.\n\n"
+              "- <!-- hermes:performance:begin -->run `docs/PERFORMANCE.md`<!-- hermes:performance:end -->\n"
+              "- <!-- hermes:security:begin -->run `docs/SECURITY.md`<!-- hermes:security:end -->\n<!-- hermes:end -->\n")
+    (root / "AGENTS.md").write_text(before)
+    result = ps.adopt_starter_pack(root, "web", "x")
+    agents = (root / "AGENTS.md").read_text()
+    assert agents.count("hermes:skills-policy:begin") == 1 and result["added"].get("skills_policy_appended")
+    assert not result["added"].get("perf_appended") and not result["added"].get("security_appended")
+    ps.rollback_adopted(root, result)
+    after = (root / "AGENTS.md").read_text()
+    assert "skills-policy" not in after and after.count("hermes:security:begin") == 1 and "Read the handoff." in after

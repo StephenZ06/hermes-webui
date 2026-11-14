@@ -236,7 +236,11 @@ agent keeps word for word. Web app, website and API projects also get
 `api/starter_security.md`, 20 items) and an AGENTS.md rule to run it, between
 `hermes:security` markers, ending the summary with a "Security checklist" note;
 adopting an older Hermes project adds just that rule, and rollback removes only
-what the adopt added. Between 721px and
+what the adopt added. Every template also gets `docs/SKILLS_POLICY.md`
+(`api/starter_skills_policy.md`, under 3 KB) and a two-line AGENTS.md rule: skills
+and tools are used when the task is in their domain, not to start a
+conversation (a loaded skill is 5 to 30 KB that stays in the conversation, and
+every tool's schema is sent with every request). Between 721px and
 1023px the stepper shows only the current label.
 
 Toolkit picks come from what the app needs, said or not: the planner's review

@@ -1923,11 +1923,15 @@ def test_copying_from_a_note_pastes_what_the_note_shows(page):
     assert "<h1>Heading one</h1>" in got["html"] and "<ul>" in got["html"] and "<ol>" in got["html"], got["html"]
 
 
-def test_the_obsidian_notes_count_sits_two_pixels_lower_than_the_other_counts(page):
+def test_side_panel_counts_sit_lower_for_obsidian_and_for_general_pinned_favorites(page):
+    """Obsidian Notes' count is 2px below the base row value, General, Pinned and Favorites 1px below it."""
     _open(page)
     got = page.evaluate("""() => {
       const probe = (row) => { const span = document.createElement('span'); span.className = 'nb-scope-count'; span.textContent = '9'; row.appendChild(span);
         const t = getComputedStyle(span).translate; span.remove(); return t; };
-      return {obsidian: probe(document.querySelector('.nb-obsidian-scope')), general: probe(document.querySelector("#notebookSidebar [data-nb-scope='general']"))};
+      const out = {obsidian: probe(document.querySelector('.nb-obsidian-scope'))};
+      for (const k of ['general', 'pinned', 'favorites']) out[k] = probe(document.querySelector(`#notebookSidebar [data-nb-scope='${k}']`));
+      out.trash = probe(document.querySelector('#notebookSidebar .nb-trash-scope'));
+      return out;
     }""")
-    assert got == {"obsidian": "0px 1px", "general": "0px -1px"}, got
+    assert got == {"obsidian": "0px 1px", "general": "0px", "pinned": "0px", "favorites": "0px", "trash": "0px 1px"}, got

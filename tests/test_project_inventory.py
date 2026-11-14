@@ -159,3 +159,37 @@ def test_unticking_caveman_in_the_wizard_keeps_it_off(tmp_path):
     tk.apply_toolkit(tmp_path, {"skills": ["tdd"], "components": [], "look": None, "needs": []}, libraries_root=tmp_path / "libs")
     assert tk.ensure_default_skills(tmp_path, set(WITH_CAVEMAN)) == []
     assert "caveman" not in (tmp_path / "AGENTS.md").read_text()
+
+
+def test_an_existing_project_gets_the_security_checklist_and_its_rule_once(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Own rules\n\nKeep this.\n")
+    inv.set_skills(_proj(tmp_path), add=["tdd"], remove=[], installed=set(INSTALLED))
+    assert tk.ensure_security_checklist(tmp_path) == ["docs/SECURITY.md", "AGENTS.md"]
+    text = (tmp_path / "AGENTS.md").read_text()
+    assert text.startswith("# Own rules\n\nKeep this.\n") and "run `docs/SECURITY.md`" in text and "load the `tdd` skill" in text
+    assert "Rate limit login" in (tmp_path / "docs" / "SECURITY.md").read_text()
+    assert tk.ensure_security_checklist(tmp_path) == []
+    assert (tmp_path / "AGENTS.md").read_text().count("hermes:security:begin") == 1
+    inv.set_skills(_proj(tmp_path), add=["docs"], remove=["tdd"], installed=set(INSTALLED))
+    assert "hermes:security:begin" in (tmp_path / "AGENTS.md").read_text()
+
+
+def test_a_projects_own_security_doc_is_kept_and_the_checklist_goes_beside_it(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "SECURITY.md").write_text("# Our policy\n")
+    assert tk.ensure_security_checklist(tmp_path) == ["docs/SECURITY_CHECKLIST.md", "AGENTS.md"]
+    assert (tmp_path / "docs" / "SECURITY.md").read_text() == "# Our policy\n"
+    assert "run `docs/SECURITY_CHECKLIST.md`" in (tmp_path / "AGENTS.md").read_text()
+
+
+def test_an_existing_project_gets_the_skills_policy_once_beside_its_own_doc(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Own rules\n")
+    assert tk.ensure_skills_policy(tmp_path) == ["docs/SKILLS_POLICY.md", "AGENTS.md"]
+    assert tk.ensure_skills_policy(tmp_path) == []
+    text = (tmp_path / "AGENTS.md").read_text()
+    assert text.count("hermes:skills-policy:begin") == 1 and "docs/SKILLS_POLICY.md" in text and text.startswith("# Own rules\n")
+    other = tmp_path / "p2"
+    (other / "docs").mkdir(parents=True)
+    (other / "docs" / "SKILLS_POLICY.md").write_text("# mine\n")
+    assert tk.ensure_skills_policy(other) == ["docs/SKILLS_POLICY_CHECKLIST.md", "AGENTS.md"]
+    assert (other / "docs" / "SKILLS_POLICY.md").read_text() == "# mine\n"

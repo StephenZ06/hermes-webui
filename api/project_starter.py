@@ -54,6 +54,9 @@ _TEMPLATES = {
     "research": ("Research", "Investigations, reviews and write-ups.",
                  ("RESEARCH.md", "SOURCES.md", "FINDINGS.md")),
 }
+# Every template also gets the skills and tools policy (docs/SKILLS_POLICY.md):
+# skills and tools are used when the task is in their domain, not by default.
+_TEMPLATES = {key: (label, desc, docs + ("SKILLS_POLICY.md",)) for key, (label, desc, docs) in _TEMPLATES.items()}
 
 
 def available_templates() -> tuple[str, ...]:
@@ -264,7 +267,8 @@ _PERFORMANCE_DOC = Path(__file__).with_name("starter_performance.md")
 # The owner's security checklist (the SaaS web app one), the same way, between
 # hermes:security markers. Given to web, website and API projects.
 _SECURITY_DOC = Path(__file__).with_name("starter_security.md")
-_CHECKLIST_DOCS = {"PERFORMANCE.md": _PERFORMANCE_DOC, "SECURITY.md": _SECURITY_DOC}
+_SKILLS_POLICY_DOC = Path(__file__).with_name("starter_skills_policy.md")
+_CHECKLIST_DOCS = {"PERFORMANCE.md": _PERFORMANCE_DOC, "SECURITY.md": _SECURITY_DOC, "SKILLS_POLICY.md": _SKILLS_POLICY_DOC}
 
 
 def _doc(name: str, brief: str) -> str:
@@ -300,16 +304,28 @@ _Started from the Hermes **{label}** template._
 """
 
 
+def security_rule(doc: str = "SECURITY.md") -> str:
+    """The AGENTS.md line that makes an agent run the security checklist."""
+    return (f"- <!-- hermes:security:begin -->Before calling any work done, run `docs/{doc}`: do every\n"
+            "  item that applies, skip the rest with a reason, and end your summary with a short\n"
+            "  \"Security checklist\" note (applied, already in place, skipped and why).<!-- hermes:security:end -->\n")
+
+
+def skills_policy_rule(doc: str = "SKILLS_POLICY.md") -> str:
+    """The AGENTS.md line that keeps skills and tools on demand."""
+    return ("- <!-- hermes:skills-policy:begin -->Skills and tools are on demand: load a skill or reach for a heavy tool\n"
+            "  only when the task is in its domain, never to start a conversation. When in doubt, read\n"
+            f"  `docs/{doc}`.<!-- hermes:skills-policy:end -->\n")
+
+
 def _agents(name: str, docs: tuple[str, ...] = ()) -> str:
     doc_list = "\n".join(f"- `docs/{d}`" for d in docs) or "- (add docs/ files as the project grows)"
     perf = ("- <!-- hermes:performance:begin -->Before calling any work done, run `docs/PERFORMANCE.md`: do every\n"
             "  item that applies, skip the rest with a reason, and end your summary with a short\n"
             "  \"Performance checklist\" note (applied, already in place, skipped and why).<!-- hermes:performance:end -->\n"
             if "PERFORMANCE.md" in docs else "")
-    sec = ("- <!-- hermes:security:begin -->Before calling any work done, run `docs/SECURITY.md`: do every\n"
-           "  item that applies, skip the rest with a reason, and end your summary with a short\n"
-           "  \"Security checklist\" note (applied, already in place, skipped and why).<!-- hermes:security:end -->\n"
-           if "SECURITY.md" in docs else "")
+    sec = security_rule() if "SECURITY.md" in docs else ""
+    sec += skills_policy_rule() if "SKILLS_POLICY.md" in docs else ""
     return f"""# {name}: agent instructions
 
 These rules apply to every AI agent working in this repository.
@@ -580,7 +596,7 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
                     elif what:
                         # "performance", "security" or both ("performance+security").
                         for rule in what.split("+"):
-                            added["perf_appended" if rule == "performance" else "security_appended"] = [str(path)]
+                            added[_RULE_KEYS[rule]] = [str(path)]
                 continue
             _write(root, path, content)
             added["files"].append(str(path))
@@ -596,8 +612,12 @@ HERMES_END = "<!-- hermes:end -->"
 PERF_BEGIN = "<!-- hermes:performance:begin -->"
 SEC_BEGIN = "<!-- hermes:security:begin -->"
 # docs file -> (begin marker, end marker) of the rule that runs it.
+POLICY_BEGIN = "<!-- hermes:skills-policy:begin -->"
 _RULE_MARKERS = {"PERFORMANCE.md": (PERF_BEGIN, "<!-- hermes:performance:end -->"),
-                 "SECURITY.md": (SEC_BEGIN, "<!-- hermes:security:end -->")}
+                 "SECURITY.md": (SEC_BEGIN, "<!-- hermes:security:end -->"),
+                 "SKILLS_POLICY.md": (POLICY_BEGIN, "<!-- hermes:skills-policy:end -->")}
+# rule name -> the key rollback_adopted reads from the adopt result.
+_RULE_KEYS = {"performance": "perf_appended", "security": "security_appended", "skills_policy": "skills_policy_appended"}
 
 
 def _read_text(path: Path) -> str:
@@ -678,7 +698,8 @@ def rollback_adopted(project_root: Path, result: dict) -> None:
             _remove_hermes_section(root, Path(appended))
         except (OSError, ValueError):
             pass
-    for key, doc in (("perf_appended", "PERFORMANCE.md"), ("security_appended", "SECURITY.md")):
+    for rule, key in _RULE_KEYS.items():
+        doc = next(d for d in _RULE_MARKERS if d.removesuffix(".md").lower() == rule)
         for appended in added.get(key) or []:
             try:
                 _remove_rule(root, Path(appended), *_RULE_MARKERS[doc])

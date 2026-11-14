@@ -346,6 +346,59 @@ def ensure_default_skills(project: Path, installed: set[str]) -> list[str]:
     return ["AGENTS.md", ".agent/toolkit.json"] if add else [".agent/toolkit.json"]
 
 
+def _ensure_rule_doc(project: Path, doc: str, source: str, rule) -> list[str]:
+    """Give an existing project a starter document and the AGENTS.md rule that
+    points at it (the rule goes in the toolkit block; the block is created when
+    missing). A document the project already owns is kept and the starter's goes
+    beside it as ``<NAME>_CHECKLIST.md``. Idempotent; returns the files changed."""
+    from api import project_starter as ps
+
+    project = Path(project)
+    if not project.is_dir() or project.is_symlink():
+        return []
+    docs = project / "docs"
+    agents = project / "AGENTS.md"
+    if docs.is_symlink() or agents.is_symlink():
+        raise ValueError("docs or AGENTS.md is a link; it was left alone.")
+    begin = ps._RULE_MARKERS[doc][0]
+    own = docs / doc
+    if own.is_symlink():
+        raise ValueError(f"docs/{doc} is a link; it was left alone.")
+    name = doc
+    if own.exists() and begin not in own.read_text(encoding="utf-8", errors="replace"):
+        name = doc.replace(".md", "_CHECKLIST.md")
+    target = docs / name
+    written: list[str] = []
+    if not target.exists():
+        docs.mkdir(exist_ok=True)
+        target.write_text(ps._doc(doc, ""), encoding="utf-8")
+        written.append(f"docs/{name}")
+    text = agents.read_text(encoding="utf-8") if agents.exists() else ""
+    if begin not in text:
+        line = rule(name).rstrip("\n")
+        if BEGIN in text and END in text:
+            body = text.split(BEGIN, 1)[1].split(END, 1)[0].strip("\n")
+            _upsert(agents, body.rstrip("\n") + "\n\n" + line)
+        else:
+            _upsert(agents, "\n".join(["## Project toolkit", "", line]))
+        written.append("AGENTS.md")
+    return written
+
+
+def ensure_security_checklist(project: Path) -> list[str]:
+    """Give an existing project ``docs/SECURITY.md`` and the rule to run it."""
+    from api import project_starter as ps
+
+    return _ensure_rule_doc(project, "SECURITY.md", "", ps.security_rule)
+
+
+def ensure_skills_policy(project: Path) -> list[str]:
+    """Give an existing project ``docs/SKILLS_POLICY.md`` and the rule to follow it."""
+    from api import project_starter as ps
+
+    return _ensure_rule_doc(project, "SKILLS_POLICY.md", "", ps.skills_policy_rule)
+
+
 def _needs_lines(needs: list[str], components: list[dict]) -> list[str]:
     """What the app needs (the planner's reading of the brief, said or implied),
     each with the approved components that serve it."""

@@ -19019,6 +19019,8 @@ html.ps-wizard-open :is(.app-titlebar,.layout) :is(*,*::before,*::after){animati
 .nb-nav .nb-trash-scope > .nb-scope-count{translate:0 1px;}
 /* Obsidian Notes' count: 2px lower than the other rows' counts. */
 .nb-nav .nb-obsidian-scope > .nb-scope-count{translate:0 1px;}
+/* General, Pinned and Favorites counts: 1px lower than the base row value. */
+.nb-nav:not(.nb-nav-vault) :is([data-nb-scope='general'],[data-nb-scope='pinned'],[data-nb-scope='favorites']) > .nb-scope-count{translate:0 0;}
 
 /* Learning log and Skills gained: the scrolling body reaches 3px past the
    entry row on both ends, so the fields' focus ring and the row's drop-in are
